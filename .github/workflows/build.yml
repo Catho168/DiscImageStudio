@@ -1,0 +1,58 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Restore
+        run: dotnet restore DiscImageStudio.slnx
+
+      - name: Build
+        run: dotnet build DiscImageStudio.slnx --configuration Release --no-restore
+
+      - name: Test module architecture
+        run: dotnet run --project tests/DiscImageStudio.ArchitectureTests --configuration Release --no-build
+
+      - name: Test original DVD engine
+        run: dotnet run --project src/DvdImageSolver --configuration Release --no-build -- selftest
+
+      - name: Test DVD through module catalog
+        run: dotnet run --project src/DiscImageStudio.App --configuration Release --no-build -- selftest
+
+      - name: Smoke-test CD module
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Path artifacts\ci -Force | Out-Null
+          dotnet run --project src/DiscImageStudio.App --configuration Release --no-build -- cd-generate --input src/DiscImageStudio.App/Assets/DiscImageStudio-256.png --output artifacts/ci/cd-smoke.raw --r0 24.5 --r1 24.6 --sectors 2 --velocity 1100 --theta0 0 --outer 57.5 --interleave true
+          if ((Get-Item artifacts\ci\cd-smoke.raw).Length -ne 4704) {
+            throw "CD smoke output was not exactly two 2352-byte sectors."
+          }
+
+      - name: Render GUI screenshot
+        run: dotnet run --project src/DiscImageStudio.App --configuration Release --no-build -- ui-snapshot --output artifacts/store/home-screen.png
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: validation-artifacts
+          path: |
+            artifacts/ci/cd-smoke.raw
+            artifacts/store/home-screen.png

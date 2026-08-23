@@ -1,0 +1,63 @@
+name: package-msix
+
+on:
+  workflow_dispatch:
+    inputs:
+      identity_name:
+        description: Partner Center Package/Identity/Name
+        required: true
+        type: string
+      publisher:
+        description: Partner Center Package/Identity/Publisher
+        required: true
+        type: string
+      publisher_display_name:
+        description: Partner Center PublisherDisplayName
+        required: true
+        type: string
+      display_name:
+        description: Reserved Store product name
+        required: true
+        type: string
+      version:
+        description: Store version in A.B.C.0 format
+        required: true
+        default: 1.0.0.0
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: windows-latest
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      IDENTITY_NAME: ${{ inputs.identity_name }}
+      PUBLISHER: ${{ inputs.publisher }}
+      PUBLISHER_DISPLAY_NAME: ${{ inputs.publisher_display_name }}
+      DISPLAY_NAME: ${{ inputs.display_name }}
+      PACKAGE_VERSION: ${{ inputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Build Store MSIX
+        shell: powershell
+        run: |
+          .\packaging\Build-MSIX.ps1 `
+            -IdentityName $env:IDENTITY_NAME `
+            -Publisher $env:PUBLISHER `
+            -PublisherDisplayName $env:PUBLISHER_DISPLAY_NAME `
+            -DisplayName $env:DISPLAY_NAME `
+            -Version $env:PACKAGE_VERSION
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DiscImageStudio-${{ inputs.version }}-x64-msix
+          path: artifacts/msix/*.msix
+          if-no-files-found: error

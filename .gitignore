@@ -1,0 +1,14 @@
+bin/
+obj/
+artifacts/
+tmp/
+.vs/
+.idea/
+*.user
+*.suo
+*.nupkg
+*.msix
+*.msixbundle
+*.appx
+*.appxbundle
+TestResults/

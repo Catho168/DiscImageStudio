@@ -1,0 +1,82 @@
+{
+  "format": "dvd-efmplus-dispersion-byte-pools-v1",
+  "domain": "scrambled-main-data-byte-at-efmplus-input",
+  "metric": {
+    "transitionCount": "popcount of the 16-bit EFMPlus code word",
+    "longestRun": "longest NRZI pit/land run inside the 16-bit word",
+    "runSquareSum": "sum of squared NRZI run lengths inside the word",
+    "representationScope": "all unique main/substitution representations across EFMPlus states 1..4",
+    "lowerTransitionCountMeans": "more clustered, longer runs",
+    "higherTransitionCountMeans": "more dispersed, shorter runs"
+  },
+  "recommendedAnchors": {
+    "clustered": {
+      "byte": "0x92",
+      "transitionRange": [2, 2],
+      "longestRunRange": [8, 10],
+      "runSquareSumRange": [96, 126],
+      "transitionParity": "even"
+    },
+    "dispersed": {
+      "byte": "0xA5",
+      "transitionRange": [5, 5],
+      "longestRunRange": [4, 4],
+      "runSquareSumRange": [48, 52],
+      "transitionParity": "odd"
+    },
+    "strongestTwoByteComparison": {
+      "clusteredMacro": "9292",
+      "dispersedMacro": "A5A5",
+      "macroTransitionParity": "even for both macros"
+    }
+  },
+  "samePerByteParity": {
+    "evenClusteredCandidates": [
+      "0x92", "0x20", "0x83", "0x8E", "0x85", "0xDB", "0xD1",
+      "0x87", "0xD8", "0xCB", "0xCD", "0xFF", "0x0F", "0x26"
+    ],
+    "evenDispersedCandidates": [
+      "0x70", "0xB8", "0xE2", "0xC6", "0xFC", "0xBA", "0xDD", "0xE4",
+      "0x7B", "0x64", "0xAD", "0x66", "0x76", "0x7E", "0xA0", "0xA6"
+    ],
+    "oddClusteredCandidates": [
+      "0x1A", "0xC5", "0xE0", "0xB2", "0xB9", "0xBD", "0x7A", "0x7C",
+      "0x19", "0x9D", "0x1B", "0xD4", "0x42", "0x5C", "0xFB", "0x86"
+    ],
+    "oddDispersedRobustCandidates": ["0xA5"],
+    "oddDispersedExperimentalCandidates": ["0x58", "0x9B", "0x61"]
+  },
+  "rankedPools": {
+    "clustered": [
+      "0x92", "0x1A", "0xC5", "0xE0", "0xB2", "0xB9", "0xBD", "0x7A",
+      "0x7C", "0x19", "0x9D", "0x1B", "0xD4", "0x42", "0x5C", "0xFB"
+    ],
+    "dispersed": [
+      "0xA5", "0x70", "0xB8", "0xE2", "0xC6", "0xFC", "0xBA", "0xDD",
+      "0xE4", "0x7B", "0x64", "0xAD", "0x66", "0x76", "0x7E", "0xA0"
+    ]
+  },
+  "recommendedTestPatterns": [
+    {
+      "clustered": ["0x92"],
+      "dispersed": ["0xA5"],
+      "purpose": "maximum transition-density contrast"
+    },
+    {
+      "clustered": ["0x92"],
+      "dispersed": ["0xB8", "0xE2", "0xC6", "0xDD"],
+      "purpose": "same even transition parity per byte"
+    },
+    {
+      "clusteredMacros": ["9292", "C5C5", "E0E0", "B2B2"],
+      "dispersedMacros": ["A5A5", "7070", "B8B8", "E2E2"],
+      "purpose": "two-byte macros with even total transition parity"
+    }
+  ],
+  "usageNotes": [
+    "These values are the scrambled bytes Q seen by EFMPlus, not the raw ISO payload bytes P.",
+    "For ISO output use P = Q XOR the sector scrambler byte at the corresponding payload offset.",
+    "Clustered/dispersed is a texture classification; which pool looks darker must be determined with a calibration burn.",
+    "EDC, PI, PO, headers, RSV and SYNC are derived/fixed bytes and dilute but do not reverse the payload transition-density contrast."
+  ]
+}

@@ -1,0 +1,644 @@
+<Window x:Class="DiscImageStudio.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Disc Image Studio 光盘绘图工坊"
+        Width="1180" Height="780" MinWidth="980" MinHeight="680"
+        WindowStartupLocation="CenterScreen"
+        Background="#F4F6FB" Foreground="#182033"
+        FontFamily="Segoe UI, Microsoft YaHei UI">
+    <Window.Resources>
+        <SolidColorBrush x:Key="AccentBrush" Color="#5267F5" />
+        <SolidColorBrush x:Key="AccentDarkBrush" Color="#4053D8" />
+        <SolidColorBrush x:Key="TextMutedBrush" Color="#69738A" />
+        <SolidColorBrush x:Key="LineBrush" Color="#E2E6F0" />
+
+        <Style TargetType="TextBox">
+            <Setter Property="Height" Value="38" />
+            <Setter Property="Padding" Value="11,7" />
+            <Setter Property="BorderBrush" Value="#CBD2E2" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Background" Value="White" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Height" Value="38" />
+            <Setter Property="Padding" Value="8,5" />
+            <Setter Property="BorderBrush" Value="#CBD2E2" />
+            <Setter Property="Background" Value="White" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style TargetType="CheckBox">
+            <Setter Property="Margin" Value="0,5,18,5" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="PrimaryButton" TargetType="Button">
+            <Setter Property="Height" Value="42" />
+            <Setter Property="Padding" Value="22,8" />
+            <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ButtonBorder" Background="{TemplateBinding Background}"
+                                CornerRadius="8" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="{StaticResource AccentDarkBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="SecondaryButton" TargetType="Button" BasedOn="{StaticResource PrimaryButton}">
+            <Setter Property="Background" Value="#E9ECFF" />
+            <Setter Property="Foreground" Value="#3449CF" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ButtonBorder" Background="{TemplateBinding Background}"
+                                CornerRadius="8" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#DCE1FF" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="BrowseButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+            <Setter Property="Width" Value="84" />
+            <Setter Property="Height" Value="38" />
+            <Setter Property="Margin" Value="8,0,0,0" />
+            <Setter Property="Padding" Value="12,6" />
+        </Style>
+        <Style x:Key="NavButton" TargetType="Button">
+            <Setter Property="Height" Value="48" />
+            <Setter Property="Margin" Value="10,3" />
+            <Setter Property="Padding" Value="15,0" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="#DDE3FF" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="NavBorder" Background="{TemplateBinding Background}"
+                                CornerRadius="9" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="NavBorder" Property="Background" Value="#253158" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="22" />
+            <Setter Property="Margin" Value="0,0,0,16" />
+        </Style>
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+        </Style>
+        <Style x:Key="SectionTitle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="18" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,0,16" />
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="220" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <Border Grid.Column="0" Background="#17213E">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <StackPanel Margin="20,24,16,25">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="48" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Border Width="42" Height="42" CornerRadius="12" Background="#5267F5">
+                            <TextBlock Text="◉" FontSize="27" Foreground="White"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock Text="Disc Image" Foreground="White" FontWeight="SemiBold" FontSize="16" />
+                            <TextBlock Text="光盘绘图工坊" Foreground="#9FABD3" FontSize="12" />
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+                <StackPanel Grid.Row="1">
+                    <Button Style="{StaticResource NavButton}" Tag="0" Click="Navigate_Click" Content="⌂   首页" />
+                    <Button Style="{StaticResource NavButton}" Tag="1" Click="Navigate_Click" Content="◉   DVD 图像盘" />
+                    <Button Style="{StaticResource NavButton}" Tag="2" Click="Navigate_Click" Content="◎   CD 音轨盘" />
+                    <Button Style="{StaticResource NavButton}" Tag="3" Click="Navigate_Click" Content="◫   实时预览" />
+                    <Button Style="{StaticResource NavButton}" Tag="4" Click="Navigate_Click" Content="≡   运行日志" />
+                    <Button Style="{StaticResource NavButton}" Tag="5" Click="Navigate_Click" Content="ⓘ   关于与安全" />
+                </StackPanel>
+                <TextBlock Grid.Row="2" x:Name="VersionText" Margin="22,0,18,20"
+                           Foreground="#7F8BB3" FontSize="11" Text="本地处理 · 不联网" />
+            </Grid>
+        </Border>
+
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="58" />
+            </Grid.RowDefinitions>
+
+            <TabControl x:Name="ContentTabs" BorderThickness="0" Background="Transparent">
+                <TabControl.Resources>
+                    <Style TargetType="TabItem">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                    </Style>
+                </TabControl.Resources>
+
+                <TabItem>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="34,30,34,24">
+                            <TextBlock Text="把图片写进光盘轨道" FontSize="30" FontWeight="SemiBold" />
+                            <TextBlock Text="同一个应用支持 DVD 数据盘与 CD-DA 原始音轨；所有图片和输出都只在本机处理。"
+                                       Foreground="{StaticResource TextMutedBrush}" FontSize="15" Margin="0,8,0,28" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="20" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" Style="{StaticResource Card}" Padding="26">
+                                    <StackPanel>
+                                        <Border Width="54" Height="54" CornerRadius="16" Background="#EEF0FF" HorizontalAlignment="Left">
+                                            <TextBlock Text="◉" Foreground="#5267F5" FontSize="34" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        </Border>
+                                        <TextBlock Text="DVD 图像盘" FontSize="21" FontWeight="SemiBold" Margin="0,18,0,8" />
+                                        <TextBlock Text="使用快速纹理与顺时针螺旋生成可直接刻录的 ISO；支持文件与图像混合盘。"
+                                                   Foreground="{StaticResource TextMutedBrush}" TextWrapping="Wrap" LineHeight="21" />
+                                        <Button Style="{StaticResource PrimaryButton}" Tag="1" Click="Navigate_Click"
+                                                Content="开始制作 DVD" HorizontalAlignment="Left" Margin="0,22,0,0" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="2" Style="{StaticResource Card}" Padding="26">
+                                    <StackPanel>
+                                        <Border Width="54" Height="54" CornerRadius="16" Background="#FFF2E8" HorizontalAlignment="Left">
+                                            <TextBlock Text="◎" Foreground="#EF7C34" FontSize="34" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        </Border>
+                                        <TextBlock Text="CD 音轨盘" FontSize="21" FontWeight="SemiBold" Margin="0,18,0,8" />
+                                        <TextBlock Text="生成 2352 字节/扇区的 CD-DA 原始轨道，保留延迟交织与几何校准预览。"
+                                                   Foreground="{StaticResource TextMutedBrush}" TextWrapping="Wrap" LineHeight="21" />
+                                        <Button Style="{StaticResource PrimaryButton}" Tag="2" Click="Navigate_Click"
+                                                Content="开始制作 CD" HorizontalAlignment="Left" Margin="0,22,0,0" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                            <Border Style="{StaticResource Card}" Background="#FDFEFF">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="提示" Foreground="#5267F5" FontWeight="SemiBold" Margin="0,0,18,0" />
+                                    <TextBlock Grid.Column="1" Text="先用“校准预览”确认内外半径和起始角，再生成完整镜像。完整 CD/DVD 输出可能很大，请预留足够磁盘空间。"
+                                               Foreground="{StaticResource TextMutedBrush}" TextWrapping="Wrap" />
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+                <TabItem>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="34,28,34,24">
+                            <TextBlock Text="DVD 图像盘" FontSize="28" FontWeight="SemiBold" />
+                            <TextBlock Text="生成 ISO 数据镜像；固定使用快速纹理算法与顺时针（CW）螺旋。"
+                                       Foreground="{StaticResource TextMutedBrush}" Margin="0,7,0,22" />
+
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource SectionTitle}" Text="文件" />
+                                    <TextBlock Style="{StaticResource FieldLabel}" Text="源图片" />
+                                    <Grid Margin="0,0,0,14">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <TextBox x:Name="DvdImagePath" />
+                                        <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Click="BrowseDvdImage_Click" Content="浏览…" />
+                                    </Grid>
+                                    <TextBlock Style="{StaticResource FieldLabel}" Text="输出 ISO" />
+                                    <Grid Margin="0,0,0,14">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <TextBox x:Name="DvdOutputPath" />
+                                        <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Click="BrowseDvdOutput_Click" Content="选择…" />
+                                    </Grid>
+                                    <TextBlock Style="{StaticResource FieldLabel}" Text="可选：放入内圈的文件夹（留空则整盘只绘图）" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <TextBox x:Name="DvdDataDirectory" />
+                                        <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Click="BrowseDvdData_Click" Content="选择…" />
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource SectionTitle}" Text="盘片与快速算法" />
+                                    <TextBlock Text="固定使用快速纹理算法，并按标准顺时针（CW）生成。"
+                                               Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,14" />
+                                    <WrapPanel>
+                                        <StackPanel Width="190" Margin="0,0,16,14">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="总扇区数" />
+                                            <TextBox x:Name="DvdTotalSectors" Text="2295104" />
+                                        </StackPanel>
+                                        <StackPanel Width="190" Margin="0,0,16,14">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="内半径 (mm)" />
+                                            <TextBox x:Name="DvdInnerRadius" Text="24.0" />
+                                        </StackPanel>
+                                        <StackPanel Width="190" Margin="0,0,16,14">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="外半径 (mm)" />
+                                            <TextBox x:Name="DvdOuterRadius" Text="58.0" />
+                                        </StackPanel>
+                                        <StackPanel Width="190" Margin="0,0,16,14">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="Channel bit (nm)" />
+                                            <TextBox x:Name="DvdChannelBit" Text="133.33" />
+                                        </StackPanel>
+                                        <StackPanel Width="190" Margin="0,0,16,14">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="起始角 (°)" />
+                                            <TextBox x:Name="DvdStartAngle" Text="0" />
+                                        </StackPanel>
+                                        <StackPanel Width="190" Margin="0,0,16,14">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="卷标" />
+                                            <TextBox x:Name="DvdVolumeLabel" Text="DISC_IMAGE" />
+                                        </StackPanel>
+                                    </WrapPanel>
+                                    <TextBlock Text="图片黑色映射为低跳变纹理；快速输出始终启用。"
+                                               Foreground="{StaticResource TextMutedBrush}" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource SectionTitle}" Text="校准预览" />
+                                    <WrapPanel>
+                                        <StackPanel Width="190" Margin="0,0,16,14">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="实测内半径 (mm)" />
+                                            <TextBox x:Name="DvdActualInnerRadius" Text="24.0" />
+                                        </StackPanel>
+                                        <StackPanel Width="190" Margin="0,0,16,14">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="实测外半径 (mm)" />
+                                            <TextBox x:Name="DvdActualOuterRadius" Text="58.0" />
+                                        </StackPanel>
+                                        <StackPanel Width="190" Margin="0,0,16,14">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="预览尺寸" />
+                                            <TextBox x:Name="DvdPreviewSize" Text="1600" />
+                                        </StackPanel>
+                                        <StackPanel Width="190" Margin="0,0,16,14">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="每扇区采样" />
+                                            <TextBox x:Name="DvdSamplesPerSector" Text="16" />
+                                        </StackPanel>
+                                    </WrapPanel>
+                                    <TextBlock Style="{StaticResource FieldLabel}" Text="预览 PNG" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <TextBox x:Name="DvdPreviewPath" />
+                                        <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Click="BrowseDvdPreview_Click" Content="选择…" />
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <StackPanel Orientation="Horizontal">
+                                <Button x:Name="StartDvdButton" Style="{StaticResource PrimaryButton}" Click="StartDvd_Click" Content="生成 DVD ISO" Margin="0,0,12,0" />
+                                <Button x:Name="PreviewDvdButton" Style="{StaticResource SecondaryButton}" Click="PreviewDvd_Click" Content="生成校准预览" />
+                            </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+                <TabItem>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="34,28,34,24">
+                            <TextBlock Text="CD 音轨盘" FontSize="28" FontWeight="SemiBold" />
+                            <TextBlock Text="生成原始 CD-DA Track 1；文件字节 0 对应 LBA 0，默认启用延迟交织。"
+                                       Foreground="{StaticResource TextMutedBrush}" Margin="0,7,0,22" />
+
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource SectionTitle}" Text="文件" />
+                                    <TextBlock Style="{StaticResource FieldLabel}" Text="源图片" />
+                                    <Grid Margin="0,0,0,14">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <TextBox x:Name="CdImagePath" />
+                                        <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Click="BrowseCdImage_Click" Content="浏览…" />
+                                    </Grid>
+                                    <TextBlock Style="{StaticResource FieldLabel}" Text="输出原始音轨 (.raw)" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <TextBox x:Name="CdOutputPath" />
+                                        <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Click="BrowseCdOutput_Click" Content="选择…" />
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource SectionTitle}" Text="生成几何" />
+                                    <WrapPanel>
+                                        <StackPanel Width="190" Margin="0,0,16,14">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="内半径 r0 (mm)" />
+                                            <TextBox x:Name="CdInnerRadius" Text="24.5" />
+                                        </StackPanel>
+                                        <StackPanel Width="190" Margin="0,0,16,14">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="外半径 r1 (mm)" />
+                                            <TextBox x:Name="CdOuterRadius" Text="56.8" />
+                                        </StackPanel>
+                                        <StackPanel Width="190" Margin="0,0,16,14">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="扇区数" />
+                                            <TextBox x:Name="CdSectors" Text="359849" />
+                                        </StackPanel>
+                                        <StackPanel Width="190" Margin="0,0,16,14">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="线速度 (mm/s)" />
+                                            <TextBox x:Name="CdVelocity" Text="1100" />
+                                        </StackPanel>
+                                        <StackPanel Width="190" Margin="0,0,16,14">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="起始角 theta0 (°)" />
+                                            <TextBox x:Name="CdStartAngle" Text="0" />
+                                        </StackPanel>
+                                        <StackPanel Width="190" Margin="0,0,16,14">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="图片外半径 (mm)" />
+                                            <TextBox x:Name="CdImageOuterRadius" Text="57.5" />
+                                        </StackPanel>
+                                    </WrapPanel>
+                                    <CheckBox x:Name="CdInterleave" IsChecked="True" Content="启用 CD-DA 延迟交织" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource SectionTitle}" Text="实测几何与预览" />
+                                    <WrapPanel>
+                                        <StackPanel Width="190" Margin="0,0,16,14">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="实测内半径 (mm)" />
+                                            <TextBox x:Name="CdActualInnerRadius" Text="24.3" />
+                                        </StackPanel>
+                                        <StackPanel Width="190" Margin="0,0,16,14">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="实测外半径 (mm)" />
+                                            <TextBox x:Name="CdActualOuterRadius" Text="56.6" />
+                                        </StackPanel>
+                                        <StackPanel Width="190" Margin="0,0,16,14">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="实测线速度 (mm/s)" />
+                                            <TextBox x:Name="CdActualVelocity" Text="1100" />
+                                        </StackPanel>
+                                        <StackPanel Width="190" Margin="0,0,16,14">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="实测起始角 (°)" />
+                                            <TextBox x:Name="CdActualStartAngle" Text="0" />
+                                        </StackPanel>
+                                        <StackPanel Width="190" Margin="0,0,16,14">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="预览尺寸" />
+                                            <TextBox x:Name="CdPreviewSize" Text="1600" />
+                                        </StackPanel>
+                                        <StackPanel Width="190" Margin="0,0,16,14">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="每扇区采样" />
+                                            <TextBox x:Name="CdSamplesPerSector" Text="16" />
+                                        </StackPanel>
+                                    </WrapPanel>
+                                    <TextBlock Style="{StaticResource FieldLabel}" Text="预览 PNG" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <TextBox x:Name="CdPreviewPath" />
+                                        <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Click="BrowseCdPreview_Click" Content="选择…" />
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <WrapPanel>
+                                <Button x:Name="StartCdButton" Style="{StaticResource PrimaryButton}" Click="StartCd_Click" Content="生成 CD 原始音轨" Margin="0,0,12,10" />
+                                <Button x:Name="PreviewCdWarpButton" Style="{StaticResource SecondaryButton}" Click="PreviewCdWarp_Click" Content="预览几何校准" Margin="0,0,12,10" />
+                                <Button x:Name="PreviewCdTrackButton" Style="{StaticResource SecondaryButton}" Click="PreviewCdTrack_Click" Content="预览已有音轨" Margin="0,0,0,10" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+                <TabItem>
+                    <Grid Margin="34,28,34,26">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <StackPanel>
+                            <TextBlock x:Name="LivePreviewHeading" Text="CD 实时预览" FontSize="28" FontWeight="SemiBold" />
+                            <TextBlock Text="选择 CD 或 DVD 后调整参数，右侧图片会自动刷新；正式导出仍使用对应页面中的完整设置。"
+                                       Foreground="{StaticResource TextMutedBrush}" Margin="0,7,0,18" />
+                        </StackPanel>
+                        <Grid Grid.Row="1">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="300" />
+                                <ColumnDefinition Width="16" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <Border Style="{StaticResource Card}" Margin="0" Padding="18">
+                                    <StackPanel>
+                                        <TextBlock Text="光盘类型" FontWeight="SemiBold" Margin="0,0,0,10" />
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,18">
+                                            <RadioButton x:Name="LiveCdRadio" GroupName="LiveDiscType" Content="CD"
+                                                         IsChecked="True" Click="LivePreviewDiscType_Click" Margin="0,0,22,0" />
+                                            <RadioButton x:Name="LiveDvdRadio" GroupName="LiveDiscType" Content="DVD"
+                                                         Click="LivePreviewDiscType_Click" />
+                                        </StackPanel>
+
+                                        <StackPanel x:Name="LiveCdControls">
+                                            <TextBlock Text="源图片" FontWeight="SemiBold" Margin="0,0,0,10" />
+                                            <Grid Margin="0,0,0,18">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                                <TextBox x:Name="LiveCdImagePath" IsReadOnly="True" />
+                                                <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Width="68"
+                                                        Click="BrowseLiveCdImage_Click" Content="浏览…" />
+                                            </Grid>
+
+                                            <TextBlock Text="生成几何" FontWeight="SemiBold" Margin="0,0,0,10" />
+                                            <WrapPanel>
+                                                <StackPanel Width="122" Margin="0,0,12,12"><TextBlock Style="{StaticResource FieldLabel}" Text="内半径 (mm)"/><TextBox x:Name="LiveCdInnerRadius"/></StackPanel>
+                                                <StackPanel Width="122" Margin="0,0,0,12"><TextBlock Style="{StaticResource FieldLabel}" Text="外半径 (mm)"/><TextBox x:Name="LiveCdOuterRadius"/></StackPanel>
+                                                <StackPanel Width="122" Margin="0,0,12,12"><TextBlock Style="{StaticResource FieldLabel}" Text="扇区数"/><TextBox x:Name="LiveCdSectors"/></StackPanel>
+                                                <StackPanel Width="122" Margin="0,0,0,12"><TextBlock Style="{StaticResource FieldLabel}" Text="线速度"/><TextBox x:Name="LiveCdVelocity"/></StackPanel>
+                                                <StackPanel Width="122" Margin="0,0,12,12"><TextBlock Style="{StaticResource FieldLabel}" Text="起始角 (°)"/><TextBox x:Name="LiveCdStartAngle"/></StackPanel>
+                                                <StackPanel Width="122" Margin="0,0,0,12"><TextBlock Style="{StaticResource FieldLabel}" Text="图片外半径"/><TextBox x:Name="LiveCdImageOuterRadius"/></StackPanel>
+                                            </WrapPanel>
+
+                                            <TextBlock Text="实测几何" FontWeight="SemiBold" Margin="0,6,0,10" />
+                                            <WrapPanel>
+                                                <StackPanel Width="122" Margin="0,0,12,12"><TextBlock Style="{StaticResource FieldLabel}" Text="实测内半径"/><TextBox x:Name="LiveCdActualInnerRadius"/></StackPanel>
+                                                <StackPanel Width="122" Margin="0,0,0,12"><TextBlock Style="{StaticResource FieldLabel}" Text="实测外半径"/><TextBox x:Name="LiveCdActualOuterRadius"/></StackPanel>
+                                                <StackPanel Width="122" Margin="0,0,12,12"><TextBlock Style="{StaticResource FieldLabel}" Text="实测线速度"/><TextBox x:Name="LiveCdActualVelocity"/></StackPanel>
+                                                <StackPanel Width="122" Margin="0,0,0,12"><TextBlock Style="{StaticResource FieldLabel}" Text="实测起始角"/><TextBox x:Name="LiveCdActualStartAngle"/></StackPanel>
+                                                <StackPanel Width="122" Margin="0,0,12,12"><TextBlock Style="{StaticResource FieldLabel}" Text="导出尺寸"/><TextBox x:Name="LiveCdPreviewSize"/></StackPanel>
+                                                <StackPanel Width="122" Margin="0,0,0,12"><TextBlock Style="{StaticResource FieldLabel}" Text="每扇区采样"/><TextBox x:Name="LiveCdSamplesPerSector"/></StackPanel>
+                                            </WrapPanel>
+                                        </StackPanel>
+
+                                        <StackPanel x:Name="LiveDvdControls" Visibility="Collapsed">
+                                            <TextBlock Text="源图片" FontWeight="SemiBold" Margin="0,0,0,10" />
+                                            <Grid Margin="0,0,0,18">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                                <TextBox x:Name="LiveDvdImagePath" IsReadOnly="True" />
+                                                <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Width="68"
+                                                        Click="BrowseLiveDvdImage_Click" Content="浏览…" />
+                                            </Grid>
+
+                                            <TextBlock Text="生成几何 · 快速算法 · CW" FontWeight="SemiBold" Margin="0,0,0,10" />
+                                            <WrapPanel>
+                                                <StackPanel Width="122" Margin="0,0,12,12"><TextBlock Style="{StaticResource FieldLabel}" Text="总扇区数"/><TextBox x:Name="LiveDvdTotalSectors"/></StackPanel>
+                                                <StackPanel Width="122" Margin="0,0,0,12"><TextBlock Style="{StaticResource FieldLabel}" Text="内半径 (mm)"/><TextBox x:Name="LiveDvdInnerRadius"/></StackPanel>
+                                                <StackPanel Width="122" Margin="0,0,12,12"><TextBlock Style="{StaticResource FieldLabel}" Text="外半径 (mm)"/><TextBox x:Name="LiveDvdOuterRadius"/></StackPanel>
+                                                <StackPanel Width="122" Margin="0,0,0,12"><TextBlock Style="{StaticResource FieldLabel}" Text="Channel bit"/><TextBox x:Name="LiveDvdChannelBit"/></StackPanel>
+                                                <StackPanel Width="122" Margin="0,0,12,12"><TextBlock Style="{StaticResource FieldLabel}" Text="起始角 (°)"/><TextBox x:Name="LiveDvdStartAngle"/></StackPanel>
+                                            </WrapPanel>
+
+                                            <TextBlock Text="实测几何" FontWeight="SemiBold" Margin="0,6,0,10" />
+                                            <WrapPanel>
+                                                <StackPanel Width="122" Margin="0,0,12,12"><TextBlock Style="{StaticResource FieldLabel}" Text="实测内半径"/><TextBox x:Name="LiveDvdActualInnerRadius"/></StackPanel>
+                                                <StackPanel Width="122" Margin="0,0,0,12"><TextBlock Style="{StaticResource FieldLabel}" Text="实测外半径"/><TextBox x:Name="LiveDvdActualOuterRadius"/></StackPanel>
+                                                <StackPanel Width="122" Margin="0,0,12,12"><TextBlock Style="{StaticResource FieldLabel}" Text="导出尺寸"/><TextBox x:Name="LiveDvdPreviewSize"/></StackPanel>
+                                                <StackPanel Width="122" Margin="0,0,0,12"><TextBlock Style="{StaticResource FieldLabel}" Text="每扇区采样"/><TextBox x:Name="LiveDvdSamplesPerSector"/></StackPanel>
+                                            </WrapPanel>
+                                        </StackPanel>
+
+                                        <Button Style="{StaticResource SecondaryButton}" Height="38" Padding="14,6"
+                                                Click="RefreshLivePreview_Click" Content="立即刷新" />
+                                    </StackPanel>
+                                </Border>
+                            </ScrollViewer>
+
+                            <Border Grid.Column="2" Style="{StaticResource Card}" Padding="0" Margin="0">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="44" />
+                                        <RowDefinition Height="*" />
+                                        <RowDefinition Height="34" />
+                                    </Grid.RowDefinitions>
+                                    <Border Background="#F8F9FD" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1">
+                                        <Grid Margin="16,0">
+                                             <TextBlock x:Name="ResultPreviewTitle" Text="CD 实时预览" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                            <TextBlock x:Name="ResultPreviewPath" Foreground="{StaticResource TextMutedBrush}"
+                                                       TextTrimming="CharacterEllipsis" HorizontalAlignment="Right"
+                                                       MaxWidth="400" VerticalAlignment="Center" />
+                                        </Grid>
+                                    </Border>
+                                    <Grid Grid.Row="1" Background="#FBFCFF" ClipToBounds="True">
+                                        <Image x:Name="ResultPreviewImage" Margin="18" Stretch="Uniform"
+                                               SnapsToDevicePixels="True" Visibility="Collapsed" />
+                                        <StackPanel x:Name="ResultPreviewPlaceholder" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="◎" FontSize="42" Foreground="#AAB3CA" HorizontalAlignment="Center" />
+                                             <TextBlock x:Name="ResultPreviewPlaceholderText" Text="请先选择源图片。"
+                                                       Foreground="{StaticResource TextMutedBrush}" Margin="0,8,0,0" />
+                                        </StackPanel>
+                                    </Grid>
+                                    <TextBlock Grid.Row="2" x:Name="LivePreviewStatusText" Text="等待源图片"
+                                               Foreground="{StaticResource TextMutedBrush}" Margin="16,0"
+                                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                </Grid>
+                            </Border>
+                        </Grid>
+                    </Grid>
+                </TabItem>
+
+                <TabItem>
+                    <Grid Margin="34,28,34,26">
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="运行日志" FontSize="28" FontWeight="SemiBold" />
+                            <TextBlock Text="生成进度、算法信息和错误都会显示在这里。"
+                                       Foreground="{StaticResource TextMutedBrush}" Margin="0,7,0,18" />
+                        </StackPanel>
+                        <Border Grid.Row="1" Style="{StaticResource Card}" Padding="0" Margin="0">
+                            <TextBox x:Name="LogTextBox" IsReadOnly="True" AcceptsReturn="True"
+                                     Height="Auto" VerticalAlignment="Stretch"
+                                     FontFamily="Cascadia Mono, Consolas" FontSize="12.5"
+                                     HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                                     TextWrapping="NoWrap" BorderThickness="0" Padding="16" />
+                        </Border>
+                    </Grid>
+                </TabItem>
+
+                <TabItem>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="34,28,34,24">
+                            <TextBlock Text="关于与安全" FontSize="28" FontWeight="SemiBold" />
+                            <TextBlock Text="Disc Image Studio 光盘绘图工坊"
+                                       Foreground="{StaticResource TextMutedBrush}" Margin="0,7,0,22" />
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                    <TextBlock Text="本地优先" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
+                                    <TextBlock Text="应用不会连接网络，不会上传图片，也不收集遥测或个人信息。它只读取你主动选择的图片、文件夹和轨道，并写入你指定的输出位置。"
+                                               TextWrapping="Wrap" Foreground="{StaticResource TextMutedBrush}" LineHeight="22" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                    <TextBlock Text="刻录前请先验证" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
+                                    <TextBlock Text="不同刻录机、盘片染料、写入策略和固件可能改变最终可见效果。建议先生成校准预览并使用可擦写或低成本介质测试。CD 输出是原始 CD-DA 轨道；DVD 输出是 ISO 数据镜像。"
+                                               TextWrapping="Wrap" Foreground="{StaticResource TextMutedBrush}" LineHeight="22" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                    <TextBlock Text="命令行兼容" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
+                                    <TextBlock Text="不带参数运行会打开此界面；solve、calibrate、cd-generate、cd-preview-warp 等命令仍可用于批处理。"
+                                               TextWrapping="Wrap" Foreground="{StaticResource TextMutedBrush}" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+            </TabControl>
+
+            <Border Grid.Row="1" Background="White" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0">
+                <Grid Margin="22,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <ProgressBar x:Name="BusyProgress" Width="110" Height="5" IsIndeterminate="True"
+                                 Visibility="Collapsed" Foreground="{StaticResource AccentBrush}" />
+                    <TextBlock Grid.Column="1" x:Name="StatusText" Text="就绪" Margin="16,0"
+                               Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" />
+                    <Button Grid.Column="2" x:Name="OpenOutputButton" Style="{StaticResource SecondaryButton}"
+                            Height="34" Padding="14,4" Content="打开输出位置" IsEnabled="False" Click="OpenOutput_Click" />
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

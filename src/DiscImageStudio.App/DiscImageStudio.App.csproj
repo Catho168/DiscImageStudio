@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- WPF text and font services require named cultures such as en and zh-CN. -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <AssemblyName>DiscImageStudio</AssemblyName>
+    <RootNamespace>DiscImageStudio</RootNamespace>
+    <StartupObject>DiscImageStudio.Program</StartupObject>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\DiscImageStudio.ico</ApplicationIcon>
+    <Title>Disc Image Studio</Title>
+    <Product>Disc Image Studio 光盘绘图工坊</Product>
+    <Description>Create image-mapped CD audio tracks and DVD ISO images.</Description>
+    <Company>Disc Image Studio</Company>
+    <Copyright>Copyright © 2026</Copyright>
+    <Version>1.0.5</Version>
+    <AssemblyVersion>1.0.5.0</AssemblyVersion>
+    <FileVersion>1.0.5.0</FileVersion>
+    <NeutralLanguage>zh-CN</NeutralLanguage>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DiscImageStudio.Core\DiscImageStudio.Core.csproj" />
+    <ProjectReference Include="..\DiscImageStudio.Cd\DiscImageStudio.Cd.csproj" />
+    <ProjectReference Include="..\DiscImageStudio.Dvd\DiscImageStudio.Dvd.csproj" />
+  </ItemGroup>
+  <Target Name="RejectInvariantGlobalizationForWpf" BeforeTargets="PrepareForBuild"
+          Condition="'$(InvariantGlobalization)' == 'true'">
+    <Error Text="DiscImageStudio.App cannot use invariant globalization because WPF font rendering requires named cultures." />
+  </Target>
+</Project>
