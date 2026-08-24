@@ -2,12 +2,15 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\src\DiscImageStudio.Burning\DiscImageStudio.Burning.csproj" />
     <ProjectReference Include="..\..\src\DiscImageStudio.Core\DiscImageStudio.Core.csproj" />
+    <ProjectReference Include="..\..\src\DiscImageStudio.Imaging\DiscImageStudio.Imaging.csproj" />
     <ProjectReference Include="..\..\src\DiscImageStudio.Cd\DiscImageStudio.Cd.csproj" />
     <ProjectReference Include="..\..\src\DiscImageStudio.Dvd\DiscImageStudio.Dvd.csproj" />
   </ItemGroup>

@@ -15,12 +15,12 @@
     <ApplicationIcon>Assets\DiscImageStudio.ico</ApplicationIcon>
     <Title>Disc Image Studio</Title>
     <Product>Disc Image Studio 光盘绘图工坊</Product>
-    <Description>Create image-mapped CD audio tracks and DVD ISO images.</Description>
+    <Description>Create and stream-burn image-mapped CD audio tracks and DVD data discs.</Description>
     <Company>Disc Image Studio</Company>
     <Copyright>Copyright © 2026</Copyright>
-    <Version>1.0.5</Version>
-    <AssemblyVersion>1.0.5.0</AssemblyVersion>
-    <FileVersion>1.0.5.0</FileVersion>
+    <Version>1.0.13</Version>
+    <AssemblyVersion>1.0.13.0</AssemblyVersion>
+    <FileVersion>1.0.13.0</FileVersion>
     <NeutralLanguage>zh-CN</NeutralLanguage>
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
@@ -28,6 +28,8 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\DiscImageStudio.Core\DiscImageStudio.Core.csproj" />
+    <ProjectReference Include="..\DiscImageStudio.Burning\DiscImageStudio.Burning.csproj" />
+    <ProjectReference Include="..\DiscImageStudio.Imaging\DiscImageStudio.Imaging.csproj" />
     <ProjectReference Include="..\DiscImageStudio.Cd\DiscImageStudio.Cd.csproj" />
     <ProjectReference Include="..\DiscImageStudio.Dvd\DiscImageStudio.Dvd.csproj" />
   </ItemGroup>

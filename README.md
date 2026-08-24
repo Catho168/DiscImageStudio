@@ -8,6 +8,9 @@ Disc Image Studio 是一个 Windows 光盘图像生成工具，在同一套 WPF 
 
 - CD-DA：2352 字节/扇区 RAW 轨道、延迟交织、CLV 几何与轨道预览。
 - DVD：固定快速纹理算法、快速输出、顺时针（CW）螺旋、ISO 与混合数据盘。
+- 图片处理：可将同一张源图自动复制多份并朝外环形排列；放不下时整张图片会等比缩小，保证不变形、不裁切、不重叠；内外安全边界可调，避免图案贴近不可读区域。
+- 流式刻录（实验性）：CD 与纯绘图 DVD 可通过 Windows IMAPI2 边生成边刻录，只使用约 16 MiB 内存缓冲，不保存完整临时镜像；当前已通过自动化与接口顺序测试，但尚待实体盘验证。
+- 盘片预设：内置 CD 80/74 分钟、铼德医疗水蓝盘实测参数、12 cm 单层 DVD 和 8 cm 单层 Mini DVD；选择后自动填写容量与几何参数，也可继续手动自定义。
 - 校准：CD 与 DVD 共用独立的实时灰度预览页，可同步调整生成与实测参数。
 - 双入口：不带参数打开 GUI，带参数用于自动化。
 - 模块化：CD 与 DVD 都通过 `IOpticalDiscModule` 接入；未来蓝光使用独立模块。
@@ -17,6 +20,8 @@ Disc Image Studio 是一个 Windows 光盘图像生成工具，在同一套 WPF 
 
 ```text
 src/DiscImageStudio.Core/   介质无关的模块契约、元数据、任务和目录
+src/DiscImageStudio.Imaging/ CD/DVD/未来蓝光可复用的图片预处理层
+src/DiscImageStudio.Burning/ Windows IMAPI2 设备枚举、流缓冲与安全刻录层
 src/DiscImageStudio.Cd/     CD-DA 生成核心与 CD 模块
 src/DiscImageStudio.Dvd/    DVD 引擎适配模块
 src/DiscImageStudio.App/    WPF GUI、统一命令行和商店资源
@@ -75,4 +80,4 @@ git push -u origin main
 
 ## 安全与物理介质说明
 
-应用不直接控制刻录机，不安装驱动或服务。完整 CD/DVD 输出可能很大且耗时；实际可见效果取决于盘片、刻录机、固件和写入策略，请先生成校准预览并用测试介质验证。
+应用不安装驱动或服务；直接刻录使用 Windows 自带 IMAPI2，只写入用户明确选择并二次确认的刻录机，且拒绝非空白介质。流式刻录目前属于待实盘验证的实验性功能，请只使用可报废的测试介质；刻录中断、断电或生成速度不足仍可能使盘片报废。实际可见效果取决于盘片、刻录机、固件和写入策略，请先生成校准预览并用测试介质验证。DVD 混合文件夹需要随机写文件系统，因此仍应先生成 ISO；纯绘图 DVD 和 CD 可使用流式刻录。

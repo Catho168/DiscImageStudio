@@ -3,6 +3,24 @@ using DvdImageSolver.Encoding;
 
 namespace DvdImageSolver.Solver;
 
+public sealed record FastDvdStreamProgress(
+    int CompletedBlocks,
+    int TotalBlocks,
+    uint BlockLba,
+    long BytesWritten,
+    long TotalBytes,
+    TimeSpan Elapsed)
+{
+    public double Fraction => TotalBytes == 0 ? 0 : (double)BytesWritten / TotalBytes;
+}
+
+public sealed record FastDvdStreamSummary(
+    int CompletedBlocks,
+    uint SectorsWritten,
+    long BytesWritten,
+    long ControlledWords,
+    TimeSpan Elapsed);
+
 internal sealed record FastDispersionWriteResult(
     int CompletedBlocks,
     uint FilledSectors,
@@ -18,7 +36,7 @@ internal sealed record FastDispersionProgress(
     long ControlledWords,
     TimeSpan Elapsed);
 
-internal static class FastDispersionImageWriter
+public static class FastDispersionImageWriter
 {
     private static readonly int[] PayloadChannelCenters = BuildPayloadChannelCenters();
 
@@ -84,6 +102,84 @@ internal static class FastDispersionImageWriter
             stopwatch.Elapsed,
             sparseIso,
             isoSectors);
+    }
+
+    public static FastDvdStreamSummary WriteStream(
+        string imagePath,
+        Stream output,
+        MultiBlockSolveOptions options,
+        Action<FastDvdStreamProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(output);
+        if (!output.CanWrite)
+        {
+            throw new ArgumentException("DVD output stream must be writable.", nameof(output));
+        }
+
+        Validate(options);
+        if (options.StartLba != 0
+            || options.FillSectors != options.ImageMapping.TotalSectors
+            || options.PreserveExistingIso)
+        {
+            throw new ArgumentException(
+                "Direct DVD streaming requires a complete image from LBA 0 and cannot preserve an existing ISO.",
+                nameof(options));
+        }
+
+        RasterImage image = RasterImage.Load(imagePath);
+        PayloadImageSampler sampler = new(image, options.ImageMapping);
+        int totalBlocks = checked((int)(options.FillSectors / DvdEccBlockEncoder.SectorCount));
+        int parallelism = options.FastParallelism == 0
+            ? Environment.ProcessorCount
+            : options.FastParallelism;
+        ParallelOptions parallelOptions = new()
+        {
+            MaxDegreeOfParallelism = parallelism,
+            CancellationToken = cancellationToken,
+        };
+        int batchCapacity = Math.Max(1, checked(parallelism * 2));
+        long totalBytes = checked((long)options.FillSectors * DvdEccBlockEncoder.PayloadBytesPerSector);
+        long bytesWritten = 0;
+        long controlledWords = 0;
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        for (int batchStart = 0; batchStart < totalBlocks; batchStart += batchCapacity)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            int batchCount = Math.Min(batchCapacity, totalBlocks - batchStart);
+            GeneratedBlock[] generated = new GeneratedBlock[batchCount];
+            Parallel.For(0, batchCount, parallelOptions, batchOffset =>
+            {
+                int blockIndex = batchStart + batchOffset;
+                generated[batchOffset] = GenerateBlock(blockIndex, sampler, options);
+            });
+
+            for (int batchOffset = 0; batchOffset < generated.Length; batchOffset++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                GeneratedBlock block = generated[batchOffset];
+                output.Write(block.Payloads);
+                bytesWritten = checked(bytesWritten + block.Payloads.Length);
+                controlledWords += block.ControlledWords;
+                int completedBlocks = batchStart + batchOffset + 1;
+                progress?.Invoke(new FastDvdStreamProgress(
+                    completedBlocks,
+                    totalBlocks,
+                    block.Lba,
+                    bytesWritten,
+                    totalBytes,
+                    stopwatch.Elapsed));
+            }
+        }
+
+        output.Flush();
+        stopwatch.Stop();
+        return new FastDvdStreamSummary(
+            totalBlocks,
+            options.FillSectors,
+            bytesWritten,
+            controlledWords,
+            stopwatch.Elapsed);
     }
 
     private static GeneratedBlock GenerateBlock(

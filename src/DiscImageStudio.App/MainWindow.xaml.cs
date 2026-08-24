@@ -7,15 +7,19 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using DiscImageStudio.Burning;
 using DiscImageStudio.Cd;
+using DiscImageStudio.Dvd;
+using DiscImageStudio.Imaging;
 using Microsoft.Win32;
 
 namespace DiscImageStudio;
 
 public partial class MainWindow : Window
 {
-    private const int PreviewTabIndex = 3;
-    private const int LogTabIndex = 4;
+    private const int BurnTabIndex = 3;
+    private const int PreviewTabIndex = 4;
+    private const int LogTabIndex = 5;
 
     private static readonly string LivePreviewDirectory = Path.Combine(
         Path.GetTempPath(),
@@ -26,20 +30,25 @@ public partial class MainWindow : Window
         Interval = TimeSpan.FromMilliseconds(450),
     };
     private readonly List<(TextBox Primary, TextBox Live)> _livePreviewBindings = [];
+    private readonly List<(ComboBox Primary, ComboBox Live)> _livePreviewSelectionBindings = [];
+    private readonly IOpticalDiscBurner _opticalDiscBurner = new WindowsImapiBurner();
     private bool _isBusy;
     private bool _isLivePreviewReady;
     private bool _livePreviewBindingsInitialized;
     private bool _isSynchronizingLivePreview;
     private bool _livePreviewRefreshRunning;
     private bool _livePreviewRefreshPending;
+    private bool _isApplyingDiscPreset;
     private int _livePreviewRevision;
     private CancellationTokenSource? _livePreviewCancellation;
+    private CancellationTokenSource? _burnCancellation;
     private string? _lastLivePreviewPath;
     private string? _lastOutputPath;
 
     public MainWindow()
     {
         InitializeComponent();
+        InitializeDiscPresetSelectors();
         Version version = Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 0);
         VersionText.Text = $"版本 {version.Major}.{version.Minor}.{version.Build} · 本地处理";
         _livePreviewTimer.Tick += LivePreviewTimer_Tick;
@@ -48,6 +57,147 @@ public partial class MainWindow : Window
     }
 
     internal bool IsLivePreviewReady => _isLivePreviewReady;
+
+    private static string FormatPresetNumber(double value)
+        => value.ToString("R", CultureInfo.InvariantCulture);
+
+    private void InitializeDiscPresetSelectors()
+    {
+        CdDiscPresetSelector.ItemsSource = CdDiscPreset.All;
+        LiveCdDiscPresetSelector.ItemsSource = CdDiscPreset.All;
+        DvdDiscPresetSelector.ItemsSource = DvdDiscPreset.All;
+        LiveDvdDiscPresetSelector.ItemsSource = DvdDiscPreset.All;
+        CdDiscPresetSelector.SelectionChanged += CdDiscPresetSelector_SelectionChanged;
+        LiveCdDiscPresetSelector.SelectionChanged += CdDiscPresetSelector_SelectionChanged;
+        DvdDiscPresetSelector.SelectionChanged += DvdDiscPresetSelector_SelectionChanged;
+        LiveDvdDiscPresetSelector.SelectionChanged += DvdDiscPresetSelector_SelectionChanged;
+        CdDiscPresetSelector.SelectedIndex = 0;
+        DvdDiscPresetSelector.SelectedIndex = 0;
+
+        foreach (TextBox field in CdPresetFields())
+        {
+            field.TextChanged += CdPresetParameter_TextChanged;
+        }
+
+        foreach (TextBox field in DvdPresetFields())
+        {
+            field.TextChanged += DvdPresetParameter_TextChanged;
+        }
+    }
+
+    private void CdDiscPresetSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_isApplyingDiscPreset || sender is not ComboBox { SelectedItem: CdDiscPreset preset })
+        {
+            return;
+        }
+
+        try
+        {
+            _isApplyingDiscPreset = true;
+            CdDiscPresetSelector.SelectedItem = preset;
+            LiveCdDiscPresetSelector.SelectedItem = preset;
+            CdDiscPresetHint.Text = preset.Description;
+            if (!preset.IsCustom)
+            {
+                CdSectors.Text = preset.Sectors.ToString(CultureInfo.InvariantCulture);
+                CdInnerRadius.Text = FormatPresetNumber(preset.InnerRadiusMm);
+                CdOuterRadius.Text = FormatPresetNumber(preset.OuterRadiusMm);
+                CdVelocity.Text = FormatPresetNumber(preset.LinearVelocityMmPerSecond);
+                CdImageOuterRadius.Text = FormatPresetNumber(preset.ImageOuterRadiusMm);
+                CdActualInnerRadius.Text = FormatPresetNumber(preset.ActualInnerRadiusMm);
+                CdActualOuterRadius.Text = FormatPresetNumber(preset.ActualOuterRadiusMm);
+                CdActualVelocity.Text = FormatPresetNumber(preset.ActualLinearVelocityMmPerSecond);
+            }
+        }
+        finally
+        {
+            _isApplyingDiscPreset = false;
+        }
+
+        UpdateBurnSourceSummary();
+        ScheduleLivePreview();
+    }
+
+    private void DvdDiscPresetSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_isApplyingDiscPreset || sender is not ComboBox { SelectedItem: DvdDiscPreset preset })
+        {
+            return;
+        }
+
+        try
+        {
+            _isApplyingDiscPreset = true;
+            DvdDiscPresetSelector.SelectedItem = preset;
+            LiveDvdDiscPresetSelector.SelectedItem = preset;
+            DvdDiscPresetHint.Text = preset.Description;
+            if (!preset.IsCustom)
+            {
+                DvdTotalSectors.Text = preset.TotalSectors.ToString(CultureInfo.InvariantCulture);
+                DvdInnerRadius.Text = FormatPresetNumber(preset.InnerRadiusMm);
+                DvdOuterRadius.Text = FormatPresetNumber(preset.OuterRadiusMm);
+                DvdChannelBit.Text = FormatPresetNumber(preset.ChannelBitLengthNm);
+                DvdActualInnerRadius.Text = FormatPresetNumber(preset.ActualInnerRadiusMm);
+                DvdActualOuterRadius.Text = FormatPresetNumber(preset.ActualOuterRadiusMm);
+            }
+        }
+        finally
+        {
+            _isApplyingDiscPreset = false;
+        }
+
+        UpdateBurnSourceSummary();
+        ScheduleLivePreview();
+    }
+
+    private void CdPresetParameter_TextChanged(object sender, TextChangedEventArgs e)
+        => SelectCustomPreset(CdDiscPresetSelector, CdDiscPreset.All);
+
+    private void DvdPresetParameter_TextChanged(object sender, TextChangedEventArgs e)
+        => SelectCustomPreset(DvdDiscPresetSelector, DvdDiscPreset.All);
+
+    private void SelectCustomPreset<TPreset>(ComboBox selector, IReadOnlyList<TPreset> presets)
+        where TPreset : class
+    {
+        if (_isApplyingDiscPreset)
+        {
+            return;
+        }
+
+        TPreset? custom = presets.FirstOrDefault(value => value switch
+        {
+            CdDiscPreset cd => cd.IsCustom,
+            DvdDiscPreset dvd => dvd.IsCustom,
+            _ => false,
+        });
+        if (custom is not null && !ReferenceEquals(selector.SelectedItem, custom))
+        {
+            selector.SelectedItem = custom;
+        }
+    }
+
+    private IEnumerable<TextBox> CdPresetFields()
+    {
+        yield return CdSectors;
+        yield return CdInnerRadius;
+        yield return CdOuterRadius;
+        yield return CdVelocity;
+        yield return CdImageOuterRadius;
+        yield return CdActualInnerRadius;
+        yield return CdActualOuterRadius;
+        yield return CdActualVelocity;
+    }
+
+    private IEnumerable<TextBox> DvdPresetFields()
+    {
+        yield return DvdTotalSectors;
+        yield return DvdInnerRadius;
+        yield return DvdOuterRadius;
+        yield return DvdChannelBit;
+        yield return DvdActualInnerRadius;
+        yield return DvdActualOuterRadius;
+    }
 
     internal void SetLivePreviewAngleForSnapshot(string angle)
     {
@@ -65,7 +215,8 @@ public partial class MainWindow : Window
         int selectedTab,
         string? previewPath,
         string? liveInputPath = null,
-        string? liveDisc = null)
+        string? liveDisc = null,
+        string? liveRing = null)
     {
         if (selectedTab < 0 || selectedTab >= ContentTabs.Items.Count)
         {
@@ -83,15 +234,20 @@ public partial class MainWindow : Window
         if (!string.IsNullOrWhiteSpace(liveInputPath))
         {
             bool dvd = string.Equals(liveDisc, "dvd", StringComparison.OrdinalIgnoreCase);
+            bool ring = string.Equals(liveRing, "true", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(liveRing, "1", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(liveRing, "yes", StringComparison.OrdinalIgnoreCase);
             LiveCdRadio.IsChecked = !dvd;
             LiveDvdRadio.IsChecked = dvd;
             UpdateLivePreviewMode(clearResult: false);
             if (dvd)
             {
+                DvdImageProcessingMode.SelectedIndex = ring ? 1 : 0;
                 DvdImagePath.Text = Path.GetFullPath(liveInputPath);
             }
             else
             {
+                CdImageProcessingMode.SelectedIndex = ring ? 1 : 0;
                 CdImagePath.Text = Path.GetFullPath(liveInputPath);
             }
             ContentTabs.SelectedIndex = PreviewTabIndex;
@@ -106,6 +262,14 @@ public partial class MainWindow : Window
             if (index == PreviewTabIndex)
             {
                 ScheduleLivePreview();
+            }
+            else if (index == BurnTabIndex)
+            {
+                UpdateBurnSourceSummary();
+                if (BurnDeviceCombo.Items.Count == 0)
+                {
+                    _ = RefreshBurnDevicesAsync();
+                }
             }
         }
     }
@@ -153,10 +317,11 @@ public partial class MainWindow : Window
         {
             string image = RequirePath(DvdImagePath, "请选择 DVD 源图片。");
             string output = RequirePath(DvdOutputPath, "请选择 DVD ISO 输出位置。");
+            using PreparedImage preparedImage = PrepareDvdImage(image, 2048);
             List<string> arguments =
             [
                 "solve",
-                "--image", image,
+                "--image", preparedImage.Path,
                 "--iso-output", output,
                 "--total-sectors", DvdTotalSectors.Text.Trim(),
                 "--inner-radius-mm", DvdInnerRadius.Text.Trim(),
@@ -196,10 +361,12 @@ public partial class MainWindow : Window
         {
             string image = RequirePath(DvdImagePath, "请选择 DVD 源图片。");
             string output = RequirePath(DvdPreviewPath, "请选择校准预览输出位置。");
+            int processingSize = Math.Clamp(ParsePositiveInt(DvdPreviewSize, "预览尺寸"), 512, 4096);
+            using PreparedImage preparedImage = PrepareDvdImage(image, processingSize);
             string[] arguments =
             [
                 "calibrate",
-                "--image", image,
+                "--image", preparedImage.Path,
                 "--output", output,
                 "--total-sectors", DvdTotalSectors.Text.Trim(),
                 "--fill-sectors", DvdTotalSectors.Text.Trim(),
@@ -229,7 +396,8 @@ public partial class MainWindow : Window
         {
             string input = RequirePath(CdImagePath, "请选择 CD 源图片。");
             string output = RequirePath(CdOutputPath, "请选择 CD 原始音轨输出位置。");
-            List<string> arguments = ["cd-generate", "--input", input, "--output", output];
+            using PreparedImage preparedImage = PrepareCdImage(input, 2048);
+            List<string> arguments = ["cd-generate", "--input", preparedImage.Path, "--output", output];
             AddCdGeometry(arguments, string.Empty, actual: false);
             arguments.Add("--interleave");
             arguments.Add((CdInterleave.IsChecked == true).ToString().ToLowerInvariant());
@@ -247,7 +415,9 @@ public partial class MainWindow : Window
         {
             string input = RequirePath(CdImagePath, "请选择 CD 源图片。");
             string output = RequirePath(CdPreviewPath, "请选择 CD 预览输出位置。");
-            List<string> arguments = ["cd-preview-warp", "--input", input, "--output", output];
+            int processingSize = Math.Clamp(ParsePositiveInt(CdPreviewSize, "预览尺寸"), 512, 4096);
+            using PreparedImage preparedImage = PrepareCdImage(input, processingSize);
+            List<string> arguments = ["cd-preview-warp", "--input", preparedImage.Path, "--output", output];
             AddCdGeometry(arguments, "gen-", actual: false);
             AddCdGeometry(arguments, "actual-", actual: true);
             arguments.AddRange(["--size", CdPreviewSize.Text.Trim(), "--samples-per-sector", CdSamplesPerSector.Text.Trim()]);
@@ -274,6 +444,377 @@ public partial class MainWindow : Window
         {
             ShowValidationError(exception);
         }
+    }
+
+    private async void RefreshBurnDevices_Click(object sender, RoutedEventArgs e)
+        => await RefreshBurnDevicesAsync();
+
+    private void BurnDiscType_Click(object sender, RoutedEventArgs e)
+    {
+        BurnConfirmCheckBox.IsChecked = false;
+        UpdateBurnSourceSummary();
+        UpdateBurnActionState();
+    }
+
+    private void BurnDeviceCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        => UpdateBurnActionState();
+
+    private void BurnConfirmCheckBox_Changed(object sender, RoutedEventArgs e)
+        => UpdateBurnActionState();
+
+    private async void StartStreamBurn_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isBusy)
+        {
+            MessageBox.Show(
+                this,
+                "已有任务正在运行。",
+                "Disc Image Studio",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        PreparedImage? preparedImage = null;
+        try
+        {
+            if (BurnDeviceCombo.SelectedItem is not OpticalBurnDevice device)
+            {
+                throw new ArgumentException("请选择刻录机。");
+            }
+
+            if (BurnConfirmCheckBox.IsChecked != true)
+            {
+                throw new ArgumentException("请先勾选刻录确认。");
+            }
+
+            bool dvd = BurnDvdRadio.IsChecked == true;
+            OpticalBurnRequest request;
+            string contentDescription;
+            if (dvd)
+            {
+                if (!string.IsNullOrWhiteSpace(DvdDataDirectory.Text))
+                {
+                    throw new ArgumentException(
+                        "DVD 流式刻录暂不支持内圈混合文件夹；请先清空 DVD 页面的文件夹设置。"
+                        + "生成 ISO 模式仍可继续使用混合文件夹。");
+                }
+
+                string source = RequirePath(DvdImagePath, "请先在 DVD 页面选择源图片。");
+                preparedImage = PrepareDvdImage(source, 2048);
+                string preparedPath = preparedImage.Path;
+                DvdStreamingOptions options = ReadDvdStreamingOptions();
+                request = new OpticalBurnRequest(
+                    device.Id,
+                    OpticalBurnMediaKind.DvdData,
+                    options.ContentLength,
+                    (output, cancellationToken) => DvdStreamingGenerator.Generate(
+                        preparedPath,
+                        output,
+                        options,
+                        cancellationToken: cancellationToken));
+                contentDescription = $"DVD · {options.TotalSectors} 扇区 · {options.ContentLength / (1024.0 * 1024.0):F1} MiB";
+            }
+            else
+            {
+                string source = RequirePath(CdImagePath, "请先在 CD 页面选择源图片。");
+                preparedImage = PrepareCdImage(source, 2048);
+                string preparedPath = preparedImage.Path;
+                CdDiscParameters parameters = ReadCdGeneratedParameters();
+                bool interleave = CdInterleave.IsChecked == true;
+                request = new OpticalBurnRequest(
+                    device.Id,
+                    OpticalBurnMediaKind.CdAudio,
+                    parameters.TotalBytes,
+                    (output, cancellationToken) => CdTrackGenerator.GenerateToStream(
+                        preparedPath,
+                        output,
+                        parameters,
+                        interleave,
+                        cancellationToken: cancellationToken));
+                contentDescription = $"CD · {parameters.Sectors} 扇区 · {parameters.TotalBytes / (1024.0 * 1024.0):F1} MiB";
+            }
+
+            MessageBoxResult confirmation = MessageBox.Show(
+                this,
+                $"即将写入：{device.DisplayName}\n{contentDescription}\n\n"
+                + "仅允许空白盘。开始后取消或断电可能使盘片报废。是否继续？",
+                "确认开始流式刻录",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning,
+                MessageBoxResult.No);
+            if (confirmation != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            _isBusy = true;
+            _burnCancellation = new CancellationTokenSource();
+            SetActionButtonsEnabled(false);
+            CancelStreamBurnButton.IsEnabled = true;
+            BusyProgress.Visibility = Visibility.Visible;
+            BurnProgressBar.Value = 0;
+            BurnStatusText.Text = "正在准备流式刻录…";
+            StatusText.Text = "正在流式刻录…";
+            AppendLog(
+                $"\n[{DateTime.Now:HH:mm:ss}] 开始流式刻录：{contentDescription}；"
+                + $"设备={device.DisplayName}。\n");
+            Progress<OpticalBurnProgress> progress = new(value =>
+            {
+                BurnStatusText.Text = value.Message;
+                StatusText.Text = value.Message;
+                BurnProgressBar.Value = Math.Clamp(value.Fraction * 100.0, 0.0, 100.0);
+            });
+            OpticalBurnResult result = await _opticalDiscBurner.BurnAsync(
+                request,
+                progress,
+                _burnCancellation.Token);
+            BurnProgressBar.Value = 100;
+            BurnStatusText.Text = "刻录完成，可以取出光盘。";
+            StatusText.Text = "流式刻录完成";
+            AppendLog(
+                $"[{DateTime.Now:HH:mm:ss}] 流式刻录完成：{result.BytesWritten} 字节，"
+                + $"耗时 {result.Elapsed.TotalSeconds:F1} 秒。\n");
+            BurnConfirmCheckBox.IsChecked = false;
+            MessageBox.Show(
+                this,
+                "流式刻录已经完成，可以取出光盘。",
+                "Disc Image Studio",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch (OperationCanceledException)
+        {
+            BurnStatusText.Text = "已请求取消；光驱可能仍需一段时间才能停止。";
+            StatusText.Text = "刻录已取消";
+            AppendLog(
+                $"[{DateTime.Now:HH:mm:ss}] 已取消流式刻录；当前盘片可能无法继续使用。\n");
+        }
+        catch (Exception exception)
+        {
+            BurnStatusText.Text = "刻录未完成，请查看错误信息。";
+            StatusText.Text = "流式刻录未完成";
+            AppendLog($"[{DateTime.Now:HH:mm:ss}] 流式刻录失败：{exception.Message}\n");
+            MessageBox.Show(
+                this,
+                exception.Message + "\n\n如果写入已经开始，当前盘片可能无法继续使用。",
+                "流式刻录未完成",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+        finally
+        {
+            preparedImage?.Dispose();
+            _burnCancellation?.Dispose();
+            _burnCancellation = null;
+            BusyProgress.Visibility = Visibility.Collapsed;
+            CancelStreamBurnButton.IsEnabled = false;
+            _isBusy = false;
+            SetActionButtonsEnabled(true);
+        }
+    }
+
+    private void CancelStreamBurn_Click(object sender, RoutedEventArgs e)
+    {
+        CancelStreamBurnButton.IsEnabled = false;
+        BurnStatusText.Text = "正在请求停止刻录，请不要取出盘片…";
+        _burnCancellation?.Cancel();
+    }
+
+    private async Task RefreshBurnDevicesAsync()
+    {
+        if (_isBusy)
+        {
+            return;
+        }
+
+        BurnDeviceCombo.IsEnabled = false;
+        BurnDeviceStatusText.Text = "正在检测刻录机…";
+        StartStreamBurnButton.IsEnabled = false;
+        try
+        {
+            IReadOnlyList<OpticalBurnDevice> devices =
+                await _opticalDiscBurner.GetDevicesAsync();
+            BurnDeviceCombo.ItemsSource = devices;
+            BurnDeviceCombo.SelectedIndex = devices.Count == 0 ? -1 : 0;
+            BurnDeviceStatusText.Text = devices.Count == 0
+                ? "未检测到支持 IMAPI2 的 CD/DVD 刻录机。"
+                : $"检测到 {devices.Count} 台刻录机；开始前请放入空白盘。";
+        }
+        catch (Exception exception)
+        {
+            BurnDeviceCombo.ItemsSource = null;
+            BurnDeviceStatusText.Text = "检测刻录机失败：" + exception.Message;
+        }
+        finally
+        {
+            BurnDeviceCombo.IsEnabled = true;
+            UpdateBurnActionState();
+        }
+    }
+
+    private void UpdateBurnSourceSummary()
+    {
+        if (BurnDvdRadio.IsChecked == true)
+        {
+            BurnSourceTitle.Text = "使用 DVD 页面中的源图片与生成参数";
+            string source = DvdImagePath.Text.Trim();
+            string suffix = string.IsNullOrWhiteSpace(DvdDataDirectory.Text)
+                ? string.Empty
+                : "；已设置混合文件夹，需清空后才能流式刻录";
+            BurnSourceDetails.Text = source.Length == 0
+                ? "请先在 DVD 页面选择图片并完成实时预览。" + suffix
+                : $"{Path.GetFileName(source)} · {DvdTotalSectors.Text.Trim()} 扇区 · 快速算法 · CW{suffix}";
+        }
+        else
+        {
+            BurnSourceTitle.Text = "使用 CD 页面中的源图片与生成参数";
+            string source = CdImagePath.Text.Trim();
+            BurnSourceDetails.Text = source.Length == 0
+                ? "请先在 CD 页面选择图片并完成实时预览。"
+                : $"{Path.GetFileName(source)} · {CdSectors.Text.Trim()} 扇区 · "
+                    + (CdInterleave.IsChecked == true ? "延迟交织" : "未交织");
+        }
+    }
+
+    private void UpdateBurnActionState()
+    {
+        if (StartStreamBurnButton is null)
+        {
+            return;
+        }
+
+        StartStreamBurnButton.IsEnabled = !_isBusy
+            && BurnDeviceCombo.SelectedItem is OpticalBurnDevice
+            && BurnConfirmCheckBox.IsChecked == true;
+    }
+
+    private CdDiscParameters ReadCdGeneratedParameters()
+    {
+        double startAngleDegrees = ParseDouble(CdStartAngle, "CD 起始角");
+        CdDiscParameters parameters = new(
+            ParsePositiveDouble(CdInnerRadius, "CD 内半径"),
+            ParsePositiveDouble(CdOuterRadius, "CD 外半径"),
+            ParsePositiveLong(CdSectors, "CD 扇区数"),
+            ParsePositiveDouble(CdVelocity, "CD 线速度"),
+            startAngleDegrees * Math.PI / 180.0,
+            ParsePositiveDouble(CdImageOuterRadius, "CD 图片外半径"));
+        parameters.Validate();
+        return parameters;
+    }
+
+    private DvdStreamingOptions ReadDvdStreamingOptions()
+    {
+        int totalSectors = ParsePositiveInt(DvdTotalSectors, "DVD 总扇区数");
+        DvdStreamingOptions options = new(
+            checked((uint)totalSectors),
+            ParsePositiveDouble(DvdInnerRadius, "DVD 内半径"),
+            ParsePositiveDouble(DvdOuterRadius, "DVD 外半径"),
+            ParsePositiveDouble(DvdChannelBit, "DVD Channel bit"),
+            ParseDouble(DvdStartAngle, "DVD 起始角"));
+        options.Validate();
+        return options;
+    }
+
+    private PreparedImage PrepareCdImage(string sourcePath, int outputSize)
+    {
+        if (CdImageProcessingMode.SelectedIndex != 1)
+        {
+            return PreparedImage.Original(sourcePath);
+        }
+
+        double generatedInner = ParsePositiveDouble(CdInnerRadius, "CD 内半径");
+        double generatedOuter = ParsePositiveDouble(CdOuterRadius, "CD 外半径");
+        double canvasOuter = ParsePositiveDouble(CdImageOuterRadius, "图片外半径");
+        RingImageLayoutOptions options = CreateRingLayoutOptions(
+            canvasOuter,
+            generatedInner,
+            generatedOuter,
+            CdRingInnerMargin,
+            CdRingOuterMargin,
+            outputSize);
+        return PrepareRingImage(sourcePath, options, "cd");
+    }
+
+    private PreparedImage PrepareDvdImage(string sourcePath, int outputSize)
+    {
+        if (DvdImageProcessingMode.SelectedIndex != 1)
+        {
+            return PreparedImage.Original(sourcePath);
+        }
+
+        double generatedInner = ParsePositiveDouble(DvdInnerRadius, "DVD 内半径");
+        double generatedOuter = ParsePositiveDouble(DvdOuterRadius, "DVD 外半径");
+        RingImageLayoutOptions options = CreateRingLayoutOptions(
+            generatedOuter,
+            generatedInner,
+            generatedOuter,
+            DvdRingInnerMargin,
+            DvdRingOuterMargin,
+            outputSize);
+        return PrepareRingImage(sourcePath, options, "dvd");
+    }
+
+    private PreparedImage PrepareRingImage(
+        string sourcePath,
+        RingImageLayoutOptions options,
+        string prefix,
+        CancellationToken cancellationToken = default,
+        bool writeLog = true)
+    {
+        Directory.CreateDirectory(LivePreviewDirectory);
+        string temporaryPath = Path.Combine(
+            LivePreviewDirectory,
+            $"{prefix}-ring-source-{Guid.NewGuid():N}.png");
+        try
+        {
+            RingImageLayoutSummary summary = RingImageProcessor.Render(
+                sourcePath,
+                temporaryPath,
+                options,
+                cancellationToken);
+            if (writeLog)
+            {
+                AppendLog(
+                    $"[{DateTime.Now:HH:mm:ss}] 环形图片处理：自动复制 {summary.CopyCount} 份，"
+                    + $"每份等比尺寸 {summary.CopyWidthMm:F1} × {summary.CopyHeightMm:F1} mm，"
+                    + $"有效半径 {summary.ContentInnerRadiusMm:F1}–{summary.ContentOuterRadiusMm:F1} mm。\n");
+            }
+            return new PreparedImage(temporaryPath, temporaryPath, summary);
+        }
+        catch
+        {
+            TryDeleteLivePreview(temporaryPath);
+            throw;
+        }
+    }
+
+    private static RingImageLayoutOptions CreateRingLayoutOptions(
+        double canvasOuterRadius,
+        double generatedInnerRadius,
+        double generatedOuterRadius,
+        TextBox innerMarginTextBox,
+        TextBox outerMarginTextBox,
+        int outputSize)
+    {
+        double innerMargin = ParseNonNegativeDouble(innerMarginTextBox, "内圈安全边界");
+        double outerMargin = ParseNonNegativeDouble(outerMarginTextBox, "外圈安全边界");
+        double contentInner = generatedInnerRadius + innerMargin;
+        double contentOuter = generatedOuterRadius - outerMargin;
+        if (contentOuter <= contentInner)
+        {
+            throw new ArgumentOutOfRangeException(
+                "安全边界",
+                "内外安全边界之和必须小于可用环带宽度。");
+        }
+
+        RingImageLayoutOptions options = new(
+            canvasOuterRadius,
+            contentInner,
+            contentOuter,
+            Math.Clamp(outputSize, 512, 4096));
+        options.Validate();
+        return options;
     }
 
     private void OpenOutput_Click(object sender, RoutedEventArgs e)
@@ -420,6 +961,14 @@ public partial class MainWindow : Window
         StartCdButton.IsEnabled = enabled;
         PreviewCdWarpButton.IsEnabled = enabled;
         PreviewCdTrackButton.IsEnabled = enabled;
+        if (!enabled)
+        {
+            StartStreamBurnButton.IsEnabled = false;
+        }
+        else
+        {
+            UpdateBurnActionState();
+        }
     }
 
     private void AppendLog(string text)
@@ -441,6 +990,8 @@ public partial class MainWindow : Window
         _livePreviewTimer.Stop();
         _livePreviewCancellation?.Cancel();
         _livePreviewCancellation?.Dispose();
+        _burnCancellation?.Cancel();
+        _burnCancellation?.Dispose();
         TryDeleteLivePreview(_lastLivePreviewPath);
     }
 
@@ -461,6 +1012,8 @@ public partial class MainWindow : Window
             (CdActualStartAngle, LiveCdActualStartAngle),
             (CdPreviewSize, LiveCdPreviewSize),
             (CdSamplesPerSector, LiveCdSamplesPerSector),
+            (CdRingInnerMargin, LiveCdRingInnerMargin),
+            (CdRingOuterMargin, LiveCdRingOuterMargin),
             (DvdImagePath, LiveDvdImagePath),
             (DvdTotalSectors, LiveDvdTotalSectors),
             (DvdInnerRadius, LiveDvdInnerRadius),
@@ -471,6 +1024,8 @@ public partial class MainWindow : Window
             (DvdActualOuterRadius, LiveDvdActualOuterRadius),
             (DvdPreviewSize, LiveDvdPreviewSize),
             (DvdSamplesPerSector, LiveDvdSamplesPerSector),
+            (DvdRingInnerMargin, LiveDvdRingInnerMargin),
+            (DvdRingOuterMargin, LiveDvdRingOuterMargin),
         ]);
 
         foreach ((TextBox primary, TextBox live) in _livePreviewBindings)
@@ -480,7 +1035,20 @@ public partial class MainWindow : Window
             live.TextChanged += (_, _) => SynchronizeLivePreviewText(live, primary);
         }
 
+        _livePreviewSelectionBindings.AddRange(
+        [
+            (CdImageProcessingMode, LiveCdImageProcessingMode),
+            (DvdImageProcessingMode, LiveDvdImageProcessingMode),
+        ]);
+        foreach ((ComboBox primary, ComboBox live) in _livePreviewSelectionBindings)
+        {
+            live.SelectedIndex = primary.SelectedIndex;
+            primary.SelectionChanged += (_, _) => SynchronizeLivePreviewSelection(primary, live);
+            live.SelectionChanged += (_, _) => SynchronizeLivePreviewSelection(live, primary);
+        }
+
         _livePreviewBindingsInitialized = true;
+        UpdateImageProcessingPanels();
     }
 
     private void SynchronizeLivePreviewText(TextBox source, TextBox target)
@@ -504,6 +1072,40 @@ public partial class MainWindow : Window
         }
 
         ScheduleLivePreview();
+    }
+
+    private void SynchronizeLivePreviewSelection(ComboBox source, ComboBox target)
+    {
+        if (_isSynchronizingLivePreview)
+        {
+            return;
+        }
+
+        try
+        {
+            _isSynchronizingLivePreview = true;
+            if (target.SelectedIndex != source.SelectedIndex)
+            {
+                target.SelectedIndex = source.SelectedIndex;
+            }
+        }
+        finally
+        {
+            _isSynchronizingLivePreview = false;
+        }
+
+        UpdateImageProcessingPanels();
+        ScheduleLivePreview();
+    }
+
+    private void UpdateImageProcessingPanels()
+    {
+        bool cdRing = CdImageProcessingMode.SelectedIndex == 1;
+        bool dvdRing = DvdImageProcessingMode.SelectedIndex == 1;
+        CdRingOptionsPanel.IsEnabled = cdRing;
+        LiveCdRingOptionsPanel.IsEnabled = cdRing;
+        DvdRingOptionsPanel.IsEnabled = dvdRing;
+        LiveDvdRingOptionsPanel.IsEnabled = dvdRing;
     }
 
     private void LivePreviewDiscType_Click(object sender, RoutedEventArgs e)
@@ -616,6 +1218,7 @@ public partial class MainWindow : Window
                 out CdDiscParameters actual,
                 out int outputSize,
                 out int samplesPerSector,
+                out RingImageLayoutOptions? ringLayout,
                 out string message))
         {
             LivePreviewStatusText.Text = message;
@@ -632,13 +1235,23 @@ public partial class MainWindow : Window
             $"cd-live-preview-{revision}.png");
         LivePreviewStatusText.Text = $"正在刷新 {outputSize} px 实时预览…";
         bool keepOutput = false;
+        int ringCopies = 0;
 
         try
         {
             await RunOnStaThreadAsync(() =>
             {
+                using PreparedImage preparedImage = ringLayout is null
+                    ? PreparedImage.Original(imagePath)
+                    : PrepareRingImage(
+                        imagePath,
+                        ringLayout,
+                        "cd-live",
+                        cancellation.Token,
+                        writeLog: false);
+                ringCopies = preparedImage.Summary?.CopyCount ?? 0;
                 CdTrackGenerator.PreviewWarp(
-                    imagePath,
+                    preparedImage.Path,
                     outputPath,
                     generated,
                     actual,
@@ -660,8 +1273,9 @@ public partial class MainWindow : Window
             _isLivePreviewReady = true;
             ResultPreviewTitle.Text = "CD 实时预览";
             ResultPreviewPath.Text = Path.GetFileName(imagePath);
+            string ringStatus = ringCopies > 0 ? $" · 环形复制 {ringCopies} 份" : string.Empty;
             LivePreviewStatusText.Text =
-                $"已实时更新 · 灰度 · {outputSize} px · 每扇区 {samplesPerSector} 个快速采样";
+                $"已实时更新 · 灰度{ringStatus} · {outputSize} px · 每扇区 {samplesPerSector} 个快速采样";
             TryDeleteLivePreview(previousPath);
         }
         catch (OperationCanceledException)
@@ -698,6 +1312,7 @@ public partial class MainWindow : Window
                 out string[] arguments,
                 out int outputSize,
                 out int samplesPerSector,
+                out RingImageLayoutOptions? ringLayout,
                 out string message))
         {
             LivePreviewStatusText.Text = message;
@@ -710,9 +1325,24 @@ public partial class MainWindow : Window
 
         LivePreviewStatusText.Text = $"正在刷新 {outputSize} px DVD 实时预览…";
         bool keepOutput = false;
+        int ringCopies = 0;
         try
         {
-            int exitCode = await RunOnStaThreadAsync(() => UnifiedCommandRunner.Run(arguments));
+            int exitCode = await RunOnStaThreadAsync(() =>
+            {
+                using PreparedImage preparedImage = ringLayout is null
+                    ? PreparedImage.Original(imagePath)
+                    : PrepareRingImage(
+                        imagePath,
+                        ringLayout,
+                        "dvd-live",
+                        cancellation.Token,
+                        writeLog: false);
+                ringCopies = preparedImage.Summary?.CopyCount ?? 0;
+                string[] effectiveArguments = (string[])arguments.Clone();
+                SetOptionValue(effectiveArguments, "--image", preparedImage.Path);
+                return UnifiedCommandRunner.Run(effectiveArguments);
+            });
             if (exitCode != 0)
             {
                 throw new InvalidOperationException("DVD 预览引擎未能完成渲染。");
@@ -731,8 +1361,9 @@ public partial class MainWindow : Window
             _isLivePreviewReady = true;
             ResultPreviewTitle.Text = "DVD 实时预览";
             ResultPreviewPath.Text = Path.GetFileName(imagePath);
+            string ringStatus = ringCopies > 0 ? $" · 环形复制 {ringCopies} 份" : string.Empty;
             LivePreviewStatusText.Text =
-                $"已实时更新 · 灰度 · CW · {outputSize} px · 每扇区 {samplesPerSector} 个快速采样";
+                $"已实时更新 · 灰度 · CW{ringStatus} · {outputSize} px · 每扇区 {samplesPerSector} 个快速采样";
             TryDeleteLivePreview(previousPath);
         }
         catch (OperationCanceledException)
@@ -758,6 +1389,7 @@ public partial class MainWindow : Window
         out CdDiscParameters actual,
         out int outputSize,
         out int samplesPerSector,
+        out RingImageLayoutOptions? ringLayout,
         out string message)
     {
         imagePath = CdImagePath.Text.Trim();
@@ -765,6 +1397,7 @@ public partial class MainWindow : Window
         actual = null!;
         outputSize = 0;
         samplesPerSector = 0;
+        ringLayout = null;
         if (imagePath.Length == 0)
         {
             message = "请先选择 CD 源图片。";
@@ -801,6 +1434,16 @@ public partial class MainWindow : Window
             int configuredSamples = ParsePositiveInt(CdSamplesPerSector, "每扇区采样");
             outputSize = Math.Clamp(configuredSize, 256, 900);
             samplesPerSector = Math.Clamp(configuredSamples, 1, 2);
+            if (CdImageProcessingMode.SelectedIndex == 1)
+            {
+                ringLayout = CreateRingLayoutOptions(
+                    imageOuterRadius,
+                    generated.InnerRadiusMm,
+                    generated.OuterRadiusMm,
+                    CdRingInnerMargin,
+                    CdRingOuterMargin,
+                    Math.Max(1024, outputSize));
+            }
             message = string.Empty;
             return true;
         }
@@ -817,12 +1460,14 @@ public partial class MainWindow : Window
         out string[] arguments,
         out int outputSize,
         out int samplesPerSector,
+        out RingImageLayoutOptions? ringLayout,
         out string message)
     {
         imagePath = DvdImagePath.Text.Trim();
         arguments = [];
         outputSize = 0;
         samplesPerSector = 0;
+        ringLayout = null;
         if (imagePath.Length == 0)
         {
             message = "请先选择 DVD 源图片。";
@@ -855,6 +1500,16 @@ public partial class MainWindow : Window
             double startAngle = ParseDouble(DvdStartAngle, "起始角");
             outputSize = Math.Clamp(ParsePositiveInt(DvdPreviewSize, "预览尺寸"), 256, 900);
             samplesPerSector = Math.Clamp(ParsePositiveInt(DvdSamplesPerSector, "每扇区采样"), 1, 2);
+            if (DvdImageProcessingMode.SelectedIndex == 1)
+            {
+                ringLayout = CreateRingLayoutOptions(
+                    generatedOuter,
+                    generatedInner,
+                    generatedOuter,
+                    DvdRingInnerMargin,
+                    DvdRingOuterMargin,
+                    Math.Max(1024, outputSize));
+            }
             string totalSectors = totalSectorsValue.ToString(CultureInfo.InvariantCulture);
             arguments =
             [
@@ -885,6 +1540,20 @@ public partial class MainWindow : Window
         }
     }
 
+    private static void SetOptionValue(string[] arguments, string option, string value)
+    {
+        for (int index = 0; index + 1 < arguments.Length; index++)
+        {
+            if (arguments[index].Equals(option, StringComparison.OrdinalIgnoreCase))
+            {
+                arguments[index + 1] = value;
+                return;
+            }
+        }
+
+        throw new ArgumentException($"Missing command option {option}.", nameof(arguments));
+    }
+
     private static double ParseDouble(TextBox textBox, string fieldName)
     {
         string value = textBox.Text.Trim();
@@ -903,6 +1572,14 @@ public partial class MainWindow : Window
         return double.IsFinite(result) && result > 0
             ? result
             : throw new ArgumentOutOfRangeException(fieldName, $"{fieldName}必须大于 0。");
+    }
+
+    private static double ParseNonNegativeDouble(TextBox textBox, string fieldName)
+    {
+        double result = ParseDouble(textBox, fieldName);
+        return double.IsFinite(result) && result >= 0
+            ? result
+            : throw new ArgumentOutOfRangeException(fieldName, $"{fieldName}不能小于 0。");
     }
 
     private static int ParsePositiveInt(TextBox textBox, string fieldName)
@@ -1005,6 +1682,29 @@ public partial class MainWindow : Window
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
         return completion.Task;
+    }
+
+    private sealed class PreparedImage : IDisposable
+    {
+        private readonly string? _temporaryPath;
+
+        internal PreparedImage(
+            string path,
+            string? temporaryPath,
+            RingImageLayoutSummary? summary)
+        {
+            Path = path;
+            _temporaryPath = temporaryPath;
+            Summary = summary;
+        }
+
+        internal string Path { get; }
+
+        internal RingImageLayoutSummary? Summary { get; }
+
+        internal static PreparedImage Original(string path) => new(path, null, null);
+
+        public void Dispose() => TryDeleteLivePreview(_temporaryPath);
     }
 
     private sealed class DispatcherTextWriter : TextWriter

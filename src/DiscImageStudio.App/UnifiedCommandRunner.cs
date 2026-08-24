@@ -1,3 +1,4 @@
+using DiscImageStudio.Burning;
 using DiscImageStudio.Cd;
 using DiscImageStudio.Core;
 using DiscImageStudio.Dvd;
@@ -38,7 +39,13 @@ internal static class UnifiedCommandRunner
                     FindOption(snapshotArguments, "preview"),
                     FindOption(snapshotArguments, "live-input"),
                     FindOption(snapshotArguments, "live-angle"),
-                    FindOption(snapshotArguments, "live-disc"));
+                    FindOption(snapshotArguments, "live-disc"),
+                    FindOption(snapshotArguments, "live-ring"));
+            }
+
+            if (command == "burn-devices")
+            {
+                return PrintBurnDevices();
             }
 
             DiscJobRequest request = new(command, arguments.Skip(1));
@@ -90,10 +97,31 @@ internal static class UnifiedCommandRunner
 
             Developer command:
               ui-snapshot --output SCREENSHOT.png
+              burn-devices
 
             Blu-ray support is added as another IOpticalDiscModule; CD and DVD engines
             do not need to be modified. See docs/ADDING_BLURAY.md.
             """);
+        return 0;
+    }
+
+    private static int PrintBurnDevices()
+    {
+        IReadOnlyList<OpticalBurnDevice> devices = new WindowsImapiBurner()
+            .GetDevicesAsync()
+            .GetAwaiter()
+            .GetResult();
+        if (devices.Count == 0)
+        {
+            Console.WriteLine("No IMAPI2 optical recorder was found.");
+            return 0;
+        }
+
+        foreach (OpticalBurnDevice device in devices)
+        {
+            Console.WriteLine($"{device.DisplayName}\t{device.Id}");
+        }
+
         return 0;
     }
 

@@ -35,13 +35,6 @@ public static class CdTrackGenerator
         string sourceFullPath = Path.GetFullPath(imagePath);
         string outputFullPath = Path.GetFullPath(outputPath);
         EnsureParentDirectory(outputFullPath);
-        RasterImage source = RasterImage.Load(sourceFullPath);
-        long totalBytes = parameters.TotalBytes;
-        CddaInterleaver? cddaInterleaver = interleave ? new CddaInterleaver() : null;
-        Stopwatch stopwatch = Stopwatch.StartNew();
-        long progressInterval = Math.Max(CdDiscParameters.BytesPerSector, totalBytes / 200);
-        long nextProgress = progressInterval;
-
         using FileStream file = new(
             outputFullPath,
             FileMode.Create,
@@ -49,7 +42,40 @@ public static class CdTrackGenerator
             FileShare.None,
             bufferSize: 1024 * 1024,
             FileOptions.SequentialScan);
-        using BufferedStream output = new(file, 1024 * 1024);
+        return GenerateToStream(
+            sourceFullPath,
+            file,
+            parameters,
+            interleave,
+            progress,
+            cancellationToken,
+            outputFullPath);
+    }
+
+    public static CdGenerationSummary GenerateToStream(
+        string imagePath,
+        Stream output,
+        CdDiscParameters parameters,
+        bool interleave,
+        Action<CdProgress>? progress = null,
+        CancellationToken cancellationToken = default,
+        string outputDescription = "direct-burn-stream")
+    {
+        ArgumentNullException.ThrowIfNull(output);
+        if (!output.CanWrite)
+        {
+            throw new ArgumentException("CD output stream must be writable.", nameof(output));
+        }
+
+        parameters.Validate();
+        string sourceFullPath = Path.GetFullPath(imagePath);
+        RasterImage source = RasterImage.Load(sourceFullPath);
+        long totalBytes = parameters.TotalBytes;
+        CddaInterleaver? cddaInterleaver = interleave ? new CddaInterleaver() : null;
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        long progressInterval = Math.Max(CdDiscParameters.BytesPerSector, totalBytes / 200);
+        long nextProgress = progressInterval;
+
         for (long globalByte = 0; globalByte < totalBytes; globalByte++)
         {
             if ((globalByte & 0xFFFFF) == 0)
@@ -82,7 +108,7 @@ public static class CdTrackGenerator
         progress?.Invoke(new CdProgress(totalBytes, totalBytes, stopwatch.Elapsed));
         return new CdGenerationSummary(
             sourceFullPath,
-            outputFullPath,
+            outputDescription,
             parameters.Sectors,
             totalBytes,
             interleave,

@@ -13,7 +13,7 @@
   <Properties>
     <DisplayName>__DISPLAY_NAME__</DisplayName>
     <PublisherDisplayName>__PUBLISHER_DISPLAY_NAME__</PublisherDisplayName>
-    <Description>Create image-mapped CD audio tracks and DVD ISO images.</Description>
+    <Description>Create and stream-burn image-mapped CD audio tracks and DVD data discs.</Description>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
   <Resources>
@@ -34,7 +34,7 @@
       uap10:TrustLevel="mediumIL">
       <uap:VisualElements
         DisplayName="__DISPLAY_NAME__"
-        Description="Create image-mapped CD audio tracks and DVD ISO images."
+        Description="Create and stream-burn image-mapped CD audio tracks and DVD data discs."
         BackgroundColor="#17213E"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png">

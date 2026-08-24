@@ -15,7 +15,8 @@ internal static class UiPreviewRenderer
         string? previewPath = null,
         string? liveInputPath = null,
         string? liveAngle = null,
-        string? liveDisc = null)
+        string? liveDisc = null,
+        string? liveRing = null)
     {
         Application application = new()
         {
@@ -30,7 +31,7 @@ internal static class UiPreviewRenderer
             Top = -10000,
             ShowInTaskbar = false,
         };
-        window.ConfigureSnapshot(selectedTab, previewPath, liveInputPath, liveDisc);
+        window.ConfigureSnapshot(selectedTab, previewPath, liveInputPath, liveDisc, liveRing);
         window.Show();
         window.UpdateLayout();
         if (!string.IsNullOrWhiteSpace(liveInputPath))

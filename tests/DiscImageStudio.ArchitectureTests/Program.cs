@@ -1,6 +1,13 @@
+using DiscImageStudio.Burning;
 using DiscImageStudio.Cd;
 using DiscImageStudio.Core;
 using DiscImageStudio.Dvd;
+using DiscImageStudio.Imaging;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ComTypes;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 
 DiscModuleCatalog catalog = new(
 [
@@ -28,6 +35,8 @@ Throws<ArgumentException>(
     () => new DiscModuleCatalog([new FutureBluRayModule(), new ConflictingModule()]),
     "duplicate command rejection");
 Throws<ArgumentException>(() => catalog.Resolve("unknown-command"), "unknown command rejection");
+TestRingImageLayout();
+TestDiscPresets();
 
 Console.WriteLine("architecture-selftest: all checks passed");
 return;
@@ -65,6 +74,317 @@ static void Throws<TException>(Action action, string name)
     throw new InvalidOperationException($"{name}: expected {typeof(TException).Name}.");
 }
 
+static void TestRingImageLayout()
+{
+    string directory = Path.Combine(Path.GetTempPath(), $"disc-ring-test-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(directory);
+    try
+    {
+        string sourcePath = Path.Combine(directory, "source.png");
+        string outputPath = Path.Combine(directory, "ring.png");
+        WriteSolidPng(sourcePath, 80, 40, 0);
+        RingImageLayoutSummary summary = RingImageProcessor.Render(
+            sourcePath,
+            outputPath,
+            new RingImageLayoutOptions(
+                CanvasOuterRadiusMm: 58,
+                ContentInnerRadiusMm: 26,
+                ContentOuterRadiusMm: 56,
+                OutputSize: 512));
+        True(summary.CopyCount >= 3, "ring image copies source multiple times");
+        True(
+            Math.Abs((summary.CopyWidthMm / summary.CopyHeightMm) - 2.0) < 1e-10,
+            "ring copies preserve source aspect ratio");
+        double innerEdgeRadiusMm =
+            summary.CopyCentreRadiusMm - (summary.CopyHeightMm / 2.0);
+        double outerCornerRadiusMm = Math.Sqrt(
+            Math.Pow(summary.CopyCentreRadiusMm + (summary.CopyHeightMm / 2.0), 2)
+            + Math.Pow(summary.CopyWidthMm / 2.0, 2));
+        True(
+            innerEdgeRadiusMm >= summary.ContentInnerRadiusMm,
+            "ring copy stays outside inner boundary");
+        True(
+            outerCornerRadiusMm <= summary.ContentOuterRadiusMm,
+            "ring copy corners stay inside outer boundary");
+        double copyAngularSpan = 2.0 * Math.Atan(
+            (summary.CopyWidthMm / 2.0) / innerEdgeRadiusMm);
+        double availableAngularSpan =
+            ((2.0 * Math.PI) / summary.CopyCount)
+            - (summary.AngularGapDegrees * Math.PI / 180.0);
+        True(
+            copyAngularSpan <= availableAngularSpan + 1e-10,
+            "ring copies do not overlap");
+        True(File.Exists(outputPath), "ring image output exists");
+        ValidateRingSafetyMargins(outputPath, 58, 25.5, 56.5);
+        TestStreamingGeneration(sourcePath);
+    }
+    finally
+    {
+        Directory.Delete(directory, recursive: true);
+    }
+}
+
+static void TestDiscPresets()
+{
+    Equal(4, CdDiscPreset.All.Count, "CD preset count including custom");
+    Equal(3, DvdDiscPreset.All.Count, "DVD preset count including custom");
+    Equal(
+        CdDiscPreset.All.Count,
+        CdDiscPreset.All.Select(value => value.Id).Distinct(StringComparer.Ordinal).Count(),
+        "CD preset IDs are unique");
+    Equal(
+        DvdDiscPreset.All.Count,
+        DvdDiscPreset.All.Select(value => value.Id).Distinct(StringComparer.Ordinal).Count(),
+        "DVD preset IDs are unique");
+
+    foreach (CdDiscPreset preset in CdDiscPreset.All.Where(value => !value.IsCustom))
+    {
+        new CdDiscParameters(
+            preset.InnerRadiusMm,
+            preset.OuterRadiusMm,
+            preset.Sectors,
+            preset.LinearVelocityMmPerSecond,
+            ImageOuterRadiusMm: preset.ImageOuterRadiusMm).Validate();
+    }
+
+    foreach (DvdDiscPreset preset in DvdDiscPreset.All.Where(value => !value.IsCustom))
+    {
+        new DvdStreamingOptions(
+            preset.TotalSectors,
+            preset.InnerRadiusMm,
+            preset.OuterRadiusMm,
+            preset.ChannelBitLengthNm,
+            StartAngleDegrees: 0).Validate();
+    }
+
+    CdDiscPreset cd80 = CdDiscPreset.All.Single(value => value.Id == "cd-80");
+    Equal(359_849L, cd80.Sectors, "80-minute CD preset sectors");
+    CdDiscPreset ritek = CdDiscPreset.All.Single(value => value.Id == "ritek-medical-aqua");
+    Equal(359_845L, ritek.Sectors, "RITEK medical aqua preset sectors");
+    Equal(24.911275, ritek.InnerRadiusMm, "RITEK medical aqua inner radius");
+    Equal(57.931155, ritek.OuterRadiusMm, "RITEK medical aqua outer radius");
+    True(
+        ritek.ImageOuterRadiusMm >= ritek.OuterRadiusMm,
+        "RITEK medical aqua image canvas covers the outer radius");
+    DvdDiscPreset dvd120 = DvdDiscPreset.All.Single(value => value.Id == "dvd-5-120mm");
+    Equal(2_295_104U, dvd120.TotalSectors, "120 mm DVD preset sectors");
+    DvdDiscPreset dvd80 = DvdDiscPreset.All.Single(value => value.Id == "dvd-5-80mm");
+    Equal(714_544U, dvd80.TotalSectors, "80 mm DVD preset sectors");
+    Equal(38.0, dvd80.OuterRadiusMm, "80 mm DVD preset outer radius");
+}
+
+static void TestStreamingGeneration(string sourcePath)
+{
+    CdDiscParameters cdParameters = new(
+        InnerRadiusMm: 24.5,
+        OuterRadiusMm: 24.6,
+        Sectors: 2,
+        LinearVelocityMmPerSecond: 1100,
+        ImageOuterRadiusMm: 58);
+    using MemoryStream cdStream = new();
+    CdGenerationSummary cdSummary = CdTrackGenerator.GenerateToStream(
+        sourcePath,
+        cdStream,
+        cdParameters,
+        interleave: true);
+    Equal(2L * CdDiscParameters.BytesPerSector, cdStream.Length, "CD streaming byte length");
+    Equal(cdStream.Length, cdSummary.BytesWritten, "CD streaming summary length");
+
+    DvdStreamingOptions dvdOptions = new(
+        TotalSectors: 16,
+        InnerRadiusMm: 24,
+        OuterRadiusMm: 58,
+        ChannelBitLengthNm: 133.33,
+        StartAngleDegrees: 0,
+        FastParallelism: 1);
+    using MemoryStream dvdStream = new();
+    DvdStreamingSummary dvdSummary = DvdStreamingGenerator.Generate(
+        sourcePath,
+        dvdStream,
+        dvdOptions);
+    Equal(dvdOptions.ContentLength, dvdStream.Length, "DVD streaming byte length");
+    Equal(dvdStream.Length, dvdSummary.BytesWritten, "DVD streaming summary length");
+    True(dvdStream.ToArray().Distinct().Count() > 1, "DVD streaming content is generated");
+
+    new OpticalBurnRequest(
+        "test-recorder",
+        OpticalBurnMediaKind.CdAudio,
+        cdStream.Length,
+        (_, _) => { }).Validate();
+    new OpticalBurnRequest(
+        "test-recorder",
+        OpticalBurnMediaKind.DvdData,
+        dvdStream.Length,
+        (_, _) => { }).Validate();
+    Throws<ArgumentOutOfRangeException>(
+        () => new OpticalBurnRequest(
+            "test-recorder",
+            OpticalBurnMediaKind.DvdData,
+            dvdStream.Length - 1,
+            (_, _) => { }).Validate(),
+        "DVD streaming rejects partial sectors");
+
+    byte[] expected = Enumerable.Range(0, CdDiscParameters.BytesPerSector * 2)
+        .Select(index => (byte)(index % 251))
+        .ToArray();
+    using GeneratedContentComStream generated = new(
+        expected.Length,
+        (output, _) => output.Write(expected),
+        progress: null,
+        CancellationToken.None);
+    generated.WaitUntilPrebuffered(CancellationToken.None);
+    generated.Stat(out STATSTG stat, 0);
+    Equal((long)expected.Length, stat.cbSize, "COM stream reports declared length");
+    IntPtr countPointer = Marshal.AllocHGlobal(sizeof(long));
+    try
+    {
+        generated.Seek(0, 2, countPointer);
+        Equal((long)expected.Length, Marshal.ReadInt64(countPointer), "COM stream seek-to-end length");
+        generated.Seek(0, 0, countPointer);
+        byte[] actual = new byte[expected.Length];
+        int offset = 0;
+        while (offset < actual.Length)
+        {
+            byte[] chunk = new byte[Math.Min(777, actual.Length - offset)];
+            generated.Read(chunk, chunk.Length, countPointer);
+            int read = Marshal.ReadInt32(countPointer);
+            Buffer.BlockCopy(chunk, 0, actual, offset, read);
+            offset += read;
+        }
+
+        True(expected.SequenceEqual(actual), "buffered COM stream preserves generated bytes");
+    }
+    finally
+    {
+        Marshal.FreeHGlobal(countPointer);
+    }
+
+    TestCdTrackAtOnceCallOrder();
+}
+
+static void TestCdTrackAtOnceCallOrder()
+{
+    byte[] sector = new byte[2352];
+    using GeneratedContentComStream content = new(
+        sector.Length,
+        (output, _) => output.Write(sector),
+        progress: null,
+        CancellationToken.None);
+    content.WaitUntilPrebuffered(CancellationToken.None);
+    OpticalBurnRequest request = new(
+        "test-recorder",
+        OpticalBurnMediaKind.CdAudio,
+        sector.Length,
+        (_, _) => { });
+    RecordingCdTrackAtOnceSession session = new();
+
+    WindowsImapiBurner.BurnCdAudio(
+        session,
+        content,
+        request,
+        CancellationToken.None);
+
+    Equal(
+        "DoNotFinalizeMedia,PrepareMedia,NumberOfExistingTracks,"
+        + "FreeSectorsOnMedia,AddAudioTrack,ReleaseMedia",
+        string.Join(',', session.Calls),
+        "CD Track-At-Once preparation order");
+
+    RecordingCdTrackAtOnceSession failingSession = new()
+    {
+        AddAudioTrackError = new COMException(
+            "original write failure",
+            unchecked((int)0xC0AA050D)),
+        ReleaseMediaError = new COMException(
+            "cleanup says not prepared",
+            unchecked((int)0xC0AA0502)),
+    };
+    try
+    {
+        WindowsImapiBurner.BurnCdAudio(
+            failingSession,
+            content,
+            request,
+            CancellationToken.None);
+        throw new InvalidOperationException("CD write failure preservation: expected COMException.");
+    }
+    catch (COMException exception)
+    {
+        Equal(
+            unchecked((int)0xC0AA050D),
+            exception.HResult,
+            "CD write failure is not masked by cleanup");
+    }
+}
+
+static void WriteSolidPng(string path, int width, int height, byte level)
+{
+    int stride = checked(width * 4);
+    byte[] pixels = new byte[checked(stride * height)];
+    for (int offset = 0; offset < pixels.Length; offset += 4)
+    {
+        pixels[offset] = level;
+        pixels[offset + 1] = level;
+        pixels[offset + 2] = level;
+        pixels[offset + 3] = 255;
+    }
+
+    BitmapSource bitmap = BitmapSource.Create(
+        width,
+        height,
+        96,
+        96,
+        PixelFormats.Bgra32,
+        null,
+        pixels,
+        stride);
+    PngBitmapEncoder encoder = new();
+    encoder.Frames.Add(BitmapFrame.Create(bitmap));
+    using FileStream output = File.Create(path);
+    encoder.Save(output);
+}
+
+static void ValidateRingSafetyMargins(
+    string path,
+    double canvasOuterRadiusMm,
+    double safeInnerLimitMm,
+    double safeOuterLimitMm)
+{
+    using FileStream stream = File.OpenRead(path);
+    BitmapFrame frame = BitmapFrame.Create(
+        stream,
+        BitmapCreateOptions.PreservePixelFormat,
+        BitmapCacheOption.OnLoad);
+    FormatConvertedBitmap converted = new(frame, PixelFormats.Bgra32, null, 0);
+    int stride = checked(converted.PixelWidth * 4);
+    byte[] pixels = new byte[checked(stride * converted.PixelHeight)];
+    converted.CopyPixels(pixels, stride, 0);
+    double centre = converted.PixelWidth / 2.0;
+    int darkRingPixels = 0;
+    for (int y = 0; y < converted.PixelHeight; y++)
+    {
+        for (int x = 0; x < converted.PixelWidth; x++)
+        {
+            int offset = (y * stride) + (x * 4);
+            byte level = pixels[offset];
+            double dx = x - centre;
+            double dy = y - centre;
+            double radiusMm = Math.Sqrt((dx * dx) + (dy * dy))
+                * canvasOuterRadiusMm / centre;
+            if (radiusMm < safeInnerLimitMm || radiusMm > safeOuterLimitMm)
+            {
+                True(level >= 250, "ring safety margins stay blank");
+            }
+            else if (level < 32)
+            {
+                darkRingPixels++;
+            }
+        }
+    }
+
+    True(darkRingPixels > 100, "ring layout contains copied image pixels");
+}
+
 sealed class FutureBluRayModule : IOpticalDiscModule
 {
     public DiscModuleDescriptor Descriptor { get; } = new(
@@ -95,6 +415,60 @@ sealed class FutureBluRayModule : IOpticalDiscModule
             0,
             "Future Blu-ray module test completed.",
             "future.iso"));
+    }
+}
+
+sealed class RecordingCdTrackAtOnceSession : ICdTrackAtOnceSession
+{
+    internal List<string> Calls { get; } = [];
+
+    internal Exception? AddAudioTrackError { get; init; }
+
+    internal Exception? ReleaseMediaError { get; init; }
+
+    public bool DoNotFinalizeMedia
+    {
+        set => Calls.Add(nameof(DoNotFinalizeMedia));
+    }
+
+    public int NumberOfExistingTracks
+    {
+        get
+        {
+            Calls.Add(nameof(NumberOfExistingTracks));
+            return 0;
+        }
+    }
+
+    public long FreeSectorsOnMedia
+    {
+        get
+        {
+            Calls.Add(nameof(FreeSectorsOnMedia));
+            return 1;
+        }
+    }
+
+    public void PrepareMedia() => Calls.Add(nameof(PrepareMedia));
+
+    public void AddAudioTrack(IStream content)
+    {
+        Calls.Add(nameof(AddAudioTrack));
+        if (AddAudioTrackError is not null)
+        {
+            throw AddAudioTrackError;
+        }
+    }
+
+    public void CancelAddTrack() => Calls.Add(nameof(CancelAddTrack));
+
+    public void ReleaseMedia()
+    {
+        Calls.Add(nameof(ReleaseMedia));
+        if (ReleaseMediaError is not null)
+        {
+            throw ReleaseMediaError;
+        }
     }
 }
 

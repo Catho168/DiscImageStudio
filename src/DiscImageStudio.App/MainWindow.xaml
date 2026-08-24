@@ -165,9 +165,10 @@
                     <Button Style="{StaticResource NavButton}" Tag="0" Click="Navigate_Click" Content="⌂   首页" />
                     <Button Style="{StaticResource NavButton}" Tag="1" Click="Navigate_Click" Content="◉   DVD 图像盘" />
                     <Button Style="{StaticResource NavButton}" Tag="2" Click="Navigate_Click" Content="◎   CD 音轨盘" />
-                    <Button Style="{StaticResource NavButton}" Tag="3" Click="Navigate_Click" Content="◫   实时预览" />
-                    <Button Style="{StaticResource NavButton}" Tag="4" Click="Navigate_Click" Content="≡   运行日志" />
-                    <Button Style="{StaticResource NavButton}" Tag="5" Click="Navigate_Click" Content="ⓘ   关于与安全" />
+                    <Button Style="{StaticResource NavButton}" Tag="4" Click="Navigate_Click" Content="◫   实时预览" />
+                    <Button Style="{StaticResource NavButton}" Tag="3" Click="Navigate_Click" Content="◈   直接刻录" />
+                    <Button Style="{StaticResource NavButton}" Tag="5" Click="Navigate_Click" Content="≡   运行日志" />
+                    <Button Style="{StaticResource NavButton}" Tag="6" Click="Navigate_Click" Content="ⓘ   关于与安全" />
                 </StackPanel>
                 <TextBlock Grid.Row="2" x:Name="VersionText" Margin="22,0,18,20"
                            Foreground="#7F8BB3" FontSize="11" Text="本地处理 · 不联网" />
@@ -231,7 +232,7 @@
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Text="提示" Foreground="#5267F5" FontWeight="SemiBold" Margin="0,0,18,0" />
-                                    <TextBlock Grid.Column="1" Text="先用“校准预览”确认内外半径和起始角，再生成完整镜像。完整 CD/DVD 输出可能很大，请预留足够磁盘空间。"
+                                    <TextBlock Grid.Column="1" Text="先用“校准预览”确认内外半径和起始角；可生成镜像，也可进入“直接刻录”用小型内存缓冲边生成边写盘。"
                                                Foreground="{StaticResource TextMutedBrush}" TextWrapping="Wrap" />
                                 </Grid>
                             </Border>
@@ -255,6 +256,24 @@
                                         <TextBox x:Name="DvdImagePath" />
                                         <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Click="BrowseDvdImage_Click" Content="浏览…" />
                                     </Grid>
+                                    <TextBlock Style="{StaticResource FieldLabel}" Text="图片处理模式" />
+                                    <ComboBox x:Name="DvdImageProcessingMode" SelectedIndex="0" Margin="0,0,0,12">
+                                        <ComboBoxItem Content="原图直接映射" />
+                                        <ComboBoxItem Content="环形复制（自动份数）" />
+                                    </ComboBox>
+                                    <WrapPanel x:Name="DvdRingOptionsPanel" IsEnabled="False" Margin="0,0,0,4">
+                                        <StackPanel Width="190" Margin="0,0,16,10">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="内圈安全边界 (mm)" />
+                                            <TextBox x:Name="DvdRingInnerMargin" Text="2.0" />
+                                        </StackPanel>
+                                        <StackPanel Width="190" Margin="0,0,16,10">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="外圈安全边界 (mm)" />
+                                            <TextBox x:Name="DvdRingOuterMargin" Text="2.0" />
+                                        </StackPanel>
+                                        <TextBlock Width="360" Text="图片会复制多份并朝外环形排列；空间不足时自动等比缩小，保证不变形、不裁切、不重叠。"
+                                                   Foreground="{StaticResource TextMutedBrush}" TextWrapping="Wrap"
+                                                   VerticalAlignment="Center" Margin="0,0,0,10" />
+                                    </WrapPanel>
                                     <TextBlock Style="{StaticResource FieldLabel}" Text="输出 ISO" />
                                     <Grid Margin="0,0,0,14">
                                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
@@ -275,6 +294,11 @@
                                     <TextBlock Style="{StaticResource SectionTitle}" Text="盘片与快速算法" />
                                     <TextBlock Text="固定使用快速纹理算法，并按标准顺时针（CW）生成。"
                                                Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,14" />
+                                    <TextBlock Style="{StaticResource FieldLabel}" Text="盘片预设" />
+                                    <ComboBox x:Name="DvdDiscPresetSelector" DisplayMemberPath="DisplayName"
+                                              Margin="0,0,0,8" />
+                                    <TextBlock x:Name="DvdDiscPresetHint" Foreground="{StaticResource TextMutedBrush}"
+                                               TextWrapping="Wrap" Margin="0,0,0,14" />
                                     <WrapPanel>
                                         <StackPanel Width="190" Margin="0,0,16,14">
                                             <TextBlock Style="{StaticResource FieldLabel}" Text="总扇区数" />
@@ -360,6 +384,24 @@
                                         <TextBox x:Name="CdImagePath" />
                                         <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Click="BrowseCdImage_Click" Content="浏览…" />
                                     </Grid>
+                                    <TextBlock Style="{StaticResource FieldLabel}" Text="图片处理模式" />
+                                    <ComboBox x:Name="CdImageProcessingMode" SelectedIndex="0" Margin="0,0,0,12">
+                                        <ComboBoxItem Content="原图直接映射" />
+                                        <ComboBoxItem Content="环形复制（自动份数）" />
+                                    </ComboBox>
+                                    <WrapPanel x:Name="CdRingOptionsPanel" IsEnabled="False" Margin="0,0,0,4">
+                                        <StackPanel Width="190" Margin="0,0,16,10">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="内圈安全边界 (mm)" />
+                                            <TextBox x:Name="CdRingInnerMargin" Text="2.0" />
+                                        </StackPanel>
+                                        <StackPanel Width="190" Margin="0,0,16,10">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="外圈安全边界 (mm)" />
+                                            <TextBox x:Name="CdRingOuterMargin" Text="2.0" />
+                                        </StackPanel>
+                                        <TextBlock Width="360" Text="图片会复制多份并朝外环形排列；空间不足时自动等比缩小，保证不变形、不裁切、不重叠。"
+                                                   Foreground="{StaticResource TextMutedBrush}" TextWrapping="Wrap"
+                                                   VerticalAlignment="Center" Margin="0,0,0,10" />
+                                    </WrapPanel>
                                     <TextBlock Style="{StaticResource FieldLabel}" Text="输出原始音轨 (.raw)" />
                                     <Grid>
                                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
@@ -372,6 +414,11 @@
                             <Border Style="{StaticResource Card}">
                                 <StackPanel>
                                     <TextBlock Style="{StaticResource SectionTitle}" Text="生成几何" />
+                                    <TextBlock Style="{StaticResource FieldLabel}" Text="盘片预设" />
+                                    <ComboBox x:Name="CdDiscPresetSelector" DisplayMemberPath="DisplayName"
+                                              Margin="0,0,0,8" />
+                                    <TextBlock x:Name="CdDiscPresetHint" Foreground="{StaticResource TextMutedBrush}"
+                                               TextWrapping="Wrap" Margin="0,0,0,14" />
                                     <WrapPanel>
                                         <StackPanel Width="190" Margin="0,0,16,14">
                                             <TextBlock Style="{StaticResource FieldLabel}" Text="内半径 r0 (mm)" />
@@ -450,6 +497,89 @@
                 </TabItem>
 
                 <TabItem>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="34,28,34,24">
+                            <TextBlock Text="流式直接刻录" FontSize="28" FontWeight="SemiBold" />
+                            <TextBlock Text="边生成、边写入光盘，只使用小型内存缓冲区，不在磁盘保存完整 ISO 或 RAW。"
+                                       Foreground="{StaticResource TextMutedBrush}" Margin="0,7,0,22" />
+
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource SectionTitle}" Text="刻录内容" />
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+                                        <RadioButton x:Name="BurnCdRadio" GroupName="BurnDiscType" Content="CD 音轨盘"
+                                                     IsChecked="True" Click="BurnDiscType_Click" Margin="0,0,28,0" />
+                                        <RadioButton x:Name="BurnDvdRadio" GroupName="BurnDiscType" Content="DVD 图像盘"
+                                                     Click="BurnDiscType_Click" />
+                                    </StackPanel>
+                                    <Border Background="#F7F8FD" BorderBrush="{StaticResource LineBrush}"
+                                            BorderThickness="1" CornerRadius="8" Padding="14">
+                                        <StackPanel>
+                                            <TextBlock x:Name="BurnSourceTitle" Text="使用 CD 页面中的源图片与生成参数"
+                                                       FontWeight="SemiBold" />
+                                            <TextBlock x:Name="BurnSourceDetails" Text="请先在 CD 页面选择图片并完成预览。"
+                                                       Foreground="{StaticResource TextMutedBrush}" TextWrapping="Wrap"
+                                                       Margin="0,6,0,0" />
+                                        </StackPanel>
+                                    </Border>
+                                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                        <Button Style="{StaticResource SecondaryButton}" Tag="2" Click="Navigate_Click"
+                                                Content="打开 CD 参数" Height="36" Padding="14,5" Margin="0,0,10,0" />
+                                        <Button Style="{StaticResource SecondaryButton}" Tag="1" Click="Navigate_Click"
+                                                Content="打开 DVD 参数" Height="36" Padding="14,5" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource SectionTitle}" Text="刻录机与空白盘" />
+                                    <TextBlock Style="{StaticResource FieldLabel}" Text="刻录机" />
+                                    <Grid Margin="0,0,0,12">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <ComboBox x:Name="BurnDeviceCombo" DisplayMemberPath="DisplayName"
+                                                  SelectionChanged="BurnDeviceCombo_SelectionChanged" />
+                                        <Button Grid.Column="1" Style="{StaticResource BrowseButton}"
+                                                Click="RefreshBurnDevices_Click" Content="刷新" />
+                                    </Grid>
+                                    <TextBlock x:Name="BurnDeviceStatusText"
+                                               Text="进入此页面后会检测本机刻录机。"
+                                               Foreground="{StaticResource TextMutedBrush}" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource Card}" Background="#FFF9EE" BorderBrush="#F1D69B">
+                                <StackPanel>
+                                    <TextBlock Text="刻录前确认" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
+                                    <TextBlock Text="仅支持空白介质。刻录开始后，中断、断电或生成速度不足都可能导致盘片报废；请先用实时预览确认图案。DVD 流式模式只支持纯绘图，不支持内圈混合文件夹。"
+                                               TextWrapping="Wrap" Foreground="#765A22" LineHeight="22" />
+                                    <CheckBox x:Name="BurnConfirmCheckBox"
+                                              Content="我确认已放入正确的空白盘，并同意开始写入"
+                                              Checked="BurnConfirmCheckBox_Changed"
+                                              Unchecked="BurnConfirmCheckBox_Changed"
+                                              Margin="0,14,0,0" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                    <TextBlock x:Name="BurnStatusText" Text="等待开始" FontWeight="SemiBold" />
+                                    <ProgressBar x:Name="BurnProgressBar" Height="8" Minimum="0" Maximum="100"
+                                                 Value="0" Margin="0,12,0,16" Foreground="{StaticResource AccentBrush}" />
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button x:Name="StartStreamBurnButton" Style="{StaticResource PrimaryButton}"
+                                                Click="StartStreamBurn_Click" Content="开始流式刻录"
+                                                IsEnabled="False" Margin="0,0,12,0" />
+                                        <Button x:Name="CancelStreamBurnButton" Style="{StaticResource SecondaryButton}"
+                                                Click="CancelStreamBurn_Click" Content="取消刻录" IsEnabled="False" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+                <TabItem>
                     <Grid Margin="34,28,34,26">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
@@ -480,13 +610,25 @@
 
                                         <StackPanel x:Name="LiveCdControls">
                                             <TextBlock Text="源图片" FontWeight="SemiBold" Margin="0,0,0,10" />
-                                            <Grid Margin="0,0,0,18">
+                                             <Grid Margin="0,0,0,18">
                                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                                 <TextBox x:Name="LiveCdImagePath" IsReadOnly="True" />
                                                 <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Width="68"
                                                         Click="BrowseLiveCdImage_Click" Content="浏览…" />
-                                            </Grid>
+                                             </Grid>
 
+                                            <TextBlock Text="图片处理" FontWeight="SemiBold" Margin="0,0,0,10" />
+                                            <ComboBox x:Name="LiveCdImageProcessingMode" Margin="0,0,0,10">
+                                                <ComboBoxItem Content="原图直接映射" />
+                                                <ComboBoxItem Content="环形复制（自动份数）" />
+                                            </ComboBox>
+                                            <WrapPanel x:Name="LiveCdRingOptionsPanel" IsEnabled="False" Margin="0,0,0,8">
+                                                <StackPanel Width="122" Margin="0,0,12,12"><TextBlock Style="{StaticResource FieldLabel}" Text="内圈边界 (mm)"/><TextBox x:Name="LiveCdRingInnerMargin"/></StackPanel>
+                                                <StackPanel Width="122" Margin="0,0,0,12"><TextBlock Style="{StaticResource FieldLabel}" Text="外圈边界 (mm)"/><TextBox x:Name="LiveCdRingOuterMargin"/></StackPanel>
+                                            </WrapPanel>
+
+                                            <TextBlock Text="盘片预设" FontWeight="SemiBold" Margin="0,0,0,10" />
+                                            <ComboBox x:Name="LiveCdDiscPresetSelector" DisplayMemberPath="DisplayName" Margin="0,0,0,14" />
                                             <TextBlock Text="生成几何" FontWeight="SemiBold" Margin="0,0,0,10" />
                                             <WrapPanel>
                                                 <StackPanel Width="122" Margin="0,0,12,12"><TextBlock Style="{StaticResource FieldLabel}" Text="内半径 (mm)"/><TextBox x:Name="LiveCdInnerRadius"/></StackPanel>
@@ -510,13 +652,25 @@
 
                                         <StackPanel x:Name="LiveDvdControls" Visibility="Collapsed">
                                             <TextBlock Text="源图片" FontWeight="SemiBold" Margin="0,0,0,10" />
-                                            <Grid Margin="0,0,0,18">
+                                             <Grid Margin="0,0,0,18">
                                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                                 <TextBox x:Name="LiveDvdImagePath" IsReadOnly="True" />
                                                 <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Width="68"
                                                         Click="BrowseLiveDvdImage_Click" Content="浏览…" />
-                                            </Grid>
+                                             </Grid>
 
+                                            <TextBlock Text="图片处理" FontWeight="SemiBold" Margin="0,0,0,10" />
+                                            <ComboBox x:Name="LiveDvdImageProcessingMode" Margin="0,0,0,10">
+                                                <ComboBoxItem Content="原图直接映射" />
+                                                <ComboBoxItem Content="环形复制（自动份数）" />
+                                            </ComboBox>
+                                            <WrapPanel x:Name="LiveDvdRingOptionsPanel" IsEnabled="False" Margin="0,0,0,8">
+                                                <StackPanel Width="122" Margin="0,0,12,12"><TextBlock Style="{StaticResource FieldLabel}" Text="内圈边界 (mm)"/><TextBox x:Name="LiveDvdRingInnerMargin"/></StackPanel>
+                                                <StackPanel Width="122" Margin="0,0,0,12"><TextBlock Style="{StaticResource FieldLabel}" Text="外圈边界 (mm)"/><TextBox x:Name="LiveDvdRingOuterMargin"/></StackPanel>
+                                            </WrapPanel>
+
+                                            <TextBlock Text="盘片预设" FontWeight="SemiBold" Margin="0,0,0,10" />
+                                            <ComboBox x:Name="LiveDvdDiscPresetSelector" DisplayMemberPath="DisplayName" Margin="0,0,0,14" />
                                             <TextBlock Text="生成几何 · 快速算法 · CW" FontWeight="SemiBold" Margin="0,0,0,10" />
                                             <WrapPanel>
                                                 <StackPanel Width="122" Margin="0,0,12,12"><TextBlock Style="{StaticResource FieldLabel}" Text="总扇区数"/><TextBox x:Name="LiveDvdTotalSectors"/></StackPanel>
@@ -601,14 +755,14 @@
                             <Border Style="{StaticResource Card}">
                                 <StackPanel>
                                     <TextBlock Text="本地优先" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
-                                    <TextBlock Text="应用不会连接网络，不会上传图片，也不收集遥测或个人信息。它只读取你主动选择的图片、文件夹和轨道，并写入你指定的输出位置。"
+                                    <TextBlock Text="应用不会连接网络，不会上传图片，也不收集遥测或个人信息。它只读取你主动选择的图片、文件夹和轨道；生成模式写入指定文件，直接刻录模式仅写入你明确选择并二次确认的光驱。"
                                                TextWrapping="Wrap" Foreground="{StaticResource TextMutedBrush}" LineHeight="22" />
                                 </StackPanel>
                             </Border>
                             <Border Style="{StaticResource Card}">
                                 <StackPanel>
                                     <TextBlock Text="刻录前请先验证" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
-                                    <TextBlock Text="不同刻录机、盘片染料、写入策略和固件可能改变最终可见效果。建议先生成校准预览并使用可擦写或低成本介质测试。CD 输出是原始 CD-DA 轨道；DVD 输出是 ISO 数据镜像。"
+                                    <TextBlock Text="不同刻录机、盘片染料、写入策略和固件可能改变最终可见效果。建议先生成校准预览并使用可擦写或低成本介质测试。流式刻录仅接受空白盘，并通过 Windows IMAPI2 按块读取生成内容，不保存完整临时镜像。"
                                                TextWrapping="Wrap" Foreground="{StaticResource TextMutedBrush}" LineHeight="22" />
                                 </StackPanel>
                             </Border>
