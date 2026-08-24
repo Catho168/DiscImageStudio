@@ -76,6 +76,11 @@ static void Throws<TException>(Action action, string name)
 
 static void TestRingImageLayout()
 {
+    Equal(8192, RingImageQuality.GenerationSize, "formal ring image resolution");
+    Equal(4096, RingImageQuality.SavedPreviewSize, "saved ring preview resolution");
+    Equal(2048, RingImageQuality.LivePreviewSize, "live ring preview resolution");
+    new RingImageLayoutOptions(58, 26, 56, RingImageQuality.GenerationSize).Validate();
+
     string directory = Path.Combine(Path.GetTempPath(), $"disc-ring-test-{Guid.NewGuid():N}");
     Directory.CreateDirectory(directory);
     try
@@ -92,6 +97,9 @@ static void TestRingImageLayout()
                 ContentOuterRadiusMm: 56,
                 OutputSize: 512));
         True(summary.CopyCount >= 3, "ring image copies source multiple times");
+        True(
+            summary.CopyWidthPixels > 0 && summary.CopyHeightPixels > 0,
+            "ring layout reports per-copy pixel resolution");
         True(
             Math.Abs((summary.CopyWidthMm / summary.CopyHeightMm) - 2.0) < 1e-10,
             "ring copies preserve source aspect ratio");

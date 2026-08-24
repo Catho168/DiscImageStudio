@@ -128,6 +128,8 @@ public static class RingImageProcessor
             source.PixelHeight,
             size,
             copyCount,
+            Math.Max(1, (int)Math.Round(copyWidthPixels)),
+            Math.Max(1, (int)Math.Round(copyHeightPixels)),
             options.ContentInnerRadiusMm,
             options.ContentOuterRadiusMm,
             copyWidthMm,

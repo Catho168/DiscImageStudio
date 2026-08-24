@@ -317,7 +317,9 @@ public partial class MainWindow : Window
         {
             string image = RequirePath(DvdImagePath, "请选择 DVD 源图片。");
             string output = RequirePath(DvdOutputPath, "请选择 DVD ISO 输出位置。");
-            using PreparedImage preparedImage = PrepareDvdImage(image, 2048);
+            using PreparedImage preparedImage = PrepareDvdImage(
+                image,
+                RingImageQuality.GenerationSize);
             List<string> arguments =
             [
                 "solve",
@@ -362,7 +364,9 @@ public partial class MainWindow : Window
             string image = RequirePath(DvdImagePath, "请选择 DVD 源图片。");
             string output = RequirePath(DvdPreviewPath, "请选择校准预览输出位置。");
             int processingSize = Math.Clamp(ParsePositiveInt(DvdPreviewSize, "预览尺寸"), 512, 4096);
-            using PreparedImage preparedImage = PrepareDvdImage(image, processingSize);
+            using PreparedImage preparedImage = PrepareDvdImage(
+                image,
+                Math.Max(RingImageQuality.SavedPreviewSize, processingSize));
             string[] arguments =
             [
                 "calibrate",
@@ -396,7 +400,9 @@ public partial class MainWindow : Window
         {
             string input = RequirePath(CdImagePath, "请选择 CD 源图片。");
             string output = RequirePath(CdOutputPath, "请选择 CD 原始音轨输出位置。");
-            using PreparedImage preparedImage = PrepareCdImage(input, 2048);
+            using PreparedImage preparedImage = PrepareCdImage(
+                input,
+                RingImageQuality.GenerationSize);
             List<string> arguments = ["cd-generate", "--input", preparedImage.Path, "--output", output];
             AddCdGeometry(arguments, string.Empty, actual: false);
             arguments.Add("--interleave");
@@ -416,7 +422,9 @@ public partial class MainWindow : Window
             string input = RequirePath(CdImagePath, "请选择 CD 源图片。");
             string output = RequirePath(CdPreviewPath, "请选择 CD 预览输出位置。");
             int processingSize = Math.Clamp(ParsePositiveInt(CdPreviewSize, "预览尺寸"), 512, 4096);
-            using PreparedImage preparedImage = PrepareCdImage(input, processingSize);
+            using PreparedImage preparedImage = PrepareCdImage(
+                input,
+                Math.Max(RingImageQuality.SavedPreviewSize, processingSize));
             List<string> arguments = ["cd-preview-warp", "--input", preparedImage.Path, "--output", output];
             AddCdGeometry(arguments, "gen-", actual: false);
             AddCdGeometry(arguments, "actual-", actual: true);
@@ -501,7 +509,7 @@ public partial class MainWindow : Window
                 }
 
                 string source = RequirePath(DvdImagePath, "请先在 DVD 页面选择源图片。");
-                preparedImage = PrepareDvdImage(source, 2048);
+                preparedImage = PrepareDvdImage(source, RingImageQuality.GenerationSize);
                 string preparedPath = preparedImage.Path;
                 DvdStreamingOptions options = ReadDvdStreamingOptions();
                 request = new OpticalBurnRequest(
@@ -518,7 +526,7 @@ public partial class MainWindow : Window
             else
             {
                 string source = RequirePath(CdImagePath, "请先在 CD 页面选择源图片。");
-                preparedImage = PrepareCdImage(source, 2048);
+                preparedImage = PrepareCdImage(source, RingImageQuality.GenerationSize);
                 string preparedPath = preparedImage.Path;
                 CdDiscParameters parameters = ReadCdGeneratedParameters();
                 bool interleave = CdInterleave.IsChecked == true;
@@ -778,6 +786,8 @@ public partial class MainWindow : Window
                 AppendLog(
                     $"[{DateTime.Now:HH:mm:ss}] 环形图片处理：自动复制 {summary.CopyCount} 份，"
                     + $"每份等比尺寸 {summary.CopyWidthMm:F1} × {summary.CopyHeightMm:F1} mm，"
+                    + $"约 {summary.CopyWidthPixels} × {summary.CopyHeightPixels} px；"
+                    + $"中间图 {summary.OutputSize} × {summary.OutputSize} px，"
                     + $"有效半径 {summary.ContentInnerRadiusMm:F1}–{summary.ContentOuterRadiusMm:F1} mm。\n");
             }
             return new PreparedImage(temporaryPath, temporaryPath, summary);
@@ -812,7 +822,7 @@ public partial class MainWindow : Window
             canvasOuterRadius,
             contentInner,
             contentOuter,
-            Math.Clamp(outputSize, 512, 4096));
+            Math.Clamp(outputSize, 512, RingImageQuality.GenerationSize));
         options.Validate();
         return options;
     }
@@ -1442,7 +1452,7 @@ public partial class MainWindow : Window
                     generated.OuterRadiusMm,
                     CdRingInnerMargin,
                     CdRingOuterMargin,
-                    Math.Max(1024, outputSize));
+                    Math.Max(RingImageQuality.LivePreviewSize, outputSize));
             }
             message = string.Empty;
             return true;
@@ -1508,7 +1518,7 @@ public partial class MainWindow : Window
                     generatedOuter,
                     DvdRingInnerMargin,
                     DvdRingOuterMargin,
-                    Math.Max(1024, outputSize));
+                    Math.Max(RingImageQuality.LivePreviewSize, outputSize));
             }
             string totalSectors = totalSectorsValue.ToString(CultureInfo.InvariantCulture);
             arguments =

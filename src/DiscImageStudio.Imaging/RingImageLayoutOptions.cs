@@ -1,5 +1,14 @@
 namespace DiscImageStudio.Imaging;
 
+public static class RingImageQuality
+{
+    // Keep formal generation at the highest size accepted by the WPF renderer.
+    // A separate, smaller live-preview size keeps parameter changes responsive.
+    public const int GenerationSize = 8192;
+    public const int SavedPreviewSize = 4096;
+    public const int LivePreviewSize = 2048;
+}
+
 public sealed record RingImageLayoutOptions(
     double CanvasOuterRadiusMm,
     double ContentInnerRadiusMm,
@@ -50,6 +59,8 @@ public sealed record RingImageLayoutSummary(
     int SourceHeight,
     int OutputSize,
     int CopyCount,
+    int CopyWidthPixels,
+    int CopyHeightPixels,
     double ContentInnerRadiusMm,
     double ContentOuterRadiusMm,
     double CopyWidthMm,
