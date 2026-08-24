@@ -11,6 +11,7 @@
 - CD Track-At-Once 调用顺序回归通过：`DoNotFinalizeMedia` → `PrepareMedia` → 空白盘/容量检查 → `AddAudioTrack` → `ReleaseMedia`；IMAPI2 默认启用防缓冲欠载，不再执行部分驱动会拒绝的冗余属性设置。清理阶段即使返回 `0xC0AA0502`，也不会覆盖真正的首个写入错误。
 - 盘片预设回归通过：CD 80/74 分钟和 12/8 cm 单层 DVD 参数均能通过各自生成器校验；12 cm DVD 为 2,295,104 扇区、24–58 mm，8 cm DVD 为 714,544 扇区、24–38 mm，所有预设 ID 唯一。
 - 铼德医疗水蓝盘实测预设回归通过：359,845 扇区、24.911275–57.931155 mm；58 mm 图片画布完整覆盖实测外半径。
+- Verbatim CD-R AZO (43438) 实测预设回归通过：359,848 扇区、24.837775–58.020875 mm；58.1 mm 图片画布完整覆盖实测外半径。
 - CD 内置预设、GUI 和命令行默认扫描速度已由 1100 修正为 1200 mm/s；自动测试要求所有非自定义 CD 预设位于 ECMA-130 的 1200–1400 mm/s 范围。
 - 使用 `suzume_binary.png` 和铼德医疗水蓝盘参数（24.911275–57.931155 mm、359,845 扇区、1200 mm/s、58 mm 图片外半径、延迟交织开启）完成新旧生成器整盘对照：两份 RAW 均为 846,355,440 字节，SHA-256 均为 `21848105A6D05ABF32E2054E220F8EDBF2DB5FABD7508CDE556C6CAF89F4796F`，逐字节一致；旧生成器耗时约 594.6 秒，新生成器约 50.2 秒。
 - 盘片预设小数显示使用最短可往返格式，不限制为固定小数位；铼德预设界面值完整输出为 `24.911275` 和 `57.931155`。
@@ -30,9 +31,9 @@
 - CD、DVD 环形复制实时预览端到端检查通过：使用方形应用图标时均自动复制 8 份；1.0.8 DVD 灰度预览中所有副本等比、完整且相邻留有空隙，截图 SHA-256 为 `F5F557C2CB3C3FC9C926560C9B588392368E34331B86A50A8842B2DA28C62485`。
 - Windows SDK MakeAppx 10.0.26100.8249 成功生成模块化版本的测试 MSIX。
 - SignTool 成功使用主题 `CN=Disc Image Studio Test` 的专用代码签名证书签名，证书主题与清单 Publisher 一致。
-- 签名测试包 `DiscImageStudio_1.0.14.0_x64.msix` SHA-256：
-  `41156F715EFCDCE8F4669110CB51691063FE6ACEFA07FB831D3126799FAF1F86`
-- 1.0.14.0 修正 CD 默认扫描速度并保留盘片预设完整精度显示、铼德医疗水蓝盘实测预设、通用盘片预设和此前刻录诊断修复；包签名状态为 `Valid`，签名主题与清单 Publisher 均为 `CN=Disc Image Studio Test`。
+- 签名测试包 `DiscImageStudio_1.0.15.0_x64.msix` SHA-256：
+  `8B59F8EE49023F631A8CBF9FF59167C4FB68AAC8364AA4E12103C0C88E74F893`
+- 1.0.15.0 新增 Verbatim CD-R AZO (43438) 实测预设，并保留 CD 标准速度修正、盘片预设完整精度显示和此前刻录诊断修复；包签名状态为 `Valid`，签名主题与清单 Publisher 均为 `CN=Disc Image Studio Test`。
 - `Install-TestPackage.ps1` 已通过 PowerShell 语法检查；脚本会请求 UAC，把公钥导入本地计算机“受信任人”后安装测试包。
 
 测试 MSIX 使用测试 Identity/Publisher 和自签名测试证书，只用于本机安装验证，不能提交商店。正式包必须使用 Partner Center 的真实身份重新生成。

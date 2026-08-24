@@ -126,7 +126,7 @@ static void TestRingImageLayout()
 
 static void TestDiscPresets()
 {
-    Equal(4, CdDiscPreset.All.Count, "CD preset count including custom");
+    Equal(5, CdDiscPreset.All.Count, "CD preset count including custom");
     Equal(3, DvdDiscPreset.All.Count, "DVD preset count including custom");
     Equal(
         CdDiscPreset.All.Count,
@@ -169,6 +169,13 @@ static void TestDiscPresets()
     True(
         ritek.ImageOuterRadiusMm >= ritek.OuterRadiusMm,
         "RITEK medical aqua image canvas covers the outer radius");
+    CdDiscPreset verbatim = CdDiscPreset.All.Single(value => value.Id == "verbatim-azo-43438");
+    Equal(359_848L, verbatim.Sectors, "Verbatim AZO 43438 preset sectors");
+    Equal(24.837775, verbatim.InnerRadiusMm, "Verbatim AZO 43438 inner radius");
+    Equal(58.020875, verbatim.OuterRadiusMm, "Verbatim AZO 43438 outer radius");
+    True(
+        verbatim.ImageOuterRadiusMm >= verbatim.OuterRadiusMm,
+        "Verbatim AZO 43438 image canvas covers the outer radius");
     DvdDiscPreset dvd120 = DvdDiscPreset.All.Single(value => value.Id == "dvd-5-120mm");
     Equal(2_295_104U, dvd120.TotalSectors, "120 mm DVD preset sectors");
     DvdDiscPreset dvd80 = DvdDiscPreset.All.Single(value => value.Id == "dvd-5-80mm");
