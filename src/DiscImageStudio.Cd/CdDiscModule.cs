@@ -13,7 +13,7 @@ public sealed class CdDiscModule : IOpticalDiscModule
         new("r0", "Inner radius", DiscOptionValueType.Decimal, DefaultValue: "24.5", Unit: "mm"),
         new("r1", "Outer radius", DiscOptionValueType.Decimal, DefaultValue: "56.8", Unit: "mm"),
         new("sectors", "Program sectors", DiscOptionValueType.Integer, DefaultValue: "359849"),
-        new("velocity", "Linear velocity", DiscOptionValueType.Decimal, DefaultValue: "1100", Unit: "mm/s"),
+        new("velocity", "Linear velocity", DiscOptionValueType.Decimal, DefaultValue: "1200", Unit: "mm/s"),
         new("theta0", "Start angle", DiscOptionValueType.Decimal, DefaultValue: "0", Unit: "degrees"),
         new("outer", "Image outer radius", DiscOptionValueType.Decimal, DefaultValue: "57.5", Unit: "mm"),
     ];
@@ -165,7 +165,7 @@ public sealed class CdDiscModule : IOpticalDiscModule
             options.GetDouble(prefix + "r0", 24.5),
             options.GetDouble(prefix + "r1", 56.8),
             options.GetLong(prefix + "sectors", 359849),
-            options.GetDouble(prefix + "velocity", 1100.0),
+            options.GetDouble(prefix + "velocity", 1200.0),
             startAngleDegrees * Math.PI / 180.0,
             options.GetDouble(prefix + "outer", 57.5));
     }

@@ -434,7 +434,7 @@
                                         </StackPanel>
                                         <StackPanel Width="190" Margin="0,0,16,14">
                                             <TextBlock Style="{StaticResource FieldLabel}" Text="线速度 (mm/s)" />
-                                            <TextBox x:Name="CdVelocity" Text="1100" />
+                                            <TextBox x:Name="CdVelocity" Text="1200" />
                                         </StackPanel>
                                         <StackPanel Width="190" Margin="0,0,16,14">
                                             <TextBlock Style="{StaticResource FieldLabel}" Text="起始角 theta0 (°)" />
@@ -463,7 +463,7 @@
                                         </StackPanel>
                                         <StackPanel Width="190" Margin="0,0,16,14">
                                             <TextBlock Style="{StaticResource FieldLabel}" Text="实测线速度 (mm/s)" />
-                                            <TextBox x:Name="CdActualVelocity" Text="1100" />
+                                            <TextBox x:Name="CdActualVelocity" Text="1200" />
                                         </StackPanel>
                                         <StackPanel Width="190" Margin="0,0,16,14">
                                             <TextBlock Style="{StaticResource FieldLabel}" Text="实测起始角 (°)" />

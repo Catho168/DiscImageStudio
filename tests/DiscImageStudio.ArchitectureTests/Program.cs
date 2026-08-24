@@ -139,6 +139,9 @@ static void TestDiscPresets()
 
     foreach (CdDiscPreset preset in CdDiscPreset.All.Where(value => !value.IsCustom))
     {
+        True(
+            preset.LinearVelocityMmPerSecond is >= 1_200 and <= 1_400,
+            $"CD preset '{preset.Id}' uses the ECMA-130 scanning velocity range");
         new CdDiscParameters(
             preset.InnerRadiusMm,
             preset.OuterRadiusMm,
@@ -179,7 +182,7 @@ static void TestStreamingGeneration(string sourcePath)
         InnerRadiusMm: 24.5,
         OuterRadiusMm: 24.6,
         Sectors: 2,
-        LinearVelocityMmPerSecond: 1100,
+        LinearVelocityMmPerSecond: 1200,
         ImageOuterRadiusMm: 58);
     using MemoryStream cdStream = new();
     CdGenerationSummary cdSummary = CdTrackGenerator.GenerateToStream(
