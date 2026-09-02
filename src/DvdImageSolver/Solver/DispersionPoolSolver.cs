@@ -5,8 +5,8 @@ namespace DvdImageSolver.Solver;
 
 internal sealed class DispersionPoolSolver
 {
-    internal const byte BlackScrambledByte = 0x92;
-    internal const byte WhiteScrambledByte = 0xA5;
+    internal const byte BlackScrambledByte = 0xA5;
+    internal const byte WhiteScrambledByte = 0x92;
 
     internal SolverResult Solve(
         ImageConstraint constraint,

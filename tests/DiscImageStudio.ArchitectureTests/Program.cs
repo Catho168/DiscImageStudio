@@ -473,6 +473,15 @@ static void TestStreamingGeneration(string sourcePath)
         (output, _) => output.Write(expected),
         progress: null,
         CancellationToken.None);
+    Equal(256 * 1024, GeneratedContentComStream.ChunkBytes, "streaming buffer chunk size");
+    Equal(
+        64 * 1024 * 1024,
+        GeneratedContentComStream.BufferCapacityBytes,
+        "streaming buffer capacity");
+    Equal(
+        32 * 1024 * 1024,
+        GeneratedContentComStream.PrebufferBytes,
+        "streaming prebuffer threshold");
     generated.WaitUntilPrebuffered(CancellationToken.None);
     generated.Stat(out STATSTG stat, 0);
     Equal((long)expected.Length, stat.cbSize, "COM stream reports declared length");

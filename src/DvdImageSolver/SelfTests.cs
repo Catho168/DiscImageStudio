@@ -126,6 +126,14 @@ internal static class SelfTests
 
     private static void TestDispersionPool()
     {
+        Equal(
+            (byte)0xA5,
+            DispersionPoolSolver.BlackScrambledByte,
+            "dispersion physical black byte polarity");
+        Equal(
+            (byte)0x92,
+            DispersionPoolSolver.WhiteScrambledByte,
+            "dispersion physical white byte polarity");
         const uint firstPsn = 0x30000;
         RasterImage black = RasterImage.CreateForTest(8, 8, 0, 0, 0, 255);
         ImageConstraint mapped = ImageTargetMapper.Map(

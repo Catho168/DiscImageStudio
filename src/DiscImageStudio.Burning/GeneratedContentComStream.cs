@@ -8,8 +8,10 @@ namespace DiscImageStudio.Burning;
 [ClassInterface(ClassInterfaceType.None)]
 internal sealed class GeneratedContentComStream : IStream, IDisposable
 {
-    private const int ChunkBytes = 256 * 1024;
-    private const int BufferChunks = 64;
+    internal const int ChunkBytes = 256 * 1024;
+    internal const int BufferCapacityBytes = 64 * 1024 * 1024;
+    internal const int PrebufferBytes = 32 * 1024 * 1024;
+    private const int BufferChunks = BufferCapacityBytes / ChunkBytes;
     private const int StgTypeStream = 2;
     private const int StgEInvalidFunction = unchecked((int)0x80030001);
     private const int ENotImpl = unchecked((int)0x80004001);
@@ -48,7 +50,7 @@ internal sealed class GeneratedContentComStream : IStream, IDisposable
             SingleReader = true,
             SingleWriter = true,
         });
-        long prebufferBytes = Math.Min(length, 8L * 1024 * 1024);
+        long prebufferBytes = Math.Min(length, PrebufferBytes);
         _producerTask = Task.Factory.StartNew(
             () => Produce(producer, prebufferBytes),
             CancellationToken.None,

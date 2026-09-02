@@ -56,7 +56,7 @@ dotnet run --project src/DvdImageSolver --configuration Release -- selftest
 
 SYNC、RLL、EDC 和 ECC 会限制可实现的图案，因此任意逐 bit 图像通常不存在零误差解。`full`模式以不匹配的NRZI bits为目标；图片的`state-control`模式把目标二值化为黑或白，先计算pit/land多数方向是否错误，再计算实际land数量到纯黑0或纯白16的灰度距离。搜索目标只使用可控payload码字，最终可见度则统计全部channel码字。
 
-`dispersion`模式不控制绝对pit/land多数，而用EFMPlus跳变密度形成纹理对比：图片黑色映射为扰码后字节`Q=0x92`（所有表示均为2次transition），白色映射为`Q=0xA5`（所有表示均为5次transition）。NRZI整体反色不改变transition位置，因此该模式不依赖初始pit/land极性来区分两种纹理。
+`dispersion`模式不控制绝对pit/land多数，而用EFMPlus跳变密度形成纹理对比。根据实盘极性，图片黑色映射为扰码后字节`Q=0xA5`（所有表示均为5次transition），白色映射为`Q=0x92`（所有表示均为2次transition）。NRZI整体反色不改变transition位置，因此该模式不依赖初始pit/land极性来区分两种纹理。
 
 ## 图片映射
 
@@ -172,8 +172,8 @@ state-control搜索时使用严格字典序目标：先最小化自由payload的
 `--algorithm dispersion`（别名`byte-pool`）直接在扰码域生成payload，不执行随机搜索：
 
 ```text
-图片黑色 -> Q = 0x92 -> 每个EFMPlus码字固定2次transition，长游程集中
-图片白色 -> Q = 0xA5 -> 每个EFMPlus码字固定5次transition，短游程分散
+图片黑色 -> Q = 0xA5 -> 每个EFMPlus码字固定5次transition，短游程分散
+图片白色 -> Q = 0x92 -> 每个EFMPlus码字固定2次transition，长游程集中
 ISO payload P = Q XOR sector scrambler byte
 ```
 
@@ -200,7 +200,7 @@ ISO payload P = Q XOR sector scrambler byte
 
 `--fast-parallelism 0`会按逻辑处理器数量并行生成互不依赖的ECC Block payload，再按LBA顺序写入镜像；也可以设为`1..64`限制CPU占用。并行不会改变字节选择或输出顺序。
 
-`payload-transition-class-error=0`表示所有受控payload都正确分配到了`0x92/0xA5`类别，不表示固定字段、ECC和SYNC也具有相同transition密度。哪一类纹理在特定盘片和刻录机上看起来更暗仍需实盘标定；当前约定按用户指定把`0x92`称为黑色、`0xA5`称为白色。
+`payload-transition-class-error=0`表示所有受控payload都正确分配到了`0x92/0xA5`类别，不表示固定字段、ECC和SYNC也具有相同transition密度。实盘标定确认原黑白极性相反，因此当前约定把`0xA5`称为黑色、`0x92`称为白色。
 
 输出包括：
 

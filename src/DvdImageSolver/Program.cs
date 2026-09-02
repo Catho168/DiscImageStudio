@@ -1299,8 +1299,8 @@ internal static class Program
             words; the reported majority/gray scores cover every 16-bit channel word, including
             fixed/EDC/PI/PO and both SYNC words. Stream, DSV and final boundaries remain exact.
 
-            Dispersion maps black pixels to scrambled EFMPlus input byte 0x92 (2 transitions)
-            and white pixels to 0xA5 (5 transitions), then reverses DVD payload scrambling for ISO
+            Dispersion maps black pixels to scrambled EFMPlus input byte 0xA5 (5 transitions)
+            and white pixels to 0x92 (2 transitions), then reverses DVD payload scrambling for ISO
             output. It samples every payload code-word center regardless of --constraint-step.
             With --fast-output true, payload selection is unchanged but final ECC/EFM boundary and
             DSV verification are skipped; the JSON finalBoundary is therefore null.
