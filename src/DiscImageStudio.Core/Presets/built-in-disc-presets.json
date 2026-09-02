@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 2,
+  "fallbackLanguage": "zh-CN",
+  "cdPresets": [
+    {
+      "id": "cd-80",
+      "displayName": "CD-R/RW 80 分钟（700 MB，推荐）",
+      "description": "采用 1200 mm/s 标准扫描速度，适合常见 120 mm、约 80 分钟的空白 CD。",
+      "sectors": 359849,
+      "innerRadiusMm": 24.5,
+      "outerRadiusMm": 56.8,
+      "linearVelocityMmPerSecond": 1200,
+      "displayNameResourceKey": "DiscPreset_Cd80_DisplayName",
+      "descriptionResourceKey": "DiscPreset_Cd80_Description"
+    },
+    {
+      "id": "ritek-medical-aqua",
+      "displayName": "铼德医疗水蓝盘（实测）",
+      "description": "实测参数：内半径 24.911275 mm、外半径 57.931155 mm、359,845 扇区；扫描速度采用 1200 mm/s。",
+      "sectors": 359845,
+      "innerRadiusMm": 24.911275,
+      "outerRadiusMm": 57.931155,
+      "linearVelocityMmPerSecond": 1200,
+      "displayNameResourceKey": "DiscPreset_RitekMedicalAqua_DisplayName",
+      "descriptionResourceKey": "DiscPreset_RitekMedicalAqua_Description"
+    },
+    {
+      "id": "verbatim-azo-43438",
+      "displayName": "Verbatim CD-R AZO (43438)（实测）",
+      "description": "实测参数：内半径 24.837775 mm、外半径 58.020875 mm、359,848 扇区；扫描速度采用 1200 mm/s。",
+      "sectors": 359848,
+      "innerRadiusMm": 24.837775,
+      "outerRadiusMm": 58.020875,
+      "linearVelocityMmPerSecond": 1200,
+      "displayNameResourceKey": "DiscPreset_VerbatimAzo43438_DisplayName",
+      "descriptionResourceKey": "DiscPreset_VerbatimAzo43438_Description"
+    },
+    {
+      "id": "cd-74",
+      "displayName": "CD-R/RW 74 分钟（650 MB）",
+      "description": "适合标称 74 分钟的 120 mm 空白 CD；采用 1200 mm/s 标准扫描速度。",
+      "sectors": 333000,
+      "innerRadiusMm": 24.5,
+      "outerRadiusMm": 56.8,
+      "linearVelocityMmPerSecond": 1200,
+      "displayNameResourceKey": "DiscPreset_Cd74_DisplayName",
+      "descriptionResourceKey": "DiscPreset_Cd74_Description"
+    }
+  ],
+  "dvdPresets": [
+    {
+      "id": "dvd-5-120mm",
+      "displayName": "DVD 12 cm 单层（4.7 GB，推荐）",
+      "description": "标准单层 120 mm DVD 数据区：24–58 mm，共 2,295,104 个扇区。",
+      "totalSectors": 2295104,
+      "innerRadiusMm": 24.0,
+      "outerRadiusMm": 58.0,
+      "channelBitLengthNm": 133.33,
+      "displayNameResourceKey": "DiscPreset_Dvd120Mm_DisplayName",
+      "descriptionResourceKey": "DiscPreset_Dvd120Mm_Description"
+    },
+    {
+      "id": "verbatim-dvd-r-azo-43533",
+      "displayName": "Verbatim DVD-R AZO (43533)（实测）",
+      "description": "Verbatim DVD-R AZO 43533 实测数据区：23.9968875–57.9779875 mm，共 2,297,888 个扇区。",
+      "totalSectors": 2297888,
+      "innerRadiusMm": 23.9968875,
+      "outerRadiusMm": 57.9779875,
+      "channelBitLengthNm": 133.33,
+      "displayNameResourceKey": "DiscPreset_VerbatimDvdAzo43533_DisplayName",
+      "descriptionResourceKey": "DiscPreset_VerbatimDvdAzo43533_Description"
+    },
+    {
+      "id": "dvd-5-80mm",
+      "displayName": "Mini DVD 8 cm 单层（1.46 GB）",
+      "description": "标准单层 80 mm DVD 数据区：24–38 mm，共 714,544 个扇区。",
+      "totalSectors": 714544,
+      "innerRadiusMm": 24.0,
+      "outerRadiusMm": 38.0,
+      "channelBitLengthNm": 133.33,
+      "displayNameResourceKey": "DiscPreset_Dvd80Mm_DisplayName",
+      "descriptionResourceKey": "DiscPreset_Dvd80Mm_Description"
+    }
+  ]
+}

@@ -9,6 +9,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using DiscImageStudio.Burning;
 using DiscImageStudio.Cd;
+using DiscImageStudio.Core;
 using DiscImageStudio.Dvd;
 using DiscImageStudio.Imaging;
 using Microsoft.Win32;
@@ -32,6 +33,9 @@ public partial class MainWindow : Window
     private readonly List<(TextBox Primary, TextBox Live)> _livePreviewBindings = [];
     private readonly List<(ComboBox Primary, ComboBox Live)> _livePreviewSelectionBindings = [];
     private readonly IOpticalDiscBurner _opticalDiscBurner = new WindowsImapiBurner();
+    private readonly string _discPresetJsonPath = DiscPresetJsonStore.GetDefaultPath();
+    private IReadOnlyList<CdDiscPreset> _cdDiscPresets = [CdDiscPreset.Manual];
+    private IReadOnlyList<DvdDiscPreset> _dvdDiscPresets = [DvdDiscPreset.Manual];
     private bool _isBusy;
     private bool _isLivePreviewReady;
     private bool _livePreviewBindingsInitialized;
@@ -44,6 +48,7 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _burnCancellation;
     private string? _lastLivePreviewPath;
     private string? _lastOutputPath;
+    private string? _discPresetLoadWarning;
 
     public MainWindow()
     {
@@ -63,10 +68,22 @@ public partial class MainWindow : Window
 
     private void InitializeDiscPresetSelectors()
     {
-        CdDiscPresetSelector.ItemsSource = CdDiscPreset.All;
-        LiveCdDiscPresetSelector.ItemsSource = CdDiscPreset.All;
-        DvdDiscPresetSelector.ItemsSource = DvdDiscPreset.All;
-        LiveDvdDiscPresetSelector.ItemsSource = DvdDiscPreset.All;
+        try
+        {
+            (_cdDiscPresets, _dvdDiscPresets) = ReadDiscPresetCatalog();
+        }
+        catch (Exception exception)
+        {
+            _discPresetLoadWarning =
+                $"用户预设 JSON 无法加载，已继续使用程序内置参数。\n\n{exception.Message}\n\n文件位置：\n{_discPresetJsonPath}";
+            (_cdDiscPresets, _dvdDiscPresets) = CreatePresetLists(
+                DiscPresetJsonStore.LoadBuiltIn());
+        }
+
+        CdDiscPresetSelector.ItemsSource = _cdDiscPresets;
+        LiveCdDiscPresetSelector.ItemsSource = _cdDiscPresets;
+        DvdDiscPresetSelector.ItemsSource = _dvdDiscPresets;
+        LiveDvdDiscPresetSelector.ItemsSource = _dvdDiscPresets;
         CdDiscPresetSelector.SelectionChanged += CdDiscPresetSelector_SelectionChanged;
         LiveCdDiscPresetSelector.SelectionChanged += CdDiscPresetSelector_SelectionChanged;
         DvdDiscPresetSelector.SelectionChanged += DvdDiscPresetSelector_SelectionChanged;
@@ -85,6 +102,79 @@ public partial class MainWindow : Window
         }
     }
 
+    private (IReadOnlyList<CdDiscPreset> Cd, IReadOnlyList<DvdDiscPreset> Dvd)
+        ReadDiscPresetCatalog()
+    {
+        DiscPresetJsonDocument builtIn = DiscPresetJsonStore.LoadBuiltIn();
+        DiscPresetJsonDocument user = DiscPresetJsonStore.LoadOrCreate(
+            _discPresetJsonPath,
+            DiscPresetJsonStore.CreateInitialUserDocument());
+        return CreatePresetLists(DiscPresetJsonStore.Merge(builtIn, user));
+    }
+
+    private static (IReadOnlyList<CdDiscPreset> Cd, IReadOnlyList<DvdDiscPreset> Dvd)
+        CreatePresetLists(DiscPresetJsonDocument document)
+    {
+        List<CdDiscPreset> cdPresets = document.CdPresets
+            .Select(value => new CdDiscPreset(
+                value.Id,
+                value.DisplayName,
+                value.Description,
+                value.Sectors,
+                value.InnerRadiusMm,
+                value.OuterRadiusMm,
+                value.LinearVelocityMmPerSecond,
+                value.DisplayNameResourceKey,
+                value.DescriptionResourceKey))
+            .ToList();
+        cdPresets.Add(CdDiscPreset.Manual);
+
+        List<DvdDiscPreset> dvdPresets = document.DvdPresets
+            .Select(value => new DvdDiscPreset(
+                value.Id,
+                value.DisplayName,
+                value.Description,
+                value.TotalSectors,
+                value.InnerRadiusMm,
+                value.OuterRadiusMm,
+                value.ChannelBitLengthNm,
+                value.DisplayNameResourceKey,
+                value.DescriptionResourceKey))
+            .ToList();
+        dvdPresets.Add(DvdDiscPreset.Manual);
+        return (cdPresets, dvdPresets);
+    }
+
+    private void RebindDiscPresetSelectors(
+        IReadOnlyList<CdDiscPreset> cdPresets,
+        IReadOnlyList<DvdDiscPreset> dvdPresets)
+    {
+        string? selectedCdId = (CdDiscPresetSelector.SelectedItem as CdDiscPreset)?.Id;
+        string? selectedDvdId = (DvdDiscPresetSelector.SelectedItem as DvdDiscPreset)?.Id;
+        CdDiscPreset selectedCd =
+            cdPresets.FirstOrDefault(value => value.Id == selectedCdId) ?? cdPresets[0];
+        DvdDiscPreset selectedDvd =
+            dvdPresets.FirstOrDefault(value => value.Id == selectedDvdId) ?? dvdPresets[0];
+
+        try
+        {
+            _isApplyingDiscPreset = true;
+            _cdDiscPresets = cdPresets;
+            _dvdDiscPresets = dvdPresets;
+            CdDiscPresetSelector.ItemsSource = _cdDiscPresets;
+            LiveCdDiscPresetSelector.ItemsSource = _cdDiscPresets;
+            DvdDiscPresetSelector.ItemsSource = _dvdDiscPresets;
+            LiveDvdDiscPresetSelector.ItemsSource = _dvdDiscPresets;
+        }
+        finally
+        {
+            _isApplyingDiscPreset = false;
+        }
+
+        ApplyCdDiscPreset(selectedCd);
+        ApplyDvdDiscPreset(selectedDvd);
+    }
+
     private void CdDiscPresetSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_isApplyingDiscPreset || sender is not ComboBox { SelectedItem: CdDiscPreset preset })
@@ -92,6 +182,11 @@ public partial class MainWindow : Window
             return;
         }
 
+        ApplyCdDiscPreset(preset);
+    }
+
+    private void ApplyCdDiscPreset(CdDiscPreset preset)
+    {
         try
         {
             _isApplyingDiscPreset = true;
@@ -104,10 +199,6 @@ public partial class MainWindow : Window
                 CdInnerRadius.Text = FormatPresetNumber(preset.InnerRadiusMm);
                 CdOuterRadius.Text = FormatPresetNumber(preset.OuterRadiusMm);
                 CdVelocity.Text = FormatPresetNumber(preset.LinearVelocityMmPerSecond);
-                CdImageOuterRadius.Text = FormatPresetNumber(preset.ImageOuterRadiusMm);
-                CdActualInnerRadius.Text = FormatPresetNumber(preset.ActualInnerRadiusMm);
-                CdActualOuterRadius.Text = FormatPresetNumber(preset.ActualOuterRadiusMm);
-                CdActualVelocity.Text = FormatPresetNumber(preset.ActualLinearVelocityMmPerSecond);
             }
         }
         finally
@@ -126,6 +217,11 @@ public partial class MainWindow : Window
             return;
         }
 
+        ApplyDvdDiscPreset(preset);
+    }
+
+    private void ApplyDvdDiscPreset(DvdDiscPreset preset)
+    {
         try
         {
             _isApplyingDiscPreset = true;
@@ -138,8 +234,6 @@ public partial class MainWindow : Window
                 DvdInnerRadius.Text = FormatPresetNumber(preset.InnerRadiusMm);
                 DvdOuterRadius.Text = FormatPresetNumber(preset.OuterRadiusMm);
                 DvdChannelBit.Text = FormatPresetNumber(preset.ChannelBitLengthNm);
-                DvdActualInnerRadius.Text = FormatPresetNumber(preset.ActualInnerRadiusMm);
-                DvdActualOuterRadius.Text = FormatPresetNumber(preset.ActualOuterRadiusMm);
             }
         }
         finally
@@ -152,10 +246,62 @@ public partial class MainWindow : Window
     }
 
     private void CdPresetParameter_TextChanged(object sender, TextChangedEventArgs e)
-        => SelectCustomPreset(CdDiscPresetSelector, CdDiscPreset.All);
+        => SelectCustomPreset(CdDiscPresetSelector, _cdDiscPresets);
 
     private void DvdPresetParameter_TextChanged(object sender, TextChangedEventArgs e)
-        => SelectCustomPreset(DvdDiscPresetSelector, DvdDiscPreset.All);
+        => SelectCustomPreset(DvdDiscPresetSelector, _dvdDiscPresets);
+
+    private void OpenDiscPresetsJson_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (!File.Exists(_discPresetJsonPath))
+            {
+                DiscPresetJsonStore.Save(
+                    _discPresetJsonPath,
+                    DiscPresetJsonStore.CreateInitialUserDocument());
+            }
+
+            Process.Start(new ProcessStartInfo(_discPresetJsonPath)
+            {
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(
+                this,
+                $"无法打开预设 JSON。\n\n{exception.Message}\n\n文件位置：\n{_discPresetJsonPath}",
+                "打开失败",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+    }
+
+    private void ReloadDiscPresets_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            (IReadOnlyList<CdDiscPreset> cdPresets, IReadOnlyList<DvdDiscPreset> dvdPresets) =
+                ReadDiscPresetCatalog();
+            RebindDiscPresetSelectors(cdPresets, dvdPresets);
+            MessageBox.Show(
+                this,
+                $"预设已重新加载：{cdPresets.Count - 1} 个 CD、{dvdPresets.Count - 1} 个 DVD。\n\n文件位置：\n{_discPresetJsonPath}",
+                "预设已更新",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(
+                this,
+                $"JSON 中有无法使用的内容，当前有效预设未改变。\n\n{exception.Message}\n\n文件位置：\n{_discPresetJsonPath}",
+                "重新加载失败",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+    }
 
     private void SelectCustomPreset<TPreset>(ComboBox selector, IReadOnlyList<TPreset> presets)
         where TPreset : class
@@ -183,10 +329,6 @@ public partial class MainWindow : Window
         yield return CdInnerRadius;
         yield return CdOuterRadius;
         yield return CdVelocity;
-        yield return CdImageOuterRadius;
-        yield return CdActualInnerRadius;
-        yield return CdActualOuterRadius;
-        yield return CdActualVelocity;
     }
 
     private IEnumerable<TextBox> DvdPresetFields()
@@ -195,8 +337,6 @@ public partial class MainWindow : Window
         yield return DvdInnerRadius;
         yield return DvdOuterRadius;
         yield return DvdChannelBit;
-        yield return DvdActualInnerRadius;
-        yield return DvdActualOuterRadius;
     }
 
     internal void SetLivePreviewAngleForSnapshot(string angle)
@@ -1013,6 +1153,15 @@ public partial class MainWindow : Window
         InitializeLivePreviewBindings();
         UpdateLivePreviewMode(clearResult: false);
         ScheduleLivePreview();
+        if (_discPresetLoadWarning is not null)
+        {
+            MessageBox.Show(
+                this,
+                _discPresetLoadWarning,
+                "预设加载失败",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
     }
 
     private void MainWindow_Closed(object? sender, EventArgs e)

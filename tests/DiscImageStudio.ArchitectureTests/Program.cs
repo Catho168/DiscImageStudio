@@ -37,6 +37,7 @@ Throws<ArgumentException>(
 Throws<ArgumentException>(() => catalog.Resolve("unknown-command"), "unknown command rejection");
 TestRingImageLayout();
 TestDiscPresets();
+TestDiscPresetJson();
 
 Console.WriteLine("architecture-selftest: all checks passed");
 return;
@@ -134,18 +135,32 @@ static void TestRingImageLayout()
 
 static void TestDiscPresets()
 {
-    Equal(5, CdDiscPreset.All.Count, "CD preset count including custom");
-    Equal(3, DvdDiscPreset.All.Count, "DVD preset count including custom");
+    DiscPresetJsonDocument builtIn = DiscPresetJsonStore.LoadBuiltIn();
+    Equal(4, builtIn.CdPresets.Count, "built-in CD preset count");
+    Equal(3, builtIn.DvdPresets.Count, "built-in DVD preset count");
+    Equal("zh-CN", builtIn.FallbackLanguage!, "built-in preset fallback language");
+    True(
+        builtIn.CdPresets.All(value =>
+            !string.IsNullOrWhiteSpace(value.DisplayNameResourceKey)
+            && !string.IsNullOrWhiteSpace(value.DescriptionResourceKey)),
+        "built-in CD presets reserve localization resource keys");
+    True(
+        builtIn.DvdPresets.All(value =>
+            !string.IsNullOrWhiteSpace(value.DisplayNameResourceKey)
+            && !string.IsNullOrWhiteSpace(value.DescriptionResourceKey)),
+        "built-in DVD presets reserve localization resource keys");
     Equal(
-        CdDiscPreset.All.Count,
-        CdDiscPreset.All.Select(value => value.Id).Distinct(StringComparer.Ordinal).Count(),
+        builtIn.CdPresets.Count,
+        builtIn.CdPresets.Select(value => value.Id).Distinct(StringComparer.Ordinal).Count(),
         "CD preset IDs are unique");
     Equal(
-        DvdDiscPreset.All.Count,
-        DvdDiscPreset.All.Select(value => value.Id).Distinct(StringComparer.Ordinal).Count(),
+        builtIn.DvdPresets.Count,
+        builtIn.DvdPresets.Select(value => value.Id).Distinct(StringComparer.Ordinal).Count(),
         "DVD preset IDs are unique");
+    True(CdDiscPreset.Manual.IsCustom, "CD manual state is separate from JSON presets");
+    True(DvdDiscPreset.Manual.IsCustom, "DVD manual state is separate from JSON presets");
 
-    foreach (CdDiscPreset preset in CdDiscPreset.All.Where(value => !value.IsCustom))
+    foreach (CdDiscPresetDefinition preset in builtIn.CdPresets)
     {
         True(
             preset.LinearVelocityMmPerSecond is >= 1_200 and <= 1_400,
@@ -154,11 +169,10 @@ static void TestDiscPresets()
             preset.InnerRadiusMm,
             preset.OuterRadiusMm,
             preset.Sectors,
-            preset.LinearVelocityMmPerSecond,
-            ImageOuterRadiusMm: preset.ImageOuterRadiusMm).Validate();
+            preset.LinearVelocityMmPerSecond).Validate();
     }
 
-    foreach (DvdDiscPreset preset in DvdDiscPreset.All.Where(value => !value.IsCustom))
+    foreach (DvdDiscPresetDefinition preset in builtIn.DvdPresets)
     {
         new DvdStreamingOptions(
             preset.TotalSectors,
@@ -168,27 +182,175 @@ static void TestDiscPresets()
             StartAngleDegrees: 0).Validate();
     }
 
-    CdDiscPreset cd80 = CdDiscPreset.All.Single(value => value.Id == "cd-80");
+    CdDiscPresetDefinition cd80 = builtIn.CdPresets.Single(value => value.Id == "cd-80");
     Equal(359_849L, cd80.Sectors, "80-minute CD preset sectors");
-    CdDiscPreset ritek = CdDiscPreset.All.Single(value => value.Id == "ritek-medical-aqua");
+    CdDiscPresetDefinition ritek = builtIn.CdPresets.Single(
+        value => value.Id == "ritek-medical-aqua");
     Equal(359_845L, ritek.Sectors, "RITEK medical aqua preset sectors");
     Equal(24.911275, ritek.InnerRadiusMm, "RITEK medical aqua inner radius");
     Equal(57.931155, ritek.OuterRadiusMm, "RITEK medical aqua outer radius");
-    True(
-        ritek.ImageOuterRadiusMm >= ritek.OuterRadiusMm,
-        "RITEK medical aqua image canvas covers the outer radius");
-    CdDiscPreset verbatim = CdDiscPreset.All.Single(value => value.Id == "verbatim-azo-43438");
+    CdDiscPresetDefinition verbatim = builtIn.CdPresets.Single(
+        value => value.Id == "verbatim-azo-43438");
     Equal(359_848L, verbatim.Sectors, "Verbatim AZO 43438 preset sectors");
     Equal(24.837775, verbatim.InnerRadiusMm, "Verbatim AZO 43438 inner radius");
     Equal(58.020875, verbatim.OuterRadiusMm, "Verbatim AZO 43438 outer radius");
-    True(
-        verbatim.ImageOuterRadiusMm >= verbatim.OuterRadiusMm,
-        "Verbatim AZO 43438 image canvas covers the outer radius");
-    DvdDiscPreset dvd120 = DvdDiscPreset.All.Single(value => value.Id == "dvd-5-120mm");
+    DvdDiscPresetDefinition dvd120 = builtIn.DvdPresets.Single(
+        value => value.Id == "dvd-5-120mm");
     Equal(2_295_104U, dvd120.TotalSectors, "120 mm DVD preset sectors");
-    DvdDiscPreset dvd80 = DvdDiscPreset.All.Single(value => value.Id == "dvd-5-80mm");
+    DvdDiscPresetDefinition verbatimDvd = builtIn.DvdPresets.Single(
+        value => value.Id == "verbatim-dvd-r-azo-43533");
+    Equal(2_297_888U, verbatimDvd.TotalSectors, "Verbatim DVD-R AZO 43533 sectors");
+    Equal(23.9968875, verbatimDvd.InnerRadiusMm, "Verbatim DVD-R AZO 43533 inner radius");
+    Equal(57.9779875, verbatimDvd.OuterRadiusMm, "Verbatim DVD-R AZO 43533 outer radius");
+    DvdDiscPresetDefinition dvd80 = builtIn.DvdPresets.Single(
+        value => value.Id == "dvd-5-80mm");
     Equal(714_544U, dvd80.TotalSectors, "80 mm DVD preset sectors");
     Equal(38.0, dvd80.OuterRadiusMm, "80 mm DVD preset outer radius");
+}
+
+static void TestDiscPresetJson()
+{
+    string directory = Path.Combine(Path.GetTempPath(), $"disc-presets-test-{Guid.NewGuid():N}");
+    string path = Path.Combine(directory, DiscPresetJsonStore.FileName);
+    DiscPresetJsonDocument initialUser = DiscPresetJsonStore.CreateInitialUserDocument();
+
+    try
+    {
+        DiscPresetJsonDocument builtIn = DiscPresetJsonStore.LoadBuiltIn();
+        DiscPresetJsonDocument created = DiscPresetJsonStore.LoadOrCreate(path, initialUser);
+        True(File.Exists(path), "user preset JSON is created on first load");
+        Equal(1, created.CdPresets.Count, "initial user CD preset count");
+        Equal(1, created.DvdPresets.Count, "initial user DVD preset count");
+        True(
+            File.ReadAllText(path).Contains("自定义 DVD 参数", StringComparison.Ordinal),
+            "initial user JSON keeps custom preset names readable");
+        True(
+            !File.ReadAllText(path).Contains("Verbatim DVD-R AZO (43533)", StringComparison.Ordinal),
+            "user JSON does not snapshot built-in presets");
+        True(
+            !File.ReadAllText(path).Contains("displayNameResourceKey", StringComparison.Ordinal),
+            "user presets do not require localization resource keys");
+        True(
+            !File.ReadAllText(path).Contains("imageOuterRadiusMm", StringComparison.Ordinal),
+            "preset JSON excludes image layout parameters");
+
+        DiscPresetJsonDocument merged = DiscPresetJsonStore.Merge(builtIn, created);
+        Equal(5, merged.CdPresets.Count, "merged CD preset count");
+        Equal(4, merged.DvdPresets.Count, "merged DVD preset count");
+        DvdDiscPresetDefinition verbatim = merged.DvdPresets.Single(
+            value => value.Id == "verbatim-dvd-r-azo-43533");
+        Equal(2_297_888U, verbatim.TotalSectors, "merged Verbatim DVD sectors");
+
+        DiscPresetJsonDocument updatedBuiltIn = builtIn with
+        {
+            CdPresets = builtIn.CdPresets
+                .Select(value => value.Id == "cd-80" ? value with { Sectors = 360_000 } : value)
+                .ToArray(),
+        };
+        DiscPresetJsonDocument mergedUpdate = DiscPresetJsonStore.Merge(updatedBuiltIn, created);
+        Equal(
+            360_000L,
+            mergedUpdate.CdPresets.Single(value => value.Id == "cd-80").Sectors,
+            "built-in updates flow through the user layer");
+
+        DiscPresetJsonDocument userEdited = created with
+        {
+            CdPresets = created.CdPresets
+                .Append(new CdDiscPresetDefinition(
+                    "cd-80",
+                    "用户覆盖的 CD 80",
+                    "同 ID 的用户参数覆盖内置参数。",
+                    350_000,
+                    24.6,
+                    57.0,
+                    1_200))
+                .ToArray(),
+            DisabledDvdPresetIds = ["dvd-5-80mm"],
+        };
+        DiscPresetJsonStore.Save(path, userEdited);
+        DiscPresetJsonDocument reloaded = DiscPresetJsonStore.Load(path);
+        DiscPresetJsonDocument mergedUserEdit = DiscPresetJsonStore.Merge(builtIn, reloaded);
+        Equal(
+            350_000L,
+            mergedUserEdit.CdPresets.Single(value => value.Id == "cd-80").Sectors,
+            "user preset overrides the same built-in ID");
+        True(
+            mergedUserEdit.CdPresets.Any(value => value.Id == "user-custom-cd"),
+            "custom user CD preset survives merge");
+        True(
+            mergedUserEdit.DvdPresets.All(value => value.Id != "dvd-5-80mm"),
+            "disabled built-in DVD preset is hidden");
+
+        string validJson = File.ReadAllText(path);
+        DiscPresetJsonDocument reservedId = reloaded with
+        {
+            DvdPresets = reloaded.DvdPresets
+                .Append(reloaded.DvdPresets[0] with { Id = "__manual__" })
+                .ToArray(),
+        };
+        Throws<InvalidDataException>(
+            () => DiscPresetJsonStore.Save(path, reservedId),
+            "reserved manual-state preset ID rejection");
+        Equal(validJson, File.ReadAllText(path), "invalid preset save preserves valid JSON");
+
+        File.WriteAllText(
+            path,
+            """
+            {
+              // 用户可以为实测盘片留下说明。
+              "schemaVersion": 2,
+              "cdPresets": [],
+              "dvdPresets": [],
+              "disabledCdPresetIds": [],
+              "disabledDvdPresetIds": [],
+            }
+            """);
+        DiscPresetJsonDocument commented = DiscPresetJsonStore.Load(path);
+        Equal(0, commented.CdPresets.Count, "preset JSON comments and trailing commas");
+
+        File.WriteAllText(
+            path,
+            """
+            {
+              "schemaVersion": 2,
+              "cdPresets": [
+                {
+                  "id": "old-shape",
+                  "displayName": "旧结构",
+                  "description": "包含不属于预设的图片字段。",
+                  "sectors": 350000,
+                  "innerRadiusMm": 24.5,
+                  "outerRadiusMm": 57.0,
+                  "linearVelocityMmPerSecond": 1200,
+                  "imageOuterRadiusMm": 58.0
+                }
+              ],
+              "dvdPresets": []
+            }
+            """);
+        Throws<InvalidDataException>(
+            () => DiscPresetJsonStore.Load(path),
+            "non-generation preset field rejection");
+
+        File.WriteAllText(
+            path,
+            "{ \"schemaVersion\": 1, \"cdPresets\": [], \"dvdPresets\": [] }");
+        Throws<InvalidDataException>(
+            () => DiscPresetJsonStore.Load(path),
+            "pre-layered schema rejection");
+
+        File.WriteAllText(path, "{ \"schemaVersion\": 2, \"cdPresets\": [ }");
+        Throws<InvalidDataException>(
+            () => DiscPresetJsonStore.Load(path),
+            "malformed preset JSON rejection");
+    }
+    finally
+    {
+        if (Directory.Exists(directory))
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
 }
 
 static void TestStreamingGeneration(string sourcePath)

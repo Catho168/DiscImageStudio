@@ -295,8 +295,18 @@
                                     <TextBlock Text="固定使用快速纹理算法，并按标准顺时针（CW）生成。"
                                                Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,14" />
                                     <TextBlock Style="{StaticResource FieldLabel}" Text="盘片预设" />
-                                    <ComboBox x:Name="DvdDiscPresetSelector" DisplayMemberPath="DisplayName"
-                                              Margin="0,0,0,8" />
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <ComboBox x:Name="DvdDiscPresetSelector" DisplayMemberPath="DisplayName" />
+                                        <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Width="96"
+                                                Click="OpenDiscPresetsJson_Click" Content="打开 JSON" />
+                                        <Button Grid.Column="2" Style="{StaticResource BrowseButton}" Width="88"
+                                                Click="ReloadDiscPresets_Click" Content="重新加载" />
+                                    </Grid>
                                     <TextBlock x:Name="DvdDiscPresetHint" Foreground="{StaticResource TextMutedBrush}"
                                                TextWrapping="Wrap" Margin="0,0,0,14" />
                                     <WrapPanel>
@@ -415,8 +425,18 @@
                                 <StackPanel>
                                     <TextBlock Style="{StaticResource SectionTitle}" Text="生成几何" />
                                     <TextBlock Style="{StaticResource FieldLabel}" Text="盘片预设" />
-                                    <ComboBox x:Name="CdDiscPresetSelector" DisplayMemberPath="DisplayName"
-                                              Margin="0,0,0,8" />
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <ComboBox x:Name="CdDiscPresetSelector" DisplayMemberPath="DisplayName" />
+                                        <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Width="96"
+                                                Click="OpenDiscPresetsJson_Click" Content="打开 JSON" />
+                                        <Button Grid.Column="2" Style="{StaticResource BrowseButton}" Width="88"
+                                                Click="ReloadDiscPresets_Click" Content="重新加载" />
+                                    </Grid>
                                     <TextBlock x:Name="CdDiscPresetHint" Foreground="{StaticResource TextMutedBrush}"
                                                TextWrapping="Wrap" Margin="0,0,0,14" />
                                     <WrapPanel>

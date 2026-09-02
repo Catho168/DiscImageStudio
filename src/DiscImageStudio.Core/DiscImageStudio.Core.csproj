@@ -6,4 +6,8 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Presets\built-in-disc-presets.json"
+                      LogicalName="DiscImageStudio.Core.BuiltInDiscPresets.json" />
+  </ItemGroup>
 </Project>
