@@ -1,6 +1,6 @@
 # 本地验证记录
 
-验证日期：2026 年 9 月 2 日
+验证日期：2026 年 9 月 3 日
 
 - `dotnet build DiscImageStudio.slnx --configuration Release`：0 警告、0 错误。
 - DVD 引擎直接运行 `selftest`：全部通过。
@@ -10,8 +10,8 @@
 - 流式生成回归通过：CD 2 个扇区连续输出 4704 字节，纯绘图 DVD 16 个扇区连续输出 32768 字节；两者均写入内存流，没有创建镜像文件。
 - DVD 混合流式回归通过：先为嵌套文件夹计算 ISO9660/Joliet 布局，再向禁止 Seek/Position 的前向流输出 64 个扇区；卷描述符位于 LBA 16，源文件内容完整位于绘图起点之前，绘图起点按 PSN 对齐到 16-sector ECC Block，最终输出长度与整盘声明长度完全一致，且没有创建临时 ISO。
 - 有界缓冲 COM `IStream` 测试通过：声明长度、读取前查询末尾位置、复位、非整块连续读取和逐字节一致性均正确；长度不是 2352/2048 扇区整数倍时会在刻录前拒绝。
-- CD Track-At-Once 调用顺序回归通过：`DoNotFinalizeMedia` → `PrepareMedia` → 可选 `SetWriteSpeed` → 读取实际速度 → 空白盘/容量检查 → `AddAudioTrack` → `ReleaseMedia`；IMAPI2 默认启用防缓冲欠载，不再执行部分驱动会拒绝的冗余属性设置。清理阶段即使返回 `0xC0AA0502`，也不会覆盖真正的首个写入错误。
-- 刻录速度回归通过：CD 与 DVD 的扇区/秒可正确换算为倍速和 MB/s，请求速度必须为正值；界面保留“自动（最快）”，并按当前刻录机、盘片和 CD/DVD 模式读取 IMAPI2 写入配置。实际写入前设置所选速度，并读取驱动器最终采用的速度用于状态和日志。
+- CD Raw CD/DAO 调用顺序回归通过：`PrepareMedia` → 物理空白盘检查 → 选择 Cooked R-W 子通道 → `SetWriteSpeed` → 构造 RAW 音轨 → lead-out 边界检查 → `WriteMedia` → `ReleaseMedia`。同一张物理空白盘上，TAO 的 `FreeSectorsOnMedia` 为 359,843，而 Raw DAO 的 `LastPossibleStartOfLeadout` 为 359,845，确认用户遇到的 2 扇区不足来自 TAO 音轨开销，359,845 扇区内容在 DAO 下刚好合法。边界测试另确认 DAO lead-out 超出 3 个扇区时允许受限 overburn，超出 4 个扇区时在写入前拒绝；清理错误不会覆盖首个写入错误。真实 Windows `MsftRawCDImageCreator` 内存构造测试确认现有前向生成流可生成带 lead-in、Cooked R-W 子通道和 lead-out 的 DAO 镜像。
+- 刻录速度回归通过：CD 与 DVD 的扇区/秒可正确换算为倍速和 MB/s，请求速度必须为正值；界面使用“自动（推荐）”，并按当前刻录机、盘片和 CD/DVD 模式读取 IMAPI2 写入配置。CD DAO 自动模式请求 1200 扇区/秒，DVR-S21 实际接受 1199 扇区/秒（约 16×、CLV）；显式选择仍使用所选速度。实际采用速度会显示在状态和日志中。
 - 盘片预设回归通过：CD 80/74 分钟和 12/8 cm 单层 DVD 参数均能通过各自生成器校验；12 cm DVD 为 2,295,104 扇区、24–58 mm，8 cm DVD 为 714,544 扇区、24–38 mm，所有预设 ID 唯一。
 - 铼德医疗水蓝盘实测预设回归通过：359,845 扇区、生成半径 24.911275–57.931155 mm。
 - Verbatim CD-R AZO (43438) 实测预设回归通过：359,848 扇区、生成半径 24.837775–58.020875 mm。
@@ -36,8 +36,11 @@
 - CD、DVD 环形复制实时预览端到端检查通过：使用方形应用图标时均自动复制 8 份；1.0.8 DVD 灰度预览中所有副本等比、完整且相邻留有空隙，截图 SHA-256 为 `F5F557C2CB3C3FC9C926560C9B588392368E34331B86A50A8842B2DA28C62485`。
 - Windows SDK MakeAppx 10.0.26100.8249 成功生成模块化版本的测试 MSIX。
 - SignTool 成功使用主题 `CN=Disc Image Studio Test` 的专用代码签名证书签名，证书主题与清单 Publisher 一致。
-- 1.0.18.0 签名测试包已生成；包清单版本与 EXE 文件版本均为 1.0.18.0，签名有效，签名主题与清单 Publisher 均为 `CN=Disc Image Studio Test`。
-- 1.0.18.0 包含 DVD 混合流式刻录、Verbatim DVD-R AZO (43533) 预设以及分层、可编辑、预留 i18n 兼容字段的生成参数 JSON；从 MSIX staging 中的自包含 EXE 运行 DVD `selftest` 已通过。
+- 1.0.21.0 签名测试包已生成；包清单版本与 EXE 产品版本均为 1.0.21，签名有效，SHA-256 为 `0EA24B8DD14FA30FFBE3809AFCABF293A8E08BBE5D606AC12A3835FA9A4E5FA4`。该版本确认 Track-at-Once 的 `AddAudioTrack` 会再次执行容量检查并以 `0xC0AA0509` 拒绝超界音轨，因此不能用于真正的 overburn。
+- 1.0.22.0 签名测试包已生成并覆盖安装；包清单与 EXE 产品版本均为 1.0.22，签名有效，SHA-256 为 `54A033BBEF7154FB10AFB385826E4F59DB4DE943B4340EA69642372E3B4DFEC0`。包内 EXE 与 WindowsApps 实际安装 EXE 的 `burn-build-info` 自检均返回 0，确认包含 Raw CD DAO writer；已安装包状态为 `Ok`。
+- 1.0.22.0 实机首次 DAO 提交返回 `0xC0AA0301`；失败后盘片仍同时报告为物理空白和启发式空白，系统日志只记录独占锁。复查发现该版本人为选择 P/Q-only（1），而 Windows RAW writer 与 RAW image creator 的默认值均为 Cooked R-W（2）。DVR-S21 已确认接受 Cooked R-W、1200 扇区/秒请求并调整为 1199 扇区/秒，盘片仍保持物理空白。
+- 1.0.23.0 签名测试包已生成并覆盖安装；包清单与 EXE 产品版本均为 1.0.23，签名有效，SHA-256 为 `8C6157B9FE11C800D6486BF951E6CDF24E7791C6B099BC7352D0B98DD4D212F7`。包内与 WindowsApps 实际安装 EXE 的 DAO writer 自检均返回 0，已安装包状态为 `Ok`。
+- PIONEER DVD-RW DVR-S21 实机最小 CD-DA 流式刻录通过：使用 IMAPI2 默认速度 48×，连续写入 705,600 字节（4 秒零值 PCM）并正常关闭会话，总耗时 29.3 秒。
 - `Install-TestPackage.ps1` 已通过 PowerShell 语法检查；脚本会请求 UAC，把公钥导入本地计算机“受信任人”后安装测试包。
 
 测试 MSIX 使用测试 Identity/Publisher 和自签名测试证书，只用于本机安装验证，不能提交商店。正式包必须使用 Partner Center 的真实身份重新生成。

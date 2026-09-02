@@ -4,8 +4,6 @@ namespace DiscImageStudio.Burning;
 
 internal interface ICdTrackAtOnceSession
 {
-    bool DoNotFinalizeMedia { set; }
-
     int NumberOfExistingTracks { get; }
 
     long FreeSectorsOnMedia { get; }
@@ -28,11 +26,6 @@ internal interface ICdTrackAtOnceSession
 internal sealed class DynamicCdTrackAtOnceSession(object format) : ICdTrackAtOnceSession
 {
     private readonly dynamic _format = format;
-
-    public bool DoNotFinalizeMedia
-    {
-        set => _format.DoNotFinalizeMedia = value;
-    }
 
     public int NumberOfExistingTracks => Convert.ToInt32(_format.NumberOfExistingTracks);
 

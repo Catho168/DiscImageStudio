@@ -1975,7 +1975,7 @@ public partial class MainWindow : Window
         string DisplayName)
     {
         internal static BurnWriteSpeedOption Automatic { get; } =
-            new(null, "自动（最快）");
+            new(null, "自动（推荐）");
     }
 
     private sealed class PreparedImage : IDisposable

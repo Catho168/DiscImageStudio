@@ -48,6 +48,11 @@ internal static class UnifiedCommandRunner
                 return PrintBurnDevices();
             }
 
+            if (command == "burn-build-info")
+            {
+                return PrintBurnBuildInfo();
+            }
+
             DiscJobRequest request = new(command, arguments.Skip(1));
             ImmediateProgress progress = new(value =>
             {
@@ -98,6 +103,7 @@ internal static class UnifiedCommandRunner
             Developer command:
               ui-snapshot --output SCREENSHOT.png
               burn-devices
+              burn-build-info
 
             Blu-ray support is added as another IOpticalDiscModule; CD and DVD engines
             do not need to be modified. See docs/ADDING_BLURAY.md.
@@ -123,6 +129,27 @@ internal static class UnifiedCommandRunner
         }
 
         return 0;
+    }
+
+    private static int PrintBurnBuildInfo()
+    {
+        Type burningAssemblyMarker = typeof(WindowsImapiBurner);
+        Type? sessionType = burningAssemblyMarker.Assembly.GetType(
+            "DiscImageStudio.Burning.ICdTrackAtOnceSession",
+            throwOnError: false);
+        bool containsLegacyFinalizeSetter = sessionType?
+            .GetProperty("DoNotFinalizeMedia") is not null;
+        Type? rawSessionType = burningAssemblyMarker.Assembly.GetType(
+            "DiscImageStudio.Burning.ICdRawSession",
+            throwOnError: false);
+        bool containsRawDaoWriter = rawSessionType?
+            .GetMethod("WriteMedia") is not null;
+        Console.WriteLine(
+            $"Burning assembly MVID: {burningAssemblyMarker.Module.ModuleVersionId}");
+        Console.WriteLine(
+            $"Legacy DoNotFinalizeMedia setter present: {containsLegacyFinalizeSetter}");
+        Console.WriteLine($"Raw CD DAO writer present: {containsRawDaoWriter}");
+        return containsLegacyFinalizeSetter || !containsRawDaoWriter ? 1 : 0;
     }
 
     private static string RequireOption(ReadOnlySpan<string> arguments, string key)

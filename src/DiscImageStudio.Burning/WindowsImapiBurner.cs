@@ -1,10 +1,17 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ComTypes;
 
 namespace DiscImageStudio.Burning;
 
 public sealed class WindowsImapiBurner : IOpticalDiscBurner
 {
+    private const int CdRawSubcodeIsCooked = 2;
+    private const int CdDaoAutomaticSpeedSectorsPerSecond = 1200;
+    // DAO avoids the two-sector TAO track overhead observed on the tested drive.
+    // Keep only a very small physical overburn allowance for nearby measured presets.
+    private const long CdDaoOverburnAllowanceSectors = 3;
+
     private const int BlankMediaState = 0x2;
 
     public Task<IReadOnlyList<OpticalBurnDevice>> GetDevicesAsync(
@@ -89,7 +96,7 @@ public sealed class WindowsImapiBurner : IOpticalDiscBurner
         try
         {
             format = mediaKind == OpticalBurnMediaKind.CdAudio
-                ? CreateComObject("IMAPI2.MsftDiscFormat2TrackAtOnce")
+                ? CreateComObject("IMAPI2.MsftDiscFormat2RawCD")
                 : CreateComObject("IMAPI2.MsftDiscFormat2Data");
             format.Recorder = recorder;
             format.ClientName = "Disc Image Studio";
@@ -142,7 +149,7 @@ public sealed class WindowsImapiBurner : IOpticalDiscBurner
         {
             currentOperation = "创建刻录格式";
             format = request.MediaKind == OpticalBurnMediaKind.CdAudio
-                ? CreateComObject("IMAPI2.MsftDiscFormat2TrackAtOnce")
+                ? CreateComObject("IMAPI2.MsftDiscFormat2RawCD")
                 : CreateComObject("IMAPI2.MsftDiscFormat2Data");
             currentOperation = "连接刻录机";
             format.Recorder = recorder;
@@ -178,8 +185,10 @@ public sealed class WindowsImapiBurner : IOpticalDiscBurner
             OpticalWriteSpeed? actualWriteSpeed;
             if (request.MediaKind == OpticalBurnMediaKind.CdAudio)
             {
+                using DynamicCdRawImageSession imageSession = new();
                 actualWriteSpeed = BurnCdAudio(
-                    new DynamicCdTrackAtOnceSession(format),
+                    new DynamicCdRawSession(format),
+                    imageSession,
                     content,
                     request,
                     cancellationToken,
@@ -231,15 +240,14 @@ public sealed class WindowsImapiBurner : IOpticalDiscBurner
     }
 
     internal static OpticalWriteSpeed BurnCdAudio(
-        ICdTrackAtOnceSession format,
+        ICdRawSession format,
+        ICdRawImageSession imageSession,
         GeneratedContentComStream content,
         OpticalBurnRequest request,
         CancellationToken cancellationToken,
         Action<string>? reportOperation = null,
         Action<OpticalWriteSpeed>? reportWriteSpeed = null)
     {
-        reportOperation?.Invoke("设置 CD 会话关闭方式");
-        format.DoNotFinalizeMedia = false;
         bool prepared = false;
         Exception? operationException = null;
         try
@@ -247,6 +255,20 @@ public sealed class WindowsImapiBurner : IOpticalDiscBurner
             reportOperation?.Invoke("准备并锁定 CD 介质");
             format.PrepareMedia();
             prepared = true;
+            reportOperation?.Invoke("检查 CD 是否为空白盘");
+            if (!format.MediaPhysicallyBlank)
+            {
+                throw new InvalidOperationException("CD 不是空白盘，已取消刻录。");
+            }
+
+            reportOperation?.Invoke("设置 CD DAO 扇区格式");
+            if (!format.SupportedSectorTypes.Contains(CdRawSubcodeIsCooked))
+            {
+                throw new InvalidOperationException(
+                    "所选光驱不支持 CD DAO 所需的 Cooked R-W 子通道格式。");
+            }
+
+            format.SetRequestedSectorType(CdRawSubcodeIsCooked);
             if (request.WriteSpeed is not null)
             {
                 reportOperation?.Invoke("设置 CD 刻录速度");
@@ -254,31 +276,40 @@ public sealed class WindowsImapiBurner : IOpticalDiscBurner
                     request.WriteSpeed.SectorsPerSecond,
                     request.WriteSpeed.RotationTypeIsPureCav);
             }
+            else
+            {
+                reportOperation?.Invoke("设置 CD DAO 稳定刻录速度");
+                format.SetWriteSpeed(CdDaoAutomaticSpeedSectorsPerSecond, false);
+            }
 
             OpticalWriteSpeed actualWriteSpeed = new(
                 format.CurrentWriteSpeed,
                 format.CurrentRotationTypeIsPureCav);
             actualWriteSpeed.Validate();
             reportWriteSpeed?.Invoke(actualWriteSpeed);
-            // IMAPI enables buffer-underrun-free recording by default. Avoid changing
-            // the prepared-only property because some drives reject the redundant set.
-            reportOperation?.Invoke("检查 CD 是否为空白盘");
-            if (format.NumberOfExistingTracks != 0)
+
+            reportOperation?.Invoke("构造 CD DAO 音轨");
+            IStream rawImage = imageSession.CreateAudioImage(content);
+            long startOfLeadout = imageSession.StartOfLeadout;
+            long lastPossibleStartOfLeadout = format.LastPossibleStartOfLeadout;
+            long excessSectors = startOfLeadout - lastPossibleStartOfLeadout;
+            if (excessSectors > CdDaoOverburnAllowanceSectors)
             {
-                throw new InvalidOperationException("CD 不是空白盘，已取消刻录。");
+                throw new InvalidOperationException(
+                    $"CD DAO lead-out 超出盘片边界 {excessSectors} 个扇区；"
+                    + $"最多允许 {CdDaoOverburnAllowanceSectors} 个 DAO 扇区的受限 overburn。");
             }
 
-            reportOperation?.Invoke("检查 CD 可用容量");
-            long requiredSectors = request.ContentLength / 2352;
-            if (format.FreeSectorsOnMedia < requiredSectors)
+            if (excessSectors > 0)
             {
-                throw new InvalidOperationException("CD 剩余容量不足。");
+                reportOperation?.Invoke(
+                    $"使用 CD DAO 末端 overburn（超出 {excessSectors} 个 DAO 扇区）");
             }
 
             using CancellationTokenRegistration registration = cancellationToken.Register(
-                format.CancelAddTrack);
-            reportOperation?.Invoke("写入 CD 音轨");
-            format.AddAudioTrack(content);
+                format.CancelWrite);
+            reportOperation?.Invoke("写入 CD DAO 音轨");
+            format.WriteMedia(rawImage);
             return actualWriteSpeed;
         }
         catch (Exception exception)
@@ -303,7 +334,7 @@ public sealed class WindowsImapiBurner : IOpticalDiscBurner
         }
     }
 
-    private static void TryReleaseCdMedia(ICdTrackAtOnceSession format)
+    private static void TryReleaseCdMedia(ICdRawSession format)
     {
         try
         {

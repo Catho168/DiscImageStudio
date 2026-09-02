@@ -500,10 +500,11 @@ static void TestStreamingGeneration(string sourcePath)
         Marshal.FreeHGlobal(countPointer);
     }
 
-    TestCdTrackAtOnceCallOrder();
+    TestCdRawDaoCallOrder();
+    TestCdRawImageConstruction();
 }
 
-static void TestCdTrackAtOnceCallOrder()
+static void TestCdRawDaoCallOrder()
 {
     byte[] sector = new byte[2352];
     using GeneratedContentComStream content = new(
@@ -518,35 +519,101 @@ static void TestCdTrackAtOnceCallOrder()
         sector.Length,
         (_, _) => { },
         new OpticalWriteSpeed(1200, false));
-    RecordingCdTrackAtOnceSession session = new();
+    RecordingCdRawSession session = new();
+    using RecordingCdRawImageSession imageSession = new(session.Calls);
 
     WindowsImapiBurner.BurnCdAudio(
         session,
+        imageSession,
         content,
         request,
         CancellationToken.None);
 
     Equal(
-        "DoNotFinalizeMedia,PrepareMedia,SetWriteSpeed,"
+        "PrepareMedia,MediaPhysicallyBlank,SupportedSectorTypes,"
+        + "SetRequestedSectorType,SetWriteSpeed,"
         + "CurrentWriteSpeed,CurrentRotationTypeIsPureCav,"
-        + "NumberOfExistingTracks,FreeSectorsOnMedia,"
-        + "AddAudioTrack,ReleaseMedia",
+        + "CreateAudioImage,StartOfLeadout,LastPossibleStartOfLeadout,"
+        + "WriteMedia,ReleaseMedia",
         string.Join(',', session.Calls),
-        "CD Track-At-Once preparation order");
+        "CD Raw DAO preparation order");
 
-    RecordingCdTrackAtOnceSession failingSession = new()
+    RecordingCdRawSession automaticSpeedSession = new();
+    using RecordingCdRawImageSession automaticSpeedImage = new(automaticSpeedSession.Calls);
+    WindowsImapiBurner.BurnCdAudio(
+        automaticSpeedSession,
+        automaticSpeedImage,
+        content,
+        request with { WriteSpeed = null },
+        CancellationToken.None);
+    Equal(
+        1200,
+        automaticSpeedSession.LastRequestedWriteSpeed,
+        "CD Raw DAO automatic mode requests stable 16x speed");
+
+    RecordingCdRawSession boundedOverburnSession = new()
     {
-        AddAudioTrackError = new COMException(
-            "original write failure",
-            unchecked((int)0xC0AA050D)),
-        ReleaseMediaError = new COMException(
-            "cleanup says not prepared",
-            unchecked((int)0xC0AA0502)),
+        LastLeadoutSector = 1,
+    };
+    using RecordingCdRawImageSession boundedOverburnImage = new(
+        boundedOverburnSession.Calls)
+    {
+        ImageStartOfLeadout = 4,
+    };
+    WindowsImapiBurner.BurnCdAudio(
+        boundedOverburnSession,
+        boundedOverburnImage,
+        content,
+        request,
+        CancellationToken.None);
+    True(
+        boundedOverburnSession.Calls.Contains(nameof(ICdRawSession.WriteMedia)),
+        "CD Raw DAO permits the bounded overburn case");
+
+    RecordingCdRawSession excessiveOverburnSession = new()
+    {
+        LastLeadoutSector = 1,
+    };
+    using RecordingCdRawImageSession excessiveOverburnImage = new(
+        excessiveOverburnSession.Calls)
+    {
+        ImageStartOfLeadout = 5,
     };
     try
     {
         WindowsImapiBurner.BurnCdAudio(
+            excessiveOverburnSession,
+            excessiveOverburnImage,
+            content,
+            request,
+            CancellationToken.None);
+        throw new InvalidOperationException("CD overburn limit: expected InvalidOperationException.");
+    }
+    catch (InvalidOperationException exception)
+    {
+        True(
+            exception.Message.Contains("超出盘片边界 4 个扇区", StringComparison.Ordinal),
+            "CD DAO capacity error reports exact lead-out excess");
+        True(
+            !excessiveOverburnSession.Calls.Contains(nameof(ICdRawSession.WriteMedia)),
+            "CD Raw DAO rejects overburn beyond its bounded allowance");
+    }
+
+    RecordingCdRawSession failingSession = new()
+    {
+        WriteMediaError = new COMException(
+            "original write failure",
+            unchecked((int)0xC0AA0601)),
+        ReleaseMediaError = new COMException(
+            "cleanup says not prepared",
+            unchecked((int)0xC0AA0602)),
+    };
+    using RecordingCdRawImageSession failingImageSession = new(failingSession.Calls);
+    try
+    {
+        WindowsImapiBurner.BurnCdAudio(
             failingSession,
+            failingImageSession,
             content,
             request,
             CancellationToken.None);
@@ -555,10 +622,36 @@ static void TestCdTrackAtOnceCallOrder()
     catch (COMException exception)
     {
         Equal(
-            unchecked((int)0xC0AA050D),
+            unchecked((int)0xC0AA0601),
             exception.HResult,
-            "CD write failure is not masked by cleanup");
+            "CD Raw DAO write failure is not masked by cleanup");
     }
+}
+
+static void TestCdRawImageConstruction()
+{
+    byte[] sector = Enumerable.Repeat((byte)0x5A, 2352).ToArray();
+    const int sectorCount = 300;
+    using GeneratedContentComStream content = new(
+        sectorCount * (long)sector.Length,
+        (output, _) =>
+        {
+            for (int index = 0; index < sectorCount; index++)
+            {
+                output.Write(sector);
+            }
+        },
+        progress: null,
+        CancellationToken.None);
+    content.WaitUntilPrebuffered(CancellationToken.None);
+
+    using DynamicCdRawImageSession imageSession = new();
+    IStream rawImage = imageSession.CreateAudioImage(content);
+    rawImage.Stat(out STATSTG stat, 1);
+    Equal(300L, imageSession.StartOfLeadout, "Raw CD image lead-out matches audio length");
+    True(
+        stat.cbSize > sectorCount * (long)sector.Length,
+        "Raw CD image includes DAO lead-in, subcode, and lead-out");
 }
 
 static void WriteSolidPng(string path, int width, int height, byte level)
@@ -696,34 +789,42 @@ sealed class FutureBluRayModule : IOpticalDiscModule
     }
 }
 
-sealed class RecordingCdTrackAtOnceSession : ICdTrackAtOnceSession
+sealed class RecordingCdRawSession : ICdRawSession
 {
     internal List<string> Calls { get; } = [];
 
-    internal Exception? AddAudioTrackError { get; init; }
+    internal long LastLeadoutSector { get; init; } = 1;
+
+    internal Exception? WriteMediaError { get; init; }
 
     internal Exception? ReleaseMediaError { get; init; }
 
-    public bool DoNotFinalizeMedia
-    {
-        set => Calls.Add(nameof(DoNotFinalizeMedia));
-    }
+    internal int LastRequestedWriteSpeed { get; private set; }
 
-    public int NumberOfExistingTracks
+    public bool MediaPhysicallyBlank
     {
         get
         {
-            Calls.Add(nameof(NumberOfExistingTracks));
-            return 0;
+            Calls.Add(nameof(MediaPhysicallyBlank));
+            return true;
         }
     }
 
-    public long FreeSectorsOnMedia
+    public long LastPossibleStartOfLeadout
     {
         get
         {
-            Calls.Add(nameof(FreeSectorsOnMedia));
-            return 1;
+            Calls.Add(nameof(LastPossibleStartOfLeadout));
+            return LastLeadoutSector;
+        }
+    }
+
+    public IReadOnlyList<int> SupportedSectorTypes
+    {
+        get
+        {
+            Calls.Add(nameof(SupportedSectorTypes));
+            return [2];
         }
     }
 
@@ -747,19 +848,25 @@ sealed class RecordingCdTrackAtOnceSession : ICdTrackAtOnceSession
 
     public void PrepareMedia() => Calls.Add(nameof(PrepareMedia));
 
-    public void SetWriteSpeed(int sectorsPerSecond, bool rotationTypeIsPureCav)
-        => Calls.Add(nameof(SetWriteSpeed));
+    public void SetRequestedSectorType(int sectorType)
+        => Calls.Add(nameof(SetRequestedSectorType));
 
-    public void AddAudioTrack(IStream content)
+    public void SetWriteSpeed(int sectorsPerSecond, bool rotationTypeIsPureCav)
     {
-        Calls.Add(nameof(AddAudioTrack));
-        if (AddAudioTrackError is not null)
+        Calls.Add(nameof(SetWriteSpeed));
+        LastRequestedWriteSpeed = sectorsPerSecond;
+    }
+
+    public void WriteMedia(IStream content)
+    {
+        Calls.Add(nameof(WriteMedia));
+        if (WriteMediaError is not null)
         {
-            throw AddAudioTrackError;
+            throw WriteMediaError;
         }
     }
 
-    public void CancelAddTrack() => Calls.Add(nameof(CancelAddTrack));
+    public void CancelWrite() => Calls.Add(nameof(CancelWrite));
 
     public void ReleaseMedia()
     {
@@ -768,6 +875,30 @@ sealed class RecordingCdTrackAtOnceSession : ICdTrackAtOnceSession
         {
             throw ReleaseMediaError;
         }
+    }
+}
+
+sealed class RecordingCdRawImageSession(List<string> calls) : ICdRawImageSession
+{
+    internal long ImageStartOfLeadout { get; init; } = 1;
+
+    public long StartOfLeadout
+    {
+        get
+        {
+            calls.Add(nameof(StartOfLeadout));
+            return ImageStartOfLeadout;
+        }
+    }
+
+    public IStream CreateAudioImage(IStream audioContent)
+    {
+        calls.Add(nameof(CreateAudioImage));
+        return audioContent;
+    }
+
+    public void Dispose()
+    {
     }
 }
 

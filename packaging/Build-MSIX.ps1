@@ -49,11 +49,37 @@ else {
 }
 $packagePath = Join-Path $artifactRoot $packageFileName
 
+function Get-SourceSnapshot {
+    $sourceFiles = Get-ChildItem -LiteralPath (Join-Path $workspaceRoot "src") -Recurse -File |
+        Where-Object {
+            $_.Extension -in ".cs", ".xaml", ".csproj", ".json" -and
+            $_.FullName -notmatch '[\\/](bin|obj)[\\/]'
+        } |
+        Sort-Object FullName
+    return ($sourceFiles | ForEach-Object {
+        "{0}|{1}" -f $_.FullName, (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+    }) -join "`n"
+}
+
+$sourceSnapshotBeforePublish = Get-SourceSnapshot
+
 if (Test-Path -LiteralPath $artifactRoot) {
     Remove-Item -LiteralPath $artifactRoot -Recurse -Force
 }
 
 New-Item -ItemType Directory -Path $publishDirectory, $installDirectory, $assetDestination -Force | Out-Null
+
+& dotnet restore $projectPath --runtime win-x64
+if ($LASTEXITCODE -ne 0) {
+    throw "dotnet restore failed with exit code $LASTEXITCODE."
+}
+
+& dotnet clean $projectPath `
+    --configuration Release `
+    --runtime win-x64
+if ($LASTEXITCODE -ne 0) {
+    throw "dotnet clean failed with exit code $LASTEXITCODE."
+}
 
 & dotnet publish $projectPath `
     --configuration Release `
@@ -64,6 +90,16 @@ New-Item -ItemType Directory -Path $publishDirectory, $installDirectory, $assetD
     -p:IncludeNativeLibrariesForSelfExtract=true
 if ($LASTEXITCODE -ne 0) {
     throw "dotnet publish failed with exit code $LASTEXITCODE."
+}
+
+if ((Get-SourceSnapshot) -ne $sourceSnapshotBeforePublish) {
+    throw "Source files changed while publishing. Run the package build again from a stable workspace."
+}
+
+$publishedExecutable = Join-Path $publishDirectory "DiscImageStudio.exe"
+& $publishedExecutable burn-build-info
+if ($LASTEXITCODE -ne 0) {
+    throw "Published executable contains the legacy CD session-finalization setter."
 }
 
 Get-ChildItem -LiteralPath $publishDirectory -Filter "*.pdb" -File | Remove-Item -Force
