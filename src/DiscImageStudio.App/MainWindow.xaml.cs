@@ -898,15 +898,16 @@ public partial class MainWindow : Window
                 : options.FindIndex(option => option.Speed == previousSpeed);
             BurnWriteSpeedCombo.SelectedIndex = selectedIndex < 0 ? 0 : selectedIndex;
             BurnWriteSpeedStatusText.Text = speeds.Count == 0
-                ? "当前盘片未报告可选速度，将由刻录机自动选择最快速度。"
-                : $"当前盘片报告 {speeds.Count} 种写入配置；设置后仍以刻录机最终采用值为准。";
+                ? "当前盘片未报告可选速度，将使用刻录接口的保守回退设置。"
+                : $"当前盘片报告 {speeds.Count} 种写入配置；自动模式将使用最低值 "
+                    + $"{FormatBurnWriteSpeed(speeds[0], mediaKind)}，最终以刻录机采用值为准。";
         }
         catch (Exception exception)
         {
             if (revision == _burnWriteSpeedRefreshRevision)
             {
                 BurnWriteSpeedStatusText.Text =
-                    "未能读取当前盘片速度，将使用自动模式：" + exception.Message;
+                    "未能读取当前盘片速度，将使用刻录接口的保守回退设置：" + exception.Message;
             }
         }
         finally
@@ -1975,7 +1976,7 @@ public partial class MainWindow : Window
         string DisplayName)
     {
         internal static BurnWriteSpeedOption Automatic { get; } =
-            new(null, "自动（推荐）");
+            new(null, "自动（最低速率，推荐）");
     }
 
     private sealed class PreparedImage : IDisposable

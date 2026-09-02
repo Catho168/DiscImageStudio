@@ -11,7 +11,7 @@
 - DVD 混合流式回归通过：先为嵌套文件夹计算 ISO9660/Joliet 布局，再向禁止 Seek/Position 的前向流输出 64 个扇区；卷描述符位于 LBA 16，源文件内容完整位于绘图起点之前，绘图起点按 PSN 对齐到 16-sector ECC Block，最终输出长度与整盘声明长度完全一致，且没有创建临时 ISO。
 - 有界缓冲 COM `IStream` 测试通过：CD DAO 与 DVD 共用 64 MiB 队列和 32 MiB 开刻前预填充，块大小固定为 256 KiB；声明长度、读取前查询末尾位置、复位、非整块连续读取和逐字节一致性均正确，长度不是 2352/2048 扇区整数倍时会在刻录前拒绝。
 - CD Raw CD/DAO 调用顺序回归通过：`PrepareMedia` → 物理空白盘检查 → 选择 Cooked R-W 子通道 → `SetWriteSpeed` → 构造 RAW 音轨 → lead-out 边界检查 → `WriteMedia` → `ReleaseMedia`。同一张物理空白盘上，TAO 的 `FreeSectorsOnMedia` 为 359,843，而 Raw DAO 的 `LastPossibleStartOfLeadout` 为 359,845，确认用户遇到的 2 扇区不足来自 TAO 音轨开销，359,845 扇区内容在 DAO 下刚好合法。边界测试另确认 DAO lead-out 超出 3 个扇区时允许受限 overburn，超出 4 个扇区时在写入前拒绝；清理错误不会覆盖首个写入错误。真实 Windows `MsftRawCDImageCreator` 内存构造测试确认现有前向生成流可生成带 lead-in、Cooked R-W 子通道和 lead-out 的 DAO 镜像。
-- 刻录速度回归通过：CD 与 DVD 的扇区/秒可正确换算为倍速和 MB/s，请求速度必须为正值；界面使用“自动（推荐）”，并按当前刻录机、盘片和 CD/DVD 模式读取 IMAPI2 写入配置。CD DAO 自动模式请求 1200 扇区/秒，DVR-S21 实际接受 1199 扇区/秒（约 16×、CLV）；显式选择仍使用所选速度。实际采用速度会显示在状态和日志中。
+- 刻录速度回归通过：CD 与 DVD 的扇区/秒可正确换算为倍速和 MB/s，请求速度必须为正值；界面使用“自动（最低速率，推荐）”，真正开始刻录时会按当前刻录机、盘片和 CD/DVD 模式重新读取 IMAPI2 写入配置，选择最低扇区速率且同速率优先 CLV。显式选择仍保持所选速度；设备完全不报告速度时，CD DAO 使用 1200 扇区/秒的实机验证回退。实际采用速度会显示在状态和日志中。
 - DVD dispersion 黑白字节极性回归通过：根据实盘结果，黑色固定映射到扰码域 `0xA5`，白色固定映射到 `0x92`；普通与快速输出共用同一映射常量。
 - 盘片预设回归通过：CD 80/74 分钟和 12/8 cm 单层 DVD 参数均能通过各自生成器校验；12 cm DVD 为 2,295,104 扇区、24–58 mm，8 cm DVD 为 714,544 扇区、24–38 mm，所有预设 ID 唯一。
 - 铼德医疗水蓝盘实测预设回归通过：359,845 扇区、生成半径 24.911275–57.931155 mm。
@@ -42,6 +42,7 @@
 - 1.0.22.0 实机首次 DAO 提交返回 `0xC0AA0301`；失败后盘片仍同时报告为物理空白和启发式空白，系统日志只记录独占锁。复查发现该版本人为选择 P/Q-only（1），而 Windows RAW writer 与 RAW image creator 的默认值均为 Cooked R-W（2）。DVR-S21 已确认接受 Cooked R-W、1200 扇区/秒请求并调整为 1199 扇区/秒，盘片仍保持物理空白。
 - 1.0.23.0 签名测试包已生成并覆盖安装；包清单与 EXE 产品版本均为 1.0.23，签名有效，SHA-256 为 `8C6157B9FE11C800D6486BF951E6CDF24E7791C6B099BC7352D0B98DD4D212F7`。包内与 WindowsApps 实际安装 EXE 的 DAO writer 自检均返回 0，已安装包状态为 `Ok`。
 - 1.0.24.0 签名测试包已生成并从 1.0.23.0 覆盖安装；包清单与 EXE 文件版本均为 1.0.24.0，签名有效，SHA-256 为 `DAF69C277D1AA3400A1FAB9989B44E6FF17DDB55B6DB97B0A93D2D6C86D533B4`。包内与 WindowsApps 实际安装 EXE 的完整 `selftest` 和 DAO writer 自检均返回 0，已安装包状态为 `Ok`；该包包含 DVD 黑白极性反转及 CD/DVD 64 MiB 流式缓冲。
+- 1.0.25.0 签名测试包已生成并从 1.0.24.0 覆盖安装；包清单与 EXE 文件版本均为 1.0.25.0，签名有效，SHA-256 为 `637BDFA0F02E64275316EEF5C0DEBFA920BC8847F846DE196CFC4485B66FA49D`。包内与 WindowsApps 实际安装 EXE 的完整 `selftest` 和 DAO writer 自检均返回 0，已安装包状态为 `Ok`；该包将 CD/DVD 自动写入速度改为当前盘片报告的最低可用配置。
 - PIONEER DVD-RW DVR-S21 实机最小 CD-DA 流式刻录通过：使用 IMAPI2 默认速度 48×，连续写入 705,600 字节（4 秒零值 PCM）并正常关闭会话，总耗时 29.3 秒。
 - `Install-TestPackage.ps1` 已通过 PowerShell 语法检查；脚本会请求 UAC，把公钥导入本地计算机“受信任人”后安装测试包。
 

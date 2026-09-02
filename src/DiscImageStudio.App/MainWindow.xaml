@@ -577,7 +577,7 @@
                                                 IsEnabled="False" />
                                     </Grid>
                                     <TextBlock x:Name="BurnWriteSpeedStatusText"
-                                               Text="放入可写盘片后读取其支持的速度；默认自动使用最快速度。"
+                                               Text="放入可写盘片后读取其支持的速度；默认自动使用最低可用速度，以降低写入错误率。"
                                                Foreground="{StaticResource TextMutedBrush}" TextWrapping="Wrap" />
                                 </StackPanel>
                             </Border>

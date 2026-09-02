@@ -7,7 +7,7 @@ namespace DiscImageStudio.Burning;
 public sealed class WindowsImapiBurner : IOpticalDiscBurner
 {
     private const int CdRawSubcodeIsCooked = 2;
-    private const int CdDaoAutomaticSpeedSectorsPerSecond = 1200;
+    private const int CdDaoFallbackSpeedSectorsPerSecond = 1200;
     // DAO avoids the two-sector TAO track overhead observed on the tested drive.
     // Keep only a very small physical overburn allowance for nearby measured presets.
     private const long CdDaoOverburnAllowanceSectors = 3;
@@ -166,6 +166,26 @@ public sealed class WindowsImapiBurner : IOpticalDiscBurner
                 throw new InvalidOperationException("当前盘片与所选 CD/DVD 模式不兼容。");
             }
 
+            if (request.WriteSpeed is null)
+            {
+                currentOperation = "选择最低刻录速度";
+                request = request with
+                {
+                    WriteSpeed = ResolveWriteSpeed(
+                        null,
+                        ReadSupportedWriteSpeeds(format)),
+                };
+                progress?.Report(new OpticalBurnProgress(
+                    "speed",
+                    request.WriteSpeed is null
+                        ? "当前盘片未报告可选速度，将使用刻录接口的保守回退设置…"
+                        : $"自动选择最低写入速度："
+                            + $"{request.WriteSpeed.GetMultiplier(request.MediaKind):0.#}×"
+                            + $"（{request.WriteSpeed.GetMegabytesPerSecond(request.MediaKind):0.0} MB/s）…",
+                    0,
+                    request.ContentLength));
+            }
+
             using GeneratedContentComStream content = new(
                 request.ContentLength,
                 request.ProduceContent,
@@ -278,8 +298,8 @@ public sealed class WindowsImapiBurner : IOpticalDiscBurner
             }
             else
             {
-                reportOperation?.Invoke("设置 CD DAO 稳定刻录速度");
-                format.SetWriteSpeed(CdDaoAutomaticSpeedSectorsPerSecond, false);
+                reportOperation?.Invoke("使用 CD DAO 保守回退速度");
+                format.SetWriteSpeed(CdDaoFallbackSpeedSectorsPerSecond, false);
             }
 
             OpticalWriteSpeed actualWriteSpeed = new(
@@ -454,6 +474,17 @@ public sealed class WindowsImapiBurner : IOpticalDiscBurner
             .OrderBy(speed => speed.SectorsPerSecond)
             .ThenBy(speed => speed.RotationTypeIsPureCav)
             .ToArray();
+    }
+
+    internal static OpticalWriteSpeed? ResolveWriteSpeed(
+        OpticalWriteSpeed? requested,
+        IReadOnlyList<OpticalWriteSpeed> supported)
+    {
+        ArgumentNullException.ThrowIfNull(supported);
+        return requested ?? supported
+            .OrderBy(speed => speed.SectorsPerSecond)
+            .ThenBy(speed => speed.RotationTypeIsPureCav)
+            .FirstOrDefault();
     }
 
     private static void TryCancel(dynamic format, bool cdAudio)

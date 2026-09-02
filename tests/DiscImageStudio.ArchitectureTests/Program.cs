@@ -464,6 +464,22 @@ static void TestStreamingGeneration(string sourcePath)
             (_, _) => { },
             new OpticalWriteSpeed(0, false)).Validate(),
         "write speed rejects zero sectors per second");
+    OpticalWriteSpeed requestedSpeed = new(1200, false);
+    True(
+        requestedSpeed == WindowsImapiBurner.ResolveWriteSpeed(
+            requestedSpeed,
+            [new OpticalWriteSpeed(300, false)]),
+        "manual write speed is preserved");
+    True(
+        new OpticalWriteSpeed(300, false) == WindowsImapiBurner.ResolveWriteSpeed(
+            requested: null,
+            [
+                new OpticalWriteSpeed(1200, false),
+                new OpticalWriteSpeed(300, true),
+                new OpticalWriteSpeed(300, false),
+                new OpticalWriteSpeed(600, false),
+            ]),
+        "automatic write speed selects the lowest CLV configuration");
 
     byte[] expected = Enumerable.Range(0, CdDiscParameters.BytesPerSector * 2)
         .Select(index => (byte)(index % 251))
@@ -547,18 +563,18 @@ static void TestCdRawDaoCallOrder()
         string.Join(',', session.Calls),
         "CD Raw DAO preparation order");
 
-    RecordingCdRawSession automaticSpeedSession = new();
-    using RecordingCdRawImageSession automaticSpeedImage = new(automaticSpeedSession.Calls);
+    RecordingCdRawSession fallbackSpeedSession = new();
+    using RecordingCdRawImageSession fallbackSpeedImage = new(fallbackSpeedSession.Calls);
     WindowsImapiBurner.BurnCdAudio(
-        automaticSpeedSession,
-        automaticSpeedImage,
+        fallbackSpeedSession,
+        fallbackSpeedImage,
         content,
         request with { WriteSpeed = null },
         CancellationToken.None);
     Equal(
         1200,
-        automaticSpeedSession.LastRequestedWriteSpeed,
-        "CD Raw DAO automatic mode requests stable 16x speed");
+        fallbackSpeedSession.LastRequestedWriteSpeed,
+        "CD Raw DAO uses conservative fallback when no speed descriptor is available");
 
     RecordingCdRawSession boundedOverburnSession = new()
     {

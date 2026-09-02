@@ -18,9 +18,9 @@
     <Description>Create and stream-burn image-mapped CD audio tracks and DVD data discs.</Description>
     <Company>Disc Image Studio</Company>
     <Copyright>Copyright © 2026</Copyright>
-    <Version>1.0.24</Version>
-    <AssemblyVersion>1.0.24.0</AssemblyVersion>
-    <FileVersion>1.0.24.0</FileVersion>
+    <Version>1.0.25</Version>
+    <AssemblyVersion>1.0.25.0</AssemblyVersion>
+    <FileVersion>1.0.25.0</FileVersion>
     <NeutralLanguage>zh-CN</NeutralLanguage>
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
