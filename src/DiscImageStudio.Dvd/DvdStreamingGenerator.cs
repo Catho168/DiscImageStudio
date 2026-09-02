@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using DvdImageSolver;
 using DvdImageSolver.Encoding;
 using DvdImageSolver.Solver;
 
@@ -76,8 +78,63 @@ public sealed record DvdStreamingSummary(
     long ControlledWords,
     TimeSpan Elapsed);
 
+public sealed class DvdHybridStreamingPlan
+{
+    internal DvdHybridStreamingPlan(
+        HybridIsoImageWriter.LayoutPlan isoLayout,
+        uint drawingStartLba)
+    {
+        IsoLayout = isoLayout;
+        DrawingStartLba = drawingStartLba;
+    }
+
+    internal HybridIsoImageWriter.LayoutPlan IsoLayout { get; }
+
+    public string SourceDirectory => IsoLayout.SourceDirectory;
+
+    public uint TotalSectors => IsoLayout.VolumeSectors;
+
+    public uint FilesystemEndLbaExclusive => IsoLayout.DataEndLbaExclusive;
+
+    public uint DrawingStartLba { get; }
+
+    public uint DrawingSectors => checked(TotalSectors - DrawingStartLba);
+
+    public int FileCount => IsoLayout.FileCount;
+
+    public int DirectoryCount => IsoLayout.DirectoryCount;
+
+    public long FileBytes => IsoLayout.FileBytes;
+}
+
 public static class DvdStreamingGenerator
 {
+    private const uint PsnOffset = 0x30000;
+
+    public static DvdHybridStreamingPlan PrepareHybrid(
+        string dataDirectory,
+        DvdStreamingOptions options,
+        string volumeLabel = "DVD_IMAGE")
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(dataDirectory);
+        ArgumentNullException.ThrowIfNull(options);
+        options.Validate();
+        HybridIsoImageWriter.LayoutPlan isoLayout = HybridIsoImageWriter.Plan(
+            dataDirectory,
+            options.TotalSectors,
+            volumeLabel);
+        uint drawingStartLba = AlignToEccBlock(isoLayout.DataEndLbaExclusive, PsnOffset);
+        uint drawingSectors = checked(options.TotalSectors - drawingStartLba);
+        if (drawingSectors < DvdEccBlockEncoder.SectorCount)
+        {
+            throw new ArgumentException(
+                "The inner-ring filesystem leaves no complete ECC Block for outer-ring drawing.",
+                nameof(dataDirectory));
+        }
+
+        return new DvdHybridStreamingPlan(isoLayout, drawingStartLba);
+    }
+
     public static DvdStreamingSummary Generate(
         string imagePath,
         Stream output,
@@ -90,29 +147,10 @@ public static class DvdStreamingGenerator
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
         string sourceFullPath = Path.GetFullPath(imagePath);
-        ImageMappingOptions imageMapping = new(
-            options.TotalSectors,
-            options.InnerRadiusMm,
-            options.OuterRadiusMm,
-            options.ChannelBitLengthNm,
-            options.StartAngleDegrees,
-            Clockwise: true,
-            options.LuminanceThreshold,
-            options.AlphaThreshold,
-            SampleEveryChannelBits: 1);
-        MultiBlockSolveOptions solveOptions = new(
-            StartLba: 0,
-            FillSectors: options.TotalSectors,
-            PsnOffset: 0x30000,
-            IterationsPerBlock: 1,
-            MutationBytes: 4,
-            RandomSeed: options.RandomSeed,
-            InitialTemperature: 64.0,
-            FinalTemperature: 0.25,
-            ZeroInitialPayload: false,
-            imageMapping,
-            Algorithm: SolverAlgorithm.Dispersion,
-            FastParallelism: options.FastParallelism);
+        MultiBlockSolveOptions solveOptions = CreateSolveOptions(
+            options,
+            startLba: 0,
+            fillSectors: options.TotalSectors);
         FastDvdStreamSummary summary = FastDispersionImageWriter.WriteStream(
             sourceFullPath,
             output,
@@ -130,5 +168,105 @@ public static class DvdStreamingGenerator
             summary.BytesWritten,
             summary.ControlledWords,
             summary.Elapsed);
+    }
+
+    public static DvdStreamingSummary GenerateHybrid(
+        string imagePath,
+        Stream output,
+        DvdStreamingOptions options,
+        DvdHybridStreamingPlan plan,
+        Action<DvdStreamingProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(imagePath);
+        ArgumentNullException.ThrowIfNull(output);
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(plan);
+        options.Validate();
+        if (plan.TotalSectors != options.TotalSectors)
+        {
+            throw new ArgumentException(
+                "Hybrid layout and DVD streaming options describe different disc sizes.",
+                nameof(plan));
+        }
+
+        string sourceFullPath = Path.GetFullPath(imagePath);
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        HybridIsoImageWriter.WriteSequentialPrefix(
+            plan.IsoLayout,
+            output,
+            plan.DrawingStartLba,
+            cancellationToken);
+        long prefixBytes = checked(
+            (long)plan.DrawingStartLba * DvdEccBlockEncoder.PayloadBytesPerSector);
+        int totalBlocks = checked((int)(options.TotalSectors / DvdEccBlockEncoder.SectorCount));
+        progress?.Invoke(new DvdStreamingProgress(
+            prefixBytes,
+            options.ContentLength,
+            checked((int)(plan.DrawingStartLba / DvdEccBlockEncoder.SectorCount)),
+            totalBlocks,
+            stopwatch.Elapsed));
+
+        MultiBlockSolveOptions solveOptions = CreateSolveOptions(
+            options,
+            plan.DrawingStartLba,
+            plan.DrawingSectors);
+        FastDvdStreamSummary drawing = FastDispersionImageWriter.WriteStream(
+            sourceFullPath,
+            output,
+            solveOptions,
+            value => progress?.Invoke(new DvdStreamingProgress(
+                checked(prefixBytes + value.BytesWritten),
+                options.ContentLength,
+                checked((int)(plan.DrawingStartLba / DvdEccBlockEncoder.SectorCount)
+                    + value.CompletedBlocks),
+                totalBlocks,
+                stopwatch.Elapsed)),
+            cancellationToken);
+        stopwatch.Stop();
+        return new DvdStreamingSummary(
+            sourceFullPath,
+            options.TotalSectors,
+            checked(prefixBytes + drawing.BytesWritten),
+            drawing.ControlledWords,
+            stopwatch.Elapsed);
+    }
+
+    private static MultiBlockSolveOptions CreateSolveOptions(
+        DvdStreamingOptions options,
+        uint startLba,
+        uint fillSectors)
+    {
+        ImageMappingOptions imageMapping = new(
+            options.TotalSectors,
+            options.InnerRadiusMm,
+            options.OuterRadiusMm,
+            options.ChannelBitLengthNm,
+            options.StartAngleDegrees,
+            Clockwise: true,
+            options.LuminanceThreshold,
+            options.AlphaThreshold,
+            SampleEveryChannelBits: 1);
+        return new MultiBlockSolveOptions(
+            startLba,
+            fillSectors,
+            PsnOffset,
+            IterationsPerBlock: 1,
+            MutationBytes: 4,
+            RandomSeed: options.RandomSeed,
+            InitialTemperature: 64.0,
+            FinalTemperature: 0.25,
+            ZeroInitialPayload: false,
+            imageMapping,
+            Algorithm: SolverAlgorithm.Dispersion,
+            FastParallelism: options.FastParallelism);
+    }
+
+    private static uint AlignToEccBlock(uint lba, uint psnOffset)
+    {
+        uint remainder = (lba + psnOffset) & (DvdEccBlockEncoder.SectorCount - 1);
+        return remainder == 0
+            ? lba
+            : checked(lba + DvdEccBlockEncoder.SectorCount - remainder);
     }
 }

@@ -501,27 +501,47 @@ public partial class MainWindow : Window
             string contentDescription;
             if (dvd)
             {
-                if (!string.IsNullOrWhiteSpace(DvdDataDirectory.Text))
-                {
-                    throw new ArgumentException(
-                        "DVD 流式刻录暂不支持内圈混合文件夹；请先清空 DVD 页面的文件夹设置。"
-                        + "生成 ISO 模式仍可继续使用混合文件夹。");
-                }
-
                 string source = RequirePath(DvdImagePath, "请先在 DVD 页面选择源图片。");
                 preparedImage = PrepareDvdImage(source, RingImageQuality.GenerationSize);
                 string preparedPath = preparedImage.Path;
                 DvdStreamingOptions options = ReadDvdStreamingOptions();
+                string dataDirectory = DvdDataDirectory.Text.Trim();
+                DvdHybridStreamingPlan? hybridPlan = dataDirectory.Length == 0
+                    ? null
+                    : DvdStreamingGenerator.PrepareHybrid(
+                        dataDirectory,
+                        options,
+                        string.IsNullOrWhiteSpace(DvdVolumeLabel.Text)
+                            ? "DISC_IMAGE"
+                            : DvdVolumeLabel.Text.Trim());
                 request = new OpticalBurnRequest(
                     device.Id,
                     OpticalBurnMediaKind.DvdData,
                     options.ContentLength,
-                    (output, cancellationToken) => DvdStreamingGenerator.Generate(
-                        preparedPath,
-                        output,
-                        options,
-                        cancellationToken: cancellationToken));
-                contentDescription = $"DVD · {options.TotalSectors} 扇区 · {options.ContentLength / (1024.0 * 1024.0):F1} MiB";
+                    (output, cancellationToken) =>
+                    {
+                        if (hybridPlan is null)
+                        {
+                            DvdStreamingGenerator.Generate(
+                                preparedPath,
+                                output,
+                                options,
+                                cancellationToken: cancellationToken);
+                        }
+                        else
+                        {
+                            DvdStreamingGenerator.GenerateHybrid(
+                                preparedPath,
+                                output,
+                                options,
+                                hybridPlan,
+                                cancellationToken: cancellationToken);
+                        }
+                    });
+                contentDescription = hybridPlan is null
+                    ? $"DVD · {options.TotalSectors} 扇区 · {options.ContentLength / (1024.0 * 1024.0):F1} MiB"
+                    : $"DVD 混合盘 · {hybridPlan.FileCount} 个文件 · 绘图从 LBA {hybridPlan.DrawingStartLba} 开始"
+                        + $" · {options.ContentLength / (1024.0 * 1024.0):F1} MiB";
             }
             else
             {
@@ -669,7 +689,7 @@ public partial class MainWindow : Window
             string source = DvdImagePath.Text.Trim();
             string suffix = string.IsNullOrWhiteSpace(DvdDataDirectory.Text)
                 ? string.Empty
-                : "；已设置混合文件夹，需清空后才能流式刻录";
+                : "；将顺序写入内圈文件夹与外圈图案";
             BurnSourceDetails.Text = source.Length == 0
                 ? "请先在 DVD 页面选择图片并完成实时预览。" + suffix
                 : $"{Path.GetFileName(source)} · {DvdTotalSectors.Text.Trim()} 扇区 · 快速算法 · CW{suffix}";

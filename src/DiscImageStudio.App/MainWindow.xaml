@@ -551,7 +551,7 @@
                             <Border Style="{StaticResource Card}" Background="#FFF9EE" BorderBrush="#F1D69B">
                                 <StackPanel>
                                     <TextBlock Text="刻录前确认" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
-                                    <TextBlock Text="仅支持空白介质。刻录开始后，中断、断电或生成速度不足都可能导致盘片报废；请先用实时预览确认图案。DVD 流式模式只支持纯绘图，不支持内圈混合文件夹。"
+                                    <TextBlock Text="仅支持空白介质。刻录开始后，中断、断电或生成速度不足都可能导致盘片报废；请先用实时预览确认图案。DVD 混合模式会先计算文件系统布局，再顺序写入内圈文件与外圈图案。"
                                                TextWrapping="Wrap" Foreground="#765A22" LineHeight="22" />
                                     <CheckBox x:Name="BurnConfirmCheckBox"
                                               Content="我确认已放入正确的空白盘，并同意开始写入"

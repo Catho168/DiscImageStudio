@@ -224,6 +224,51 @@ static void TestStreamingGeneration(string sourcePath)
     Equal(dvdStream.Length, dvdSummary.BytesWritten, "DVD streaming summary length");
     True(dvdStream.ToArray().Distinct().Count() > 1, "DVD streaming content is generated");
 
+    string hybridDirectory = Path.Combine(
+        Path.GetDirectoryName(sourcePath)!,
+        "hybrid-stream-data");
+    string nestedDirectory = Path.Combine(hybridDirectory, "资料");
+    Directory.CreateDirectory(nestedDirectory);
+    byte[] hybridFile = Enumerable.Range(0, 3001)
+        .Select(index => (byte)((index * 73 + 19) % 251))
+        .ToArray();
+    File.WriteAllBytes(Path.Combine(nestedDirectory, "stream-test.bin"), hybridFile);
+    DvdStreamingOptions hybridOptions = dvdOptions with { TotalSectors = 64 };
+    DvdHybridStreamingPlan hybridPlan = DvdStreamingGenerator.PrepareHybrid(
+        hybridDirectory,
+        hybridOptions,
+        "STREAM_TEST");
+    True(
+        hybridPlan.DrawingStartLba >= hybridPlan.FilesystemEndLbaExclusive,
+        "hybrid drawing starts after filesystem data");
+    Equal(
+        0U,
+        (hybridPlan.DrawingStartLba + 0x30000U) & 0xFU,
+        "hybrid drawing starts on an ECC Block boundary");
+    using MemoryStream hybridBacking = new();
+    using (ForwardOnlyWriteStream hybridStream = new(hybridBacking))
+    {
+        DvdStreamingSummary hybridSummary = DvdStreamingGenerator.GenerateHybrid(
+            sourcePath,
+            hybridStream,
+            hybridOptions,
+            hybridPlan);
+        Equal(hybridOptions.ContentLength, hybridSummary.BytesWritten, "hybrid streaming summary length");
+    }
+
+    byte[] hybridBytes = hybridBacking.ToArray();
+    Equal(hybridOptions.ContentLength, hybridBytes.LongLength, "hybrid streaming byte length");
+    True(
+        hybridBytes.AsSpan((16 * 2048) + 1, 5).SequenceEqual("CD001"u8),
+        "hybrid stream contains an ISO9660 primary volume descriptor");
+    int prefixBytes = checked((int)(hybridPlan.DrawingStartLba * 2048));
+    True(
+        hybridBytes.AsSpan(0, prefixBytes).IndexOf(hybridFile) >= 0,
+        "hybrid stream contains the planned source file before drawing data");
+    True(
+        hybridBytes.AsSpan(prefixBytes).ToArray().Distinct().Count() > 1,
+        "hybrid stream switches to generated drawing data at the planned LBA");
+
     new OpticalBurnRequest(
         "test-recorder",
         OpticalBurnMediaKind.CdAudio,
@@ -401,6 +446,40 @@ static void ValidateRingSafetyMargins(
     }
 
     True(darkRingPixels > 100, "ring layout contains copied image pixels");
+}
+
+sealed class ForwardOnlyWriteStream(Stream destination) : Stream
+{
+    public override bool CanRead => false;
+
+    public override bool CanSeek => false;
+
+    public override bool CanWrite => true;
+
+    public override long Length => throw new NotSupportedException();
+
+    public override long Position
+    {
+        get => throw new NotSupportedException();
+        set => throw new NotSupportedException();
+    }
+
+    public override void Flush() => destination.Flush();
+
+    public override void Write(byte[] buffer, int offset, int count)
+        => destination.Write(buffer, offset, count);
+
+    public override void Write(ReadOnlySpan<byte> buffer)
+        => destination.Write(buffer);
+
+    public override int Read(byte[] buffer, int offset, int count)
+        => throw new NotSupportedException();
+
+    public override long Seek(long offset, SeekOrigin origin)
+        => throw new NotSupportedException();
+
+    public override void SetLength(long value)
+        => throw new NotSupportedException();
 }
 
 sealed class FutureBluRayModule : IOpticalDiscModule

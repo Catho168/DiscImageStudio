@@ -118,12 +118,10 @@ public static class FastDispersionImageWriter
         }
 
         Validate(options);
-        if (options.StartLba != 0
-            || options.FillSectors != options.ImageMapping.TotalSectors
-            || options.PreserveExistingIso)
+        if (options.PreserveExistingIso)
         {
             throw new ArgumentException(
-                "Direct DVD streaming requires a complete image from LBA 0 and cannot preserve an existing ISO.",
+                "Direct DVD streaming cannot preserve or seek within an existing ISO.",
                 nameof(options));
         }
 

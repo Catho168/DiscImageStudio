@@ -18,7 +18,7 @@ internal sealed record HybridIsoWriteSummary(
     bool Iso9660,
     bool Joliet);
 
-internal static class HybridIsoImageWriter
+public static class HybridIsoImageWriter
 {
     private const uint PrimaryVolumeDescriptorLba = 16;
     private const uint SupplementaryVolumeDescriptorLba = 17;
@@ -27,9 +27,54 @@ internal static class HybridIsoImageWriter
     private const int MaximumPrimaryIdentifierCharacters = 31;
     private const int MaximumJolietIdentifierCharacters = 60;
 
-    internal static HybridIsoWriteSummary Create(
+    public sealed class LayoutPlan
+    {
+        internal readonly IsoNode _root;
+        internal readonly List<IsoNode> _directories;
+        internal readonly Layout _layout;
+        internal readonly string _primaryVolumeLabel;
+        internal readonly string _jolietVolumeLabel;
+        internal readonly DateTimeOffset _timestamp;
+
+        internal LayoutPlan(
+            string sourceDirectory,
+            uint volumeSectors,
+            IsoNode root,
+            List<IsoNode> directories,
+            Layout layout,
+            string primaryVolumeLabel,
+            string jolietVolumeLabel,
+            DateTimeOffset timestamp)
+        {
+            SourceDirectory = sourceDirectory;
+            VolumeSectors = volumeSectors;
+            _root = root;
+            _directories = directories;
+            _layout = layout;
+            _primaryVolumeLabel = primaryVolumeLabel;
+            _jolietVolumeLabel = jolietVolumeLabel;
+            _timestamp = timestamp;
+            List<IsoNode> files = EnumerateFiles(root).ToList();
+            FileCount = files.Count;
+            DirectoryCount = directories.Count;
+            FileBytes = files.Sum(file => file.DataLength);
+        }
+
+        public string SourceDirectory { get; }
+
+        public uint VolumeSectors { get; }
+
+        public int FileCount { get; }
+
+        public int DirectoryCount { get; }
+
+        public long FileBytes { get; }
+
+        public uint DataEndLbaExclusive => _layout.DataEndLbaExclusive;
+    }
+
+    public static LayoutPlan Plan(
         string sourceDirectory,
-        string outputPath,
         uint volumeSectors,
         string volumeLabel)
     {
@@ -46,6 +91,58 @@ internal static class HybridIsoImageWriter
             throw new DirectoryNotFoundException($"Data directory does not exist: {sourceFullPath}");
         }
 
+        IsoNode root = ReadTree(sourceFullPath);
+        List<IsoNode> directories = AssignDirectoryNumbers(root);
+        AssignIdentifiers(directories);
+        Layout layout = BuildLayout(directories, volumeSectors);
+        return new LayoutPlan(
+            sourceFullPath,
+            volumeSectors,
+            root,
+            directories,
+            layout,
+            NormalizePrimaryIdentifier(volumeLabel, 32, "DVD_IMAGE"),
+            NormalizeJolietIdentifier(volumeLabel, 16, "DVD_IMAGE"),
+            DateTimeOffset.UtcNow);
+    }
+
+    public static void WriteSequentialPrefix(
+        LayoutPlan plan,
+        Stream output,
+        uint endLbaExclusive,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        ArgumentNullException.ThrowIfNull(output);
+        if (!output.CanWrite)
+        {
+            throw new ArgumentException("Hybrid ISO output stream must be writable.", nameof(output));
+        }
+
+        if (endLbaExclusive < plan.DataEndLbaExclusive || endLbaExclusive > plan.VolumeSectors)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(endLbaExclusive),
+                $"Sequential prefix must end between LBA {plan.DataEndLbaExclusive} and {plan.VolumeSectors}.");
+        }
+
+        SequentialIsoWriter writer = new(output, cancellationToken);
+        WriteFilesystem(plan, writer);
+        writer.PadToLba(endLbaExclusive);
+    }
+
+    internal static HybridIsoWriteSummary Create(
+        string sourceDirectory,
+        string outputPath,
+        uint volumeSectors,
+        string volumeLabel)
+    {
+        string sourceFullPath = Path.GetFullPath(sourceDirectory);
+        if (!Directory.Exists(sourceFullPath))
+        {
+            throw new DirectoryNotFoundException($"Data directory does not exist: {sourceFullPath}");
+        }
+
         string outputFullPath = Path.GetFullPath(outputPath);
         if (IsWithinDirectory(outputFullPath, sourceFullPath))
         {
@@ -53,12 +150,7 @@ internal static class HybridIsoImageWriter
                 "--iso-output must be outside --data-dir so the generated image cannot include itself.");
         }
 
-        IsoNode root = ReadTree(sourceFullPath);
-        List<IsoNode> directories = AssignDirectoryNumbers(root);
-        AssignIdentifiers(directories);
-        Layout layout = BuildLayout(directories, volumeSectors);
-        string normalizedPrimaryLabel = NormalizePrimaryIdentifier(volumeLabel, 32, "DVD_IMAGE");
-        string normalizedJolietLabel = NormalizeJolietIdentifier(volumeLabel, 16, "DVD_IMAGE");
+        LayoutPlan plan = Plan(sourceFullPath, volumeSectors, volumeLabel);
 
         string? outputDirectory = Path.GetDirectoryName(outputFullPath);
         if (outputDirectory is null)
@@ -83,50 +175,49 @@ internal static class HybridIsoImageWriter
             {
                 sparse = IsoImageWriter.TryMarkSparse(output.SafeFileHandle);
                 output.SetLength(checked((long)volumeSectors * IsoImageWriter.LogicalSectorBytes));
-                DateTimeOffset timestamp = DateTimeOffset.UtcNow;
 
                 WriteSector(output, PrimaryVolumeDescriptorLba, BuildVolumeDescriptor(
                     type: 1,
                     volumeSectors,
-                    normalizedPrimaryLabel,
-                    layout.PrimaryPathTableBytes,
-                    layout.PrimaryLittlePathTableLba,
-                    layout.PrimaryBigPathTableLba,
-                    root.PrimaryDirectoryLba,
-                    root.PrimaryDirectoryBytes,
+                    plan._primaryVolumeLabel,
+                    plan._layout.PrimaryPathTableBytes,
+                    plan._layout.PrimaryLittlePathTableLba,
+                    plan._layout.PrimaryBigPathTableLba,
+                    plan._root.PrimaryDirectoryLba,
+                    plan._root.PrimaryDirectoryBytes,
                     joliet: false,
-                    timestamp));
+                    plan._timestamp));
                 WriteSector(output, SupplementaryVolumeDescriptorLba, BuildVolumeDescriptor(
                     type: 2,
                     volumeSectors,
-                    normalizedJolietLabel,
-                    layout.JolietPathTableBytes,
-                    layout.JolietLittlePathTableLba,
-                    layout.JolietBigPathTableLba,
-                    root.JolietDirectoryLba,
-                    root.JolietDirectoryBytes,
+                    plan._jolietVolumeLabel,
+                    plan._layout.JolietPathTableBytes,
+                    plan._layout.JolietLittlePathTableLba,
+                    plan._layout.JolietBigPathTableLba,
+                    plan._root.JolietDirectoryLba,
+                    plan._root.JolietDirectoryBytes,
                     joliet: true,
-                    timestamp));
+                    plan._timestamp));
                 WriteSector(output, TerminatorLba, BuildTerminator());
 
                 WriteExtent(
                     output,
-                    layout.PrimaryLittlePathTableLba,
-                    BuildPathTable(directories, littleEndian: true, joliet: false));
+                    plan._layout.PrimaryLittlePathTableLba,
+                    BuildPathTable(plan._directories, littleEndian: true, joliet: false));
                 WriteExtent(
                     output,
-                    layout.PrimaryBigPathTableLba,
-                    BuildPathTable(directories, littleEndian: false, joliet: false));
+                    plan._layout.PrimaryBigPathTableLba,
+                    BuildPathTable(plan._directories, littleEndian: false, joliet: false));
                 WriteExtent(
                     output,
-                    layout.JolietLittlePathTableLba,
-                    BuildPathTable(directories, littleEndian: true, joliet: true));
+                    plan._layout.JolietLittlePathTableLba,
+                    BuildPathTable(plan._directories, littleEndian: true, joliet: true));
                 WriteExtent(
                     output,
-                    layout.JolietBigPathTableLba,
-                    BuildPathTable(directories, littleEndian: false, joliet: true));
+                    plan._layout.JolietBigPathTableLba,
+                    BuildPathTable(plan._directories, littleEndian: false, joliet: true));
 
-                foreach (IsoNode directory in directories)
+                foreach (IsoNode directory in plan._directories)
                 {
                     WriteExtent(
                         output,
@@ -138,7 +229,7 @@ internal static class HybridIsoImageWriter
                         BuildDirectoryExtent(directory, joliet: true));
                 }
 
-                foreach (IsoNode file in EnumerateFiles(root))
+                foreach (IsoNode file in EnumerateFiles(plan._root))
                 {
                     WriteFile(output, file);
                 }
@@ -156,19 +247,76 @@ internal static class HybridIsoImageWriter
             }
         }
 
-        List<IsoNode> files = EnumerateFiles(root).ToList();
         return new HybridIsoWriteSummary(
             "hybrid-iso9660-joliet",
             volumeSectors,
             IsoImageWriter.LogicalSectorBytes,
             sourceFullPath,
-            files.Count,
-            directories.Count,
-            files.Sum(file => file.DataLength),
-            layout.DataEndLbaExclusive,
+            plan.FileCount,
+            plan.DirectoryCount,
+            plan.FileBytes,
+            plan.DataEndLbaExclusive,
             sparse,
             Iso9660: true,
             Joliet: true);
+    }
+
+    private static void WriteFilesystem(LayoutPlan plan, SequentialIsoWriter output)
+    {
+        output.WriteAtLba(PrimaryVolumeDescriptorLba, BuildVolumeDescriptor(
+            type: 1,
+            plan.VolumeSectors,
+            plan._primaryVolumeLabel,
+            plan._layout.PrimaryPathTableBytes,
+            plan._layout.PrimaryLittlePathTableLba,
+            plan._layout.PrimaryBigPathTableLba,
+            plan._root.PrimaryDirectoryLba,
+            plan._root.PrimaryDirectoryBytes,
+            joliet: false,
+            plan._timestamp));
+        output.WriteAtLba(SupplementaryVolumeDescriptorLba, BuildVolumeDescriptor(
+            type: 2,
+            plan.VolumeSectors,
+            plan._jolietVolumeLabel,
+            plan._layout.JolietPathTableBytes,
+            plan._layout.JolietLittlePathTableLba,
+            plan._layout.JolietBigPathTableLba,
+            plan._root.JolietDirectoryLba,
+            plan._root.JolietDirectoryBytes,
+            joliet: true,
+            plan._timestamp));
+        output.WriteAtLba(TerminatorLba, BuildTerminator());
+        output.WriteAtLba(
+            plan._layout.PrimaryLittlePathTableLba,
+            BuildPathTable(plan._directories, littleEndian: true, joliet: false));
+        output.WriteAtLba(
+            plan._layout.PrimaryBigPathTableLba,
+            BuildPathTable(plan._directories, littleEndian: false, joliet: false));
+        output.WriteAtLba(
+            plan._layout.JolietLittlePathTableLba,
+            BuildPathTable(plan._directories, littleEndian: true, joliet: true));
+        output.WriteAtLba(
+            plan._layout.JolietBigPathTableLba,
+            BuildPathTable(plan._directories, littleEndian: false, joliet: true));
+
+        foreach (IsoNode directory in plan._directories)
+        {
+            output.WriteAtLba(
+                directory.PrimaryDirectoryLba,
+                BuildDirectoryExtent(directory, joliet: false));
+        }
+
+        foreach (IsoNode directory in plan._directories)
+        {
+            output.WriteAtLba(
+                directory.JolietDirectoryLba,
+                BuildDirectoryExtent(directory, joliet: true));
+        }
+
+        foreach (IsoNode file in EnumerateFiles(plan._root))
+        {
+            output.WriteFileAtLba(file);
+        }
     }
 
     private static IsoNode ReadTree(string sourceFullPath)
@@ -761,7 +909,87 @@ internal static class HybridIsoImageWriter
         TextEncoding.BigEndianUnicode.GetBytes(value, field);
     }
 
-    private sealed class IsoNode(
+    private sealed class SequentialIsoWriter
+    {
+        private const int CopyBufferBytes = 128 * 1024;
+
+        private readonly Stream _output;
+        private readonly CancellationToken _cancellationToken;
+        private readonly byte[] _zeroBuffer = new byte[CopyBufferBytes];
+        private long _position;
+
+        internal SequentialIsoWriter(Stream output, CancellationToken cancellationToken)
+        {
+            _output = output;
+            _cancellationToken = cancellationToken;
+        }
+
+        internal void WriteAtLba(uint lba, ReadOnlySpan<byte> bytes)
+        {
+            PadToPosition(checked((long)lba * IsoImageWriter.LogicalSectorBytes));
+            _cancellationToken.ThrowIfCancellationRequested();
+            _output.Write(bytes);
+            _position = checked(_position + bytes.Length);
+        }
+
+        internal void WriteFileAtLba(IsoNode file)
+        {
+            PadToPosition(checked((long)file.DataLba * IsoImageWriter.LogicalSectorBytes));
+            using FileStream input = new(
+                file.SourcePath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                bufferSize: CopyBufferBytes,
+                FileOptions.SequentialScan);
+            if (input.Length != file.DataLength)
+            {
+                throw new IOException($"Source file size changed while streaming ISO: {file.SourcePath}");
+            }
+
+            byte[] buffer = new byte[CopyBufferBytes];
+            long remaining = file.DataLength;
+            while (remaining > 0)
+            {
+                _cancellationToken.ThrowIfCancellationRequested();
+                int requested = (int)Math.Min(buffer.Length, remaining);
+                int read = input.Read(buffer, 0, requested);
+                if (read == 0)
+                {
+                    throw new EndOfStreamException(
+                        $"Source file ended early while streaming ISO: {file.SourcePath}");
+                }
+
+                _output.Write(buffer, 0, read);
+                _position = checked(_position + read);
+                remaining -= read;
+            }
+        }
+
+        internal void PadToLba(uint lba)
+            => PadToPosition(checked((long)lba * IsoImageWriter.LogicalSectorBytes));
+
+        private void PadToPosition(long target)
+        {
+            if (target < _position)
+            {
+                throw new InvalidOperationException(
+                    $"Sequential ISO layout moved backwards from byte {_position} to {target}.");
+            }
+
+            long remaining = target - _position;
+            while (remaining > 0)
+            {
+                _cancellationToken.ThrowIfCancellationRequested();
+                int count = (int)Math.Min(_zeroBuffer.Length, remaining);
+                _output.Write(_zeroBuffer, 0, count);
+                _position = checked(_position + count);
+                remaining -= count;
+            }
+        }
+    }
+
+    internal sealed class IsoNode(
         string sourcePath,
         string name,
         bool isDirectory,
@@ -784,7 +1012,7 @@ internal static class HybridIsoImageWriter
         internal DateTimeOffset Timestamp { get; set; }
     }
 
-    private sealed record Layout(
+    internal sealed record Layout(
         uint PrimaryLittlePathTableLba,
         uint PrimaryBigPathTableLba,
         uint JolietLittlePathTableLba,

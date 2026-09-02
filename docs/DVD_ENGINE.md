@@ -304,6 +304,8 @@ dotnet run --project src/DvdImageSolver --configuration Release -- solve `
 
 混合模式默认使用`--algorithm dispersion --fast-output true`，适合直接生成整个外圈。也可显式加`--fast-output false`：此时程序会先编码并回放内圈的所有数据块，求出进入外圈时的 EFMPlus state、DSV 和 pit/land，再用精确边界绘图。精确回放会随内圈数据量增加耗时。
 
+GUI 的流式刻录同样支持混合模式，但固定使用快速 dispersion 路径。刻录前先扫描文件夹并计算完整 ISO9660/Joliet 布局，随后从 LBA 0 开始顺序输出内圈文件系统，到下一个 16-sector ECC Block 边界后切换为外圈绘图，全程不创建完整临时 ISO。布局完成后若源文件大小发生变化，流式写入会拒绝继续。
+
 此模式不接受`--lba`或`--fill-sectors`，两者由文件系统大小和盘片容量自动计算。如需在文件之后额外保留一段内圈空间，可使用`--drawing-start-lba N`；该 LBA 不能早于文件系统末尾，且必须与`--psn-offset`一起对齐到16 sectors。盘尾不足一个 ECC Block 的0–15个 sectors保持未分配。
 
 当前 ISO9660 写入器支持递归目录和 Joliet Unicode 名称；单个文件不能超过4 GiB，且为避免链接环和意外引用目录外数据，`--data-dir`中不接受重解析点/符号链接。

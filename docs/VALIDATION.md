@@ -1,13 +1,14 @@
 # 本地验证记录
 
-验证日期：2026 年 8 月 25 日
+验证日期：2026 年 9 月 2 日
 
 - `dotnet build DiscImageStudio.slnx --configuration Release`：0 警告、0 错误。
 - DVD 引擎直接运行 `selftest`：全部通过。
 - `DiscImageStudio.ArchitectureTests`：全部通过，包括测试蓝光模块注册、路由、执行、未知命令和重复命令拒绝。
 - 环形图片测试通过：80×40 源图被自动复制至少 3 份并形成环带；宽高比保持 2:1，所有副本完整位于内外安全边界内，且相邻副本之间保留角度间隙、互不重叠。
 - 环形复制分辨率策略回归通过：正式生成 8192×8192、保存预览 4096×4096、实时预览 2048×2048，正式流程不再被旧有的 4096 上限截断。使用 2400×2400 的 `suzume_binary.png` 和 CD 默认环带生成 8 份副本时，每份由旧版约 363×363 提升到约 1452×1452 像素；8192 中间图生成耗时约 2.4 秒。
-- 流式生成回归通过：CD 2 个扇区连续输出 4704 字节，DVD 16 个扇区连续输出 32768 字节；两者均写入内存流，没有创建镜像文件。
+- 流式生成回归通过：CD 2 个扇区连续输出 4704 字节，纯绘图 DVD 16 个扇区连续输出 32768 字节；两者均写入内存流，没有创建镜像文件。
+- DVD 混合流式回归通过：先为嵌套文件夹计算 ISO9660/Joliet 布局，再向禁止 Seek/Position 的前向流输出 64 个扇区；卷描述符位于 LBA 16，源文件内容完整位于绘图起点之前，绘图起点按 PSN 对齐到 16-sector ECC Block，最终输出长度与整盘声明长度完全一致，且没有创建临时 ISO。
 - 有界缓冲 COM `IStream` 测试通过：声明长度、读取前查询末尾位置、复位、非整块连续读取和逐字节一致性均正确；长度不是 2352/2048 扇区整数倍时会在刻录前拒绝。
 - CD Track-At-Once 调用顺序回归通过：`DoNotFinalizeMedia` → `PrepareMedia` → 空白盘/容量检查 → `AddAudioTrack` → `ReleaseMedia`；IMAPI2 默认启用防缓冲欠载，不再执行部分驱动会拒绝的冗余属性设置。清理阶段即使返回 `0xC0AA0502`，也不会覆盖真正的首个写入错误。
 - 盘片预设回归通过：CD 80/74 分钟和 12/8 cm 单层 DVD 参数均能通过各自生成器校验；12 cm DVD 为 2,295,104 扇区、24–58 mm，8 cm DVD 为 714,544 扇区、24–38 mm，所有预设 ID 唯一。
@@ -32,9 +33,9 @@
 - CD、DVD 环形复制实时预览端到端检查通过：使用方形应用图标时均自动复制 8 份；1.0.8 DVD 灰度预览中所有副本等比、完整且相邻留有空隙，截图 SHA-256 为 `F5F557C2CB3C3FC9C926560C9B588392368E34331B86A50A8842B2DA28C62485`。
 - Windows SDK MakeAppx 10.0.26100.8249 成功生成模块化版本的测试 MSIX。
 - SignTool 成功使用主题 `CN=Disc Image Studio Test` 的专用代码签名证书签名，证书主题与清单 Publisher 一致。
-- 签名测试包 `DiscImageStudio_1.0.16.0_x64.msix` SHA-256：
-  `2B7BF51C059F43971F0BD0405668EBA88026575843C559F767D6F72A4F232810`
-- 1.0.16.0 提升环形复制中间图分辨率，并保留 Verbatim CD-R AZO (43438) 实测预设、CD 标准速度修正、盘片预设完整精度显示和此前刻录诊断修复；包签名校验成功，签名主题与清单 Publisher 均为 `CN=Disc Image Studio Test`。
+- 签名测试包 `DiscImageStudio_1.0.17.0_x64.msix` SHA-256：
+  `7A8D7C2134252280A54C5CF979E90CB305081AF8C311700CB0B0BAEC0F5FA68C`
+- 1.0.17.0 新增 DVD 混合文件夹流式刻录，并保留高分辨率环形复制、Verbatim CD-R AZO (43438) 实测预设、CD 标准速度修正、盘片预设完整精度显示和此前刻录诊断修复；包清单版本与 EXE 文件版本均为 1.0.17.0，签名有效，签名主题与清单 Publisher 均为 `CN=Disc Image Studio Test`。从 MSIX staging 中的自包含 EXE 运行 DVD `selftest` 已通过。
 - `Install-TestPackage.ps1` 已通过 PowerShell 语法检查；脚本会请求 UAC，把公钥导入本地计算机“受信任人”后安装测试包。
 
 测试 MSIX 使用测试 Identity/Publisher 和自签名测试证书，只用于本机安装验证，不能提交商店。正式包必须使用 Partner Center 的真实身份重新生成。
