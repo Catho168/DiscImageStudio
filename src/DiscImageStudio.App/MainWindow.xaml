@@ -565,6 +565,20 @@
                                     <TextBlock x:Name="BurnDeviceStatusText"
                                                Text="进入此页面后会检测本机刻录机。"
                                                Foreground="{StaticResource TextMutedBrush}" TextWrapping="Wrap" />
+                                    <TextBlock Style="{StaticResource FieldLabel}" Text="刻录速度" Margin="0,16,0,6" />
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <ComboBox x:Name="BurnWriteSpeedCombo" DisplayMemberPath="DisplayName"
+                                                  IsEnabled="False"
+                                                  SelectionChanged="BurnWriteSpeedCombo_SelectionChanged" />
+                                        <Button x:Name="RefreshBurnWriteSpeedsButton" Grid.Column="1"
+                                                Style="{StaticResource BrowseButton}"
+                                                Click="RefreshBurnWriteSpeeds_Click" Content="读取盘片"
+                                                IsEnabled="False" />
+                                    </Grid>
+                                    <TextBlock x:Name="BurnWriteSpeedStatusText"
+                                               Text="放入可写盘片后读取其支持的速度；默认自动使用最快速度。"
+                                               Foreground="{StaticResource TextMutedBrush}" TextWrapping="Wrap" />
                                 </StackPanel>
                             </Border>
 

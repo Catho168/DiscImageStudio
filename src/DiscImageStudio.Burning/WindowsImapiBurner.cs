@@ -11,6 +11,18 @@ public sealed class WindowsImapiBurner : IOpticalDiscBurner
         CancellationToken cancellationToken = default)
         => RunOnStaThread(() => EnumerateDevices(cancellationToken));
 
+    public Task<IReadOnlyList<OpticalWriteSpeed>> GetSupportedWriteSpeedsAsync(
+        string deviceId,
+        OpticalBurnMediaKind mediaKind,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(deviceId);
+        return RunOnStaThread(() => EnumerateWriteSpeeds(
+            deviceId,
+            mediaKind,
+            cancellationToken));
+    }
+
     public Task<OpticalBurnResult> BurnAsync(
         OpticalBurnRequest request,
         IProgress<OpticalBurnProgress>? progress = null,
@@ -66,6 +78,51 @@ public sealed class WindowsImapiBurner : IOpticalDiscBurner
         }
     }
 
+    private static IReadOnlyList<OpticalWriteSpeed> EnumerateWriteSpeeds(
+        string deviceId,
+        OpticalBurnMediaKind mediaKind,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        dynamic recorder = CreateRecorder(deviceId);
+        dynamic? format = null;
+        try
+        {
+            format = mediaKind == OpticalBurnMediaKind.CdAudio
+                ? CreateComObject("IMAPI2.MsftDiscFormat2TrackAtOnce")
+                : CreateComObject("IMAPI2.MsftDiscFormat2Data");
+            format.Recorder = recorder;
+            format.ClientName = "Disc Image Studio";
+            if (!(bool)format.IsRecorderSupported(recorder))
+            {
+                throw new InvalidOperationException("所选光驱不支持这种刻录方式。");
+            }
+
+            if (!(bool)format.IsCurrentMediaSupported(recorder))
+            {
+                throw new InvalidOperationException("请放入与所选 CD/DVD 模式兼容的可写盘片。");
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            return ReadSupportedWriteSpeeds(format);
+        }
+        catch (COMException exception)
+        {
+            throw new InvalidOperationException(
+                $"读取当前盘片的刻录速度失败（0x{exception.HResult:X8}）：{exception.Message}",
+                exception);
+        }
+        finally
+        {
+            if (format is not null)
+            {
+                ReleaseComObject(format);
+            }
+
+            ReleaseComObject(recorder);
+        }
+    }
+
     private static OpticalBurnResult Burn(
         OpticalBurnRequest request,
         IProgress<OpticalBurnProgress>? progress,
@@ -118,19 +175,28 @@ public sealed class WindowsImapiBurner : IOpticalDiscBurner
                 request.ContentLength));
             content.WaitUntilPrebuffered(cancellationToken);
 
+            OpticalWriteSpeed? actualWriteSpeed;
             if (request.MediaKind == OpticalBurnMediaKind.CdAudio)
             {
-                BurnCdAudio(
+                actualWriteSpeed = BurnCdAudio(
                     new DynamicCdTrackAtOnceSession(format),
                     content,
                     request,
                     cancellationToken,
-                    operation => currentOperation = operation);
+                    operation => currentOperation = operation,
+                    speed => ReportWriteSpeed(progress, speed, request));
             }
             else
             {
                 currentOperation = "写入 DVD 数据";
-                BurnDvdData(format, content, request, cancellationToken);
+                Action<OpticalWriteSpeed> reportDvdWriteSpeed =
+                    speed => ReportWriteSpeed(progress, speed, request);
+                actualWriteSpeed = BurnDvdData(
+                    format,
+                    content,
+                    request,
+                    cancellationToken,
+                    reportDvdWriteSpeed);
             }
 
             progress?.Report(new OpticalBurnProgress(
@@ -143,7 +209,8 @@ public sealed class WindowsImapiBurner : IOpticalDiscBurner
                 request.DeviceId,
                 request.MediaKind,
                 request.ContentLength,
-                stopwatch.Elapsed);
+                stopwatch.Elapsed,
+                actualWriteSpeed);
         }
         catch (COMException exception)
         {
@@ -163,12 +230,13 @@ public sealed class WindowsImapiBurner : IOpticalDiscBurner
         }
     }
 
-    internal static void BurnCdAudio(
+    internal static OpticalWriteSpeed BurnCdAudio(
         ICdTrackAtOnceSession format,
         GeneratedContentComStream content,
         OpticalBurnRequest request,
         CancellationToken cancellationToken,
-        Action<string>? reportOperation = null)
+        Action<string>? reportOperation = null,
+        Action<OpticalWriteSpeed>? reportWriteSpeed = null)
     {
         reportOperation?.Invoke("设置 CD 会话关闭方式");
         format.DoNotFinalizeMedia = false;
@@ -179,6 +247,19 @@ public sealed class WindowsImapiBurner : IOpticalDiscBurner
             reportOperation?.Invoke("准备并锁定 CD 介质");
             format.PrepareMedia();
             prepared = true;
+            if (request.WriteSpeed is not null)
+            {
+                reportOperation?.Invoke("设置 CD 刻录速度");
+                format.SetWriteSpeed(
+                    request.WriteSpeed.SectorsPerSecond,
+                    request.WriteSpeed.RotationTypeIsPureCav);
+            }
+
+            OpticalWriteSpeed actualWriteSpeed = new(
+                format.CurrentWriteSpeed,
+                format.CurrentRotationTypeIsPureCav);
+            actualWriteSpeed.Validate();
+            reportWriteSpeed?.Invoke(actualWriteSpeed);
             // IMAPI enables buffer-underrun-free recording by default. Avoid changing
             // the prepared-only property because some drives reject the redundant set.
             reportOperation?.Invoke("检查 CD 是否为空白盘");
@@ -198,6 +279,7 @@ public sealed class WindowsImapiBurner : IOpticalDiscBurner
                 format.CancelAddTrack);
             reportOperation?.Invoke("写入 CD 音轨");
             format.AddAudioTrack(content);
+            return actualWriteSpeed;
         }
         catch (Exception exception)
         {
@@ -234,11 +316,12 @@ public sealed class WindowsImapiBurner : IOpticalDiscBurner
         }
     }
 
-    private static void BurnDvdData(
+    private static OpticalWriteSpeed BurnDvdData(
         dynamic format,
         GeneratedContentComStream content,
         OpticalBurnRequest request,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action<OpticalWriteSpeed>? reportWriteSpeed = null)
     {
         int mediaState = (int)format.CurrentMediaStatus;
         if ((mediaState & BlankMediaState) == 0)
@@ -255,9 +338,91 @@ public sealed class WindowsImapiBurner : IOpticalDiscBurner
         format.BufferUnderrunFreeDisabled = false;
         format.ForceMediaToBeClosed = true;
         format.ForceOverwrite = false;
+        if (request.WriteSpeed is not null)
+        {
+            format.SetWriteSpeed(
+                request.WriteSpeed.SectorsPerSecond,
+                request.WriteSpeed.RotationTypeIsPureCav);
+        }
+
+        OpticalWriteSpeed actualWriteSpeed = new(
+            Convert.ToInt32(format.CurrentWriteSpeed),
+            Convert.ToBoolean(format.CurrentRotationTypeIsPureCAV));
+        actualWriteSpeed.Validate();
+        reportWriteSpeed?.Invoke(actualWriteSpeed);
         using CancellationTokenRegistration registration = cancellationToken.Register(() =>
             TryCancel(format, cdAudio: false));
         format.Write(content);
+        return actualWriteSpeed;
+    }
+
+    private static void ReportWriteSpeed(
+        IProgress<OpticalBurnProgress>? progress,
+        OpticalWriteSpeed speed,
+        OpticalBurnRequest request)
+    {
+        progress?.Report(new OpticalBurnProgress(
+            "speed",
+            $"刻录机已采用 {speed.GetMultiplier(request.MediaKind):0.#}×"
+                + $"（{speed.GetMegabytesPerSecond(request.MediaKind):0.0} MB/s）…",
+            0,
+            request.ContentLength));
+    }
+
+    private static IReadOnlyList<OpticalWriteSpeed> ReadSupportedWriteSpeeds(dynamic format)
+    {
+        List<OpticalWriteSpeed> result = [];
+        try
+        {
+            if (format.SupportedWriteSpeedDescriptors is Array descriptors)
+            {
+                foreach (object? item in descriptors)
+                {
+                    if (item is null)
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        dynamic descriptor = item;
+                        int sectorsPerSecond = Convert.ToInt32(descriptor.WriteSpeed);
+                        if (sectorsPerSecond > 0)
+                        {
+                            result.Add(new OpticalWriteSpeed(
+                                sectorsPerSecond,
+                                Convert.ToBoolean(descriptor.RotationTypeIsPureCAV)));
+                        }
+                    }
+                    finally
+                    {
+                        ReleaseComObject(item);
+                    }
+                }
+            }
+        }
+        catch (COMException)
+        {
+            // Older drives may expose only the simple speed list. Fall back below.
+        }
+
+        if (result.Count == 0 && format.SupportedWriteSpeeds is Array speeds)
+        {
+            foreach (object? item in speeds)
+            {
+                int sectorsPerSecond = Convert.ToInt32(item);
+                if (sectorsPerSecond > 0)
+                {
+                    result.Add(new OpticalWriteSpeed(sectorsPerSecond, false));
+                }
+            }
+        }
+
+        return result
+            .Distinct()
+            .OrderBy(speed => speed.SectorsPerSecond)
+            .ThenBy(speed => speed.RotationTypeIsPureCav)
+            .ToArray();
     }
 
     private static void TryCancel(dynamic format, bool cdAudio)

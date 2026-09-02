@@ -448,6 +448,22 @@ static void TestStreamingGeneration(string sourcePath)
             dvdStream.Length - 1,
             (_, _) => { }).Validate(),
         "DVD streaming rejects partial sectors");
+    OpticalWriteSpeed dvd16X = new(10820, true);
+    True(
+        Math.Abs(dvd16X.GetMultiplier(OpticalBurnMediaKind.DvdData) - 16.0) < 0.01,
+        "DVD speed multiplier conversion");
+    Equal(
+        16.0,
+        new OpticalWriteSpeed(1200, false).GetMultiplier(OpticalBurnMediaKind.CdAudio),
+        "CD speed multiplier conversion");
+    Throws<ArgumentOutOfRangeException>(
+        () => new OpticalBurnRequest(
+            "test-recorder",
+            OpticalBurnMediaKind.CdAudio,
+            2352,
+            (_, _) => { },
+            new OpticalWriteSpeed(0, false)).Validate(),
+        "write speed rejects zero sectors per second");
 
     byte[] expected = Enumerable.Range(0, CdDiscParameters.BytesPerSector * 2)
         .Select(index => (byte)(index % 251))
@@ -500,7 +516,8 @@ static void TestCdTrackAtOnceCallOrder()
         "test-recorder",
         OpticalBurnMediaKind.CdAudio,
         sector.Length,
-        (_, _) => { });
+        (_, _) => { },
+        new OpticalWriteSpeed(1200, false));
     RecordingCdTrackAtOnceSession session = new();
 
     WindowsImapiBurner.BurnCdAudio(
@@ -510,8 +527,10 @@ static void TestCdTrackAtOnceCallOrder()
         CancellationToken.None);
 
     Equal(
-        "DoNotFinalizeMedia,PrepareMedia,NumberOfExistingTracks,"
-        + "FreeSectorsOnMedia,AddAudioTrack,ReleaseMedia",
+        "DoNotFinalizeMedia,PrepareMedia,SetWriteSpeed,"
+        + "CurrentWriteSpeed,CurrentRotationTypeIsPureCav,"
+        + "NumberOfExistingTracks,FreeSectorsOnMedia,"
+        + "AddAudioTrack,ReleaseMedia",
         string.Join(',', session.Calls),
         "CD Track-At-Once preparation order");
 
@@ -708,7 +727,28 @@ sealed class RecordingCdTrackAtOnceSession : ICdTrackAtOnceSession
         }
     }
 
+    public int CurrentWriteSpeed
+    {
+        get
+        {
+            Calls.Add(nameof(CurrentWriteSpeed));
+            return 75;
+        }
+    }
+
+    public bool CurrentRotationTypeIsPureCav
+    {
+        get
+        {
+            Calls.Add(nameof(CurrentRotationTypeIsPureCav));
+            return false;
+        }
+    }
+
     public void PrepareMedia() => Calls.Add(nameof(PrepareMedia));
+
+    public void SetWriteSpeed(int sectorsPerSecond, bool rotationTypeIsPureCav)
+        => Calls.Add(nameof(SetWriteSpeed));
 
     public void AddAudioTrack(IStream content)
     {

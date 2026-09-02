@@ -43,6 +43,7 @@ public partial class MainWindow : Window
     private bool _livePreviewRefreshRunning;
     private bool _livePreviewRefreshPending;
     private bool _isApplyingDiscPreset;
+    private int _burnWriteSpeedRefreshRevision;
     private int _livePreviewRevision;
     private CancellationTokenSource? _livePreviewCancellation;
     private CancellationTokenSource? _burnCancellation;
@@ -53,6 +54,8 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        BurnWriteSpeedCombo.ItemsSource = new[] { BurnWriteSpeedOption.Automatic };
+        BurnWriteSpeedCombo.SelectedIndex = 0;
         InitializeDiscPresetSelectors();
         Version version = Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 0);
         VersionText.Text = $"版本 {version.Major}.{version.Minor}.{version.Build} · 本地处理";
@@ -597,15 +600,29 @@ public partial class MainWindow : Window
     private async void RefreshBurnDevices_Click(object sender, RoutedEventArgs e)
         => await RefreshBurnDevicesAsync();
 
-    private void BurnDiscType_Click(object sender, RoutedEventArgs e)
+    private async void BurnDiscType_Click(object sender, RoutedEventArgs e)
     {
         BurnConfirmCheckBox.IsChecked = false;
         UpdateBurnSourceSummary();
         UpdateBurnActionState();
+        await RefreshBurnWriteSpeedsAsync();
     }
 
-    private void BurnDeviceCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        => UpdateBurnActionState();
+    private async void BurnDeviceCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        BurnConfirmCheckBox.IsChecked = false;
+        UpdateBurnActionState();
+        await RefreshBurnWriteSpeedsAsync();
+    }
+
+    private void BurnWriteSpeedCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        BurnConfirmCheckBox.IsChecked = false;
+        UpdateBurnActionState();
+    }
+
+    private async void RefreshBurnWriteSpeeds_Click(object sender, RoutedEventArgs e)
+        => await RefreshBurnWriteSpeedsAsync();
 
     private void BurnConfirmCheckBox_Changed(object sender, RoutedEventArgs e)
         => UpdateBurnActionState();
@@ -637,6 +654,12 @@ public partial class MainWindow : Window
             }
 
             bool dvd = BurnDvdRadio.IsChecked == true;
+            OpticalBurnMediaKind mediaKind = dvd
+                ? OpticalBurnMediaKind.DvdData
+                : OpticalBurnMediaKind.CdAudio;
+            BurnWriteSpeedOption selectedWriteSpeed =
+                BurnWriteSpeedCombo.SelectedItem as BurnWriteSpeedOption
+                ?? BurnWriteSpeedOption.Automatic;
             OpticalBurnRequest request;
             string contentDescription;
             if (dvd)
@@ -677,7 +700,8 @@ public partial class MainWindow : Window
                                 hybridPlan,
                                 cancellationToken: cancellationToken);
                         }
-                    });
+                    },
+                    selectedWriteSpeed.Speed);
                 contentDescription = hybridPlan is null
                     ? $"DVD · {options.TotalSectors} 扇区 · {options.ContentLength / (1024.0 * 1024.0):F1} MiB"
                     : $"DVD 混合盘 · {hybridPlan.FileCount} 个文件 · 绘图从 LBA {hybridPlan.DrawingStartLba} 开始"
@@ -699,13 +723,15 @@ public partial class MainWindow : Window
                         output,
                         parameters,
                         interleave,
-                        cancellationToken: cancellationToken));
+                        cancellationToken: cancellationToken),
+                    selectedWriteSpeed.Speed);
                 contentDescription = $"CD · {parameters.Sectors} 扇区 · {parameters.TotalBytes / (1024.0 * 1024.0):F1} MiB";
             }
 
             MessageBoxResult confirmation = MessageBox.Show(
                 this,
-                $"即将写入：{device.DisplayName}\n{contentDescription}\n\n"
+                $"即将写入：{device.DisplayName}\n{contentDescription}\n"
+                + $"请求速度：{selectedWriteSpeed.DisplayName}\n\n"
                 + "仅允许空白盘。开始后取消或断电可能使盘片报废。是否继续？",
                 "确认开始流式刻录",
                 MessageBoxButton.YesNo,
@@ -726,7 +752,7 @@ public partial class MainWindow : Window
             StatusText.Text = "正在流式刻录…";
             AppendLog(
                 $"\n[{DateTime.Now:HH:mm:ss}] 开始流式刻录：{contentDescription}；"
-                + $"设备={device.DisplayName}。\n");
+                + $"设备={device.DisplayName}；请求速度={selectedWriteSpeed.DisplayName}。\n");
             Progress<OpticalBurnProgress> progress = new(value =>
             {
                 BurnStatusText.Text = value.Message;
@@ -742,7 +768,10 @@ public partial class MainWindow : Window
             StatusText.Text = "流式刻录完成";
             AppendLog(
                 $"[{DateTime.Now:HH:mm:ss}] 流式刻录完成：{result.BytesWritten} 字节，"
-                + $"耗时 {result.Elapsed.TotalSeconds:F1} 秒。\n");
+                + $"耗时 {result.Elapsed.TotalSeconds:F1} 秒"
+                + (result.ActualWriteSpeed is null
+                    ? "。\n"
+                    : $"，实际速度={FormatBurnWriteSpeed(result.ActualWriteSpeed, mediaKind)}。\n"));
             BurnConfirmCheckBox.IsChecked = false;
             MessageBox.Show(
                 this,
@@ -819,6 +848,84 @@ public partial class MainWindow : Window
             BurnDeviceCombo.IsEnabled = true;
             UpdateBurnActionState();
         }
+    }
+
+    private async Task RefreshBurnWriteSpeedsAsync()
+    {
+        if (_isBusy)
+        {
+            return;
+        }
+
+        int revision = ++_burnWriteSpeedRefreshRevision;
+        OpticalWriteSpeed? previousSpeed =
+            (BurnWriteSpeedCombo.SelectedItem as BurnWriteSpeedOption)?.Speed;
+        BurnWriteSpeedCombo.ItemsSource = new[] { BurnWriteSpeedOption.Automatic };
+        BurnWriteSpeedCombo.SelectedIndex = 0;
+
+        if (BurnDeviceCombo.SelectedItem is not OpticalBurnDevice device)
+        {
+            BurnWriteSpeedCombo.IsEnabled = false;
+            RefreshBurnWriteSpeedsButton.IsEnabled = false;
+            BurnWriteSpeedStatusText.Text = "请先选择刻录机。";
+            return;
+        }
+
+        OpticalBurnMediaKind mediaKind = BurnDvdRadio.IsChecked == true
+            ? OpticalBurnMediaKind.DvdData
+            : OpticalBurnMediaKind.CdAudio;
+        BurnWriteSpeedCombo.IsEnabled = false;
+        RefreshBurnWriteSpeedsButton.IsEnabled = false;
+        BurnWriteSpeedStatusText.Text = "正在读取当前盘片支持的刻录速度…";
+        try
+        {
+            IReadOnlyList<OpticalWriteSpeed> speeds =
+                await _opticalDiscBurner.GetSupportedWriteSpeedsAsync(
+                    device.Id,
+                    mediaKind);
+            if (revision != _burnWriteSpeedRefreshRevision)
+            {
+                return;
+            }
+
+            List<BurnWriteSpeedOption> options = [BurnWriteSpeedOption.Automatic];
+            options.AddRange(speeds.Select(speed => new BurnWriteSpeedOption(
+                speed,
+                FormatBurnWriteSpeed(speed, mediaKind))));
+            BurnWriteSpeedCombo.ItemsSource = options;
+            int selectedIndex = previousSpeed is null
+                ? 0
+                : options.FindIndex(option => option.Speed == previousSpeed);
+            BurnWriteSpeedCombo.SelectedIndex = selectedIndex < 0 ? 0 : selectedIndex;
+            BurnWriteSpeedStatusText.Text = speeds.Count == 0
+                ? "当前盘片未报告可选速度，将由刻录机自动选择最快速度。"
+                : $"当前盘片报告 {speeds.Count} 种写入配置；设置后仍以刻录机最终采用值为准。";
+        }
+        catch (Exception exception)
+        {
+            if (revision == _burnWriteSpeedRefreshRevision)
+            {
+                BurnWriteSpeedStatusText.Text =
+                    "未能读取当前盘片速度，将使用自动模式：" + exception.Message;
+            }
+        }
+        finally
+        {
+            if (revision == _burnWriteSpeedRefreshRevision)
+            {
+                BurnWriteSpeedCombo.IsEnabled = true;
+                RefreshBurnWriteSpeedsButton.IsEnabled = true;
+            }
+        }
+    }
+
+    private static string FormatBurnWriteSpeed(
+        OpticalWriteSpeed speed,
+        OpticalBurnMediaKind mediaKind)
+    {
+        string rotation = speed.RotationTypeIsPureCav ? " · CAV" : string.Empty;
+        return $"{speed.GetMultiplier(mediaKind):0.#}×"
+            + $" · {speed.GetMegabytesPerSecond(mediaKind):0.0} MB/s{rotation}";
     }
 
     private void UpdateBurnSourceSummary()
@@ -1861,6 +1968,14 @@ public partial class MainWindow : Window
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
         return completion.Task;
+    }
+
+    private sealed record BurnWriteSpeedOption(
+        OpticalWriteSpeed? Speed,
+        string DisplayName)
+    {
+        internal static BurnWriteSpeedOption Automatic { get; } =
+            new(null, "自动（最快）");
     }
 
     private sealed class PreparedImage : IDisposable

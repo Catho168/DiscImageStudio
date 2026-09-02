@@ -11,6 +11,35 @@ public sealed record OpticalBurnDevice(
     string DisplayName,
     IReadOnlyList<string> VolumePaths);
 
+public sealed record OpticalWriteSpeed(
+    int SectorsPerSecond,
+    bool RotationTypeIsPureCav)
+{
+    private const double DvdBytesPerSecondAtOneX = 1_385_000.0;
+    private const double CdSectorsPerSecondAtOneX = 75.0;
+
+    public double GetMultiplier(OpticalBurnMediaKind mediaKind)
+        => mediaKind == OpticalBurnMediaKind.CdAudio
+            ? SectorsPerSecond / CdSectorsPerSecondAtOneX
+            : SectorsPerSecond * 2048.0 / DvdBytesPerSecondAtOneX;
+
+    public double GetMegabytesPerSecond(OpticalBurnMediaKind mediaKind)
+    {
+        int sectorBytes = mediaKind == OpticalBurnMediaKind.CdAudio ? 2352 : 2048;
+        return SectorsPerSecond * sectorBytes / 1_000_000.0;
+    }
+
+    internal void Validate()
+    {
+        if (SectorsPerSecond <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(SectorsPerSecond),
+                "Write speed must be greater than zero sectors per second.");
+        }
+    }
+}
+
 public sealed record OpticalBurnProgress(
     string Stage,
     string Message,
@@ -24,7 +53,8 @@ public sealed record OpticalBurnRequest(
     string DeviceId,
     OpticalBurnMediaKind MediaKind,
     long ContentLength,
-    Action<Stream, CancellationToken> ProduceContent)
+    Action<Stream, CancellationToken> ProduceContent,
+    OpticalWriteSpeed? WriteSpeed = null)
 {
     public void Validate()
     {
@@ -37,6 +67,8 @@ public sealed record OpticalBurnRequest(
                 nameof(ContentLength),
                 $"Stream length must be a positive multiple of {sectorBytes} bytes.");
         }
+
+        WriteSpeed?.Validate();
     }
 }
 
@@ -44,11 +76,17 @@ public sealed record OpticalBurnResult(
     string DeviceId,
     OpticalBurnMediaKind MediaKind,
     long BytesWritten,
-    TimeSpan Elapsed);
+    TimeSpan Elapsed,
+    OpticalWriteSpeed? ActualWriteSpeed = null);
 
 public interface IOpticalDiscBurner
 {
     Task<IReadOnlyList<OpticalBurnDevice>> GetDevicesAsync(
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<OpticalWriteSpeed>> GetSupportedWriteSpeedsAsync(
+        string deviceId,
+        OpticalBurnMediaKind mediaKind,
         CancellationToken cancellationToken = default);
 
     Task<OpticalBurnResult> BurnAsync(
