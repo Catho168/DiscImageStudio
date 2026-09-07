@@ -18,10 +18,7 @@ internal static class UiPreviewRenderer
         string? liveDisc = null,
         string? liveRing = null)
     {
-        Application application = new()
-        {
-            ShutdownMode = ShutdownMode.OnExplicitShutdown,
-        };
+        Application application = AppHost.CreateApplication(ShutdownMode.OnExplicitShutdown);
         MainWindow window = new()
         {
             Width = 1366,

@@ -1,83 +1,144 @@
-# Disc Image Studio 光盘绘图工坊
+<div align="center">
 
-Disc Image Studio 是一个 Windows 光盘图像生成工具，在同一套 WPF 界面中提供 CD-DA 原始轨道和 DVD ISO 图像生成功能。所有输入与输出均在本机处理。
+![Banner](docs/images/DiscImageStudio_Banner_2.png)
 
-![Disc Image Studio 首页](docs/images/home-screen.png)
+<h2>全能的光盘盘面可见图像生成与刻录工具</h2>
+
+Disc Image Studio 是一个运行在 Windows 的光盘盘面图像生成与刻录工具，帮助您在符合规格的 DVD / CD 光盘上刻蚀出肉眼可见的图像。
+
+![.NET 版本](https://img.shields.io/badge/.NET-9.0-512bd4?style=flat-square)
+![运行平台](https://img.shields.io/badge/Platform-Windows%2010%2F11-0078d6?style=flat-square)
+![开发语言](https://img.shields.io/badge/Language-C%23-68217A?style=flat-square)
+![GitHub Repo size](https://img.shields.io/github/repo-size/JiaFeiMiao-K-Cat/DiscImageStudio?style=flat-square&color=3cb371)
+![贡献欢迎](https://img.shields.io/badge/PRs-Welcome-brightgreen?style=flat-square)
+
+</div>
+
+---
+
+## 界面预览
+
+![](docs/images/tab-3-2.png)
+
+![](docs/images/tab-1.png)
+
+---
+
+## 效果预览
+
+![](docs/images/case1.jpg)
+
+![](docs/images/case2.jpg)
+
+![](docs/images/case3.jpg)
+
+---
+
+## 概述
+
+Disc Image Studio 可将一张图片转换成符合 CD、DVD、蓝光（暂不支持）光盘物理层约束的数据，刻录后将使光盘盘面呈现肉眼可见的图案。
 
 ## 功能
 
-- CD-DA：2352 字节/扇区 RAW 轨道、延迟交织、1200 mm/s 默认扫描速度、CLV 几何与轨道预览。
-- DVD：固定快速纹理算法、快速输出、顺时针（CW）螺旋、ISO 与混合数据盘。
-- 图片处理：可将同一张源图自动复制多份并朝外环形排列；放不下时整张图片会等比缩小，保证不变形、不裁切、不重叠；内外安全边界可调，避免图案贴近不可读区域。正式生成使用 8192×8192 高分辨率中间图，实时预览使用独立的轻量分辨率。
-- 流式刻录（实验性）：CD、纯绘图 DVD 以及“内圈文件、外圈绘图”的混合 DVD 均可通过 Windows IMAPI2 边生成边刻录，只使用约 16 MiB 内存缓冲，不保存完整临时镜像；混合模式会先计算 ISO9660/Joliet 布局，再严格按 LBA 顺序输出文件系统与绘图数据。当前已通过自动化与接口顺序测试，但尚待实体盘验证。
-- 盘片预设：采用“随应用更新的内置 JSON + 用户新增/覆盖 JSON”分层配置；首次启动会在用户层生成可编辑的自定义 CD/DVD 预设，同 ID 用户项可覆盖内置参数，新内置参数则会随应用自动更新。预设只包含容量和生成几何，图片布局与实测校准保持独立；格式已预留名称与说明的 i18n 资源键，详见[预设维护说明](docs/DISC_PRESETS.md)。
-- 校准：CD 与 DVD 共用独立的实时灰度预览页，可同步调整生成与实测参数。
-- 双入口：不带参数打开 GUI，带参数用于自动化。
-- 模块化：CD 与 DVD 都通过 `IOpticalDiscModule` 接入；未来蓝光使用独立模块。
-- 商店准备：应用图标、MSIX 清单、打包脚本和 GitHub Actions 工作流。
+### 光盘数据生成
 
-## 源码结构
+- **CD-DA 支持**：2352 字节/扇区 RAW 音轨、延迟交织、1200 mm/s 默认扫描速度（ECMA-130 范围下限）、CLV 几何与轨道预览。
+- **DVD 支持**：固定的快速纹理（dispersion）算法、快速输出、顺时针（CW）螺旋，支持 ISO 纯绘图盘与"内圈文件、外圈绘图"的混合数据盘。
+- **盘片预设**：内置 JSON + 用户层 JSON 分层配置，首次启动生成可编辑的自定义预设，同 ID 用户项可覆盖内置参数，内置修正随应用自动更新；预设只含容量与生成几何，详见[预设维护说明](docs/DISC_PRESETS.md)。
 
-```text
-src/DiscImageStudio.Core/   介质无关的模块契约、元数据、任务和目录
-src/DiscImageStudio.Imaging/ CD/DVD/未来蓝光可复用的图片预处理层
-src/DiscImageStudio.Burning/ Windows IMAPI2 设备枚举、流缓冲与安全刻录层
-src/DiscImageStudio.Cd/     CD-DA 生成核心与 CD 模块
-src/DiscImageStudio.Dvd/    DVD 引擎适配模块
-src/DiscImageStudio.App/    WPF GUI、统一命令行和商店资源
-src/DvdImageSolver/         保持隔离的 DVD 编码/求解引擎
-tests/                      无第三方测试框架的架构回归测试
-packaging/                  MSIX 清单和打包脚本
-docs/                       架构、蓝光扩展与发布文档
-```
+### 刻录
 
-抽象关系与设计边界见 [架构说明](docs/ARCHITECTURE.md)，蓝光接入步骤见 [ADDING_BLURAY.md](docs/ADDING_BLURAY.md)。
+- **镜像文件输出**：您可以导出完整 ISO / RAW 文件并使用合适的刻录软件手动刻录。
+- **即时流式刻录（实验性）**：CD、纯绘图 DVD 与混合 DVD 边生成边刻录，使用 64 MiB 有界内存缓冲（开刻前预填充 32 MiB），不保存完整镜像；混合模式先计算 ISO9660/Joliet 布局，再严格按 LBA 顺序输出。
+- **拒绝非空白介质！**
+
+### 应用形态
+
+- 双入口：不带参数将打开 GUI；带参数则进入统一命令行。
+- 模块化：CD 与 DVD 通过 `IOpticalDiscModule` 接入；蓝光暂未实现。
+
+## 系统要求
+
+- Windows 10 2004（2004/20H1，19041）及以上，或 Windows 11。
+- 构建：.NET 9 SDK（`global.json` 锁定 9.0.x）；运行 GUI 需要 Windows 桌面运行时。
+- “即时刻录”功能需要一台 Windows 可识别的 CD / DVD 刻录机与空白盘片。
 
 ## 构建与运行
-
-要求：Windows 10 2004+ 或 Windows 11、.NET 9 SDK。
 
 ```powershell
 dotnet build DiscImageStudio.slnx --configuration Release
 dotnet run --project src/DiscImageStudio.App --configuration Release
 ```
 
-运行回归检查：
+构建回归检查：
 
 ```powershell
 dotnet run --project src/DvdImageSolver --configuration Release -- selftest
 dotnet run --project tests/DiscImageStudio.ArchitectureTests --configuration Release
 ```
 
-统一程序仍接受原 DVD 命令，并增加 CD 命令：
+MSIX 打包、测试包签名与发布流程见[发布指南](docs/RELEASING.md)。
+
+## 命令行
+
+统一程序不带参数时将打开 GUI，而带参数时作为自动化工具使用：
+
+| 命令 | 说明 |
+| --- | --- |
+| `solve` | 使用固定快速纹理映射（CW 方向）生成 DVD 镜像 |
+| `encode` | 将单个 DVD ECC 块编码为 NRZI 通道电平 |
+| `calibrate` | 按实测盘片半径渲染 DVD 校准预览 |
+| `selftest` | 运行 DVD 引擎的确定性回归自检 |
+| `cd-generate` | 将图片映射为 RAW CD-DA 音轨，可选延迟交织 |
+| `cd-preview-warp` | 将生成几何投射到实测 CD 盘片几何 |
+| `cd-preview-track` | 使用实测几何渲染已有的 RAW CD-DA 音轨 |
+
+完整 DVD 引擎说明见 [DVD_ENGINE.md](docs/DVD_ENGINE.md)。
+
+## 源码结构
 
 ```text
-solve
-encode
-calibrate
-selftest
-cd-generate
-cd-preview-warp
-cd-preview-track
+src/DiscImageStudio.Core/    介质无关的模块契约、元数据、任务与命令目录
+src/DiscImageStudio.Imaging/ CD/DVD/未来蓝光可复用的图片预处理层
+src/DiscImageStudio.Burning/ Windows IMAPI2 设备枚举、流缓冲与安全刻录层
+src/DiscImageStudio.Cd/      CD-DA 生成核心与 CD 模块
+src/DiscImageStudio.Dvd/     DVD 引擎适配模块
+src/DiscImageStudio.App/     WPF GUI、统一命令行与商店资源
+src/DvdImageSolver/          保持隔离的 DVD 编码/求解引擎
+tests/                       无第三方测试框架的架构回归测试
+packaging/                   MSIX 清单与打包脚本
+tools/                       资产生成与 EFM 表生成的辅助脚本
+docs/                        架构、引擎、预设、发布等文档
 ```
 
-完整 DVD 引擎说明见 [docs/DVD_ENGINE.md](docs/DVD_ENGINE.md)，本轮构建与兼容性结果见 [docs/VALIDATION.md](docs/VALIDATION.md)。
+## 文档
 
-## GitHub 发布
+| 文档 | 内容 |
+| --- | --- |
+| [架构说明](docs/ARCHITECTURE.md) | 模块抽象、层间边界与扩展规则 |
+| [DVD_ENGINE.md](docs/DVD_ENGINE.md) | DVD NRZI 图像约束求解器的约定、编码链与自检覆盖 |
+| [DISC_PRESETS.md](docs/DISC_PRESETS.md) | 可编辑盘片预设的分层 JSON 格式与合并规则 |
+| [ADDING_BLURAY.md](docs/ADDING_BLURAY.md) | 在不改动 CD/DVD 的前提下接入蓝光模块的步骤 |
+| [VALIDATION.md](docs/VALIDATION.md) | 各轮构建、回归与实盘测试的本地验证记录 |
+| [RELEASING.md](docs/RELEASING.md) | GitHub Release、MSIX 打包、签名测试与商店提交流程 |
+| [CHANGELOG.md](CHANGELOG.md) | 版本变更记录 |
 
-仓库已包含 Windows CI 和手动 MSIX 打包工作流。创建空 GitHub 仓库后，可在本目录运行：
+## 刻录与介质安全须知
 
-```powershell
-git init
-git add .
-git commit -m "Initial release"
-git branch -M main
-git remote add origin https://github.com/你的账号/DiscImageStudio.git
-git push -u origin main
-```
+- Disc Image Studio 不安装驱动或服务；“即时刻录”功能使用了 Windows 自带的 IMAPI2，拒绝非空白介质。
+- “即时刻录”功能使用的流式刻录方法尚未经过实体盘验证，属于实验性功能，请只使用可报废的测试介质。刻录中断、断电或生成速度不足仍可能使盘片报废。
+- 实际可见效果取决于盘片、刻录机、固件与写入策略，请先生成校准预览，再用测试介质验证。
+- DVD 混合文件夹会在开始刻录前扫描目录并固定布局；期间源文件大小改变会安全终止任务，但已开始写入的盘片仍可能报废。
 
-正式发布前请先选择许可证；当前仓库没有替你假定开源授权。详见 [LICENSE-NOTICE.md](LICENSE-NOTICE.md) 和 [发布指南](docs/RELEASING.md)。
+## 隐私与安全
 
-## 安全与物理介质说明
+- Disc Image Studio 不联网、不上传文件、不收集遥测，详见[隐私政策](PRIVACY.md)。
+- 发现安全问题请不要在公开 Issue 中披露，按[安全政策](SECURITY.md)使用 GitHub 私密报告。
 
-应用不安装驱动或服务；直接刻录使用 Windows 自带 IMAPI2，只写入用户明确选择并二次确认的刻录机，且拒绝非空白介质。流式刻录目前属于待实盘验证的实验性功能，请只使用可报废的测试介质；刻录中断、断电或生成速度不足仍可能使盘片报废。实际可见效果取决于盘片、刻录机、固件和写入策略，请先生成校准预览并用测试介质验证。DVD 混合文件夹会在开始刻录前扫描目录并固定布局；刻录期间如果源文件大小改变，任务会安全终止，但已经开始写入的盘片仍可能报废。
+## 贡献
+
+欢迎报告问题与提交代码。开发环境搭建、模块边界规则、测试要求与 Pull Request 流程见[贡献指南](CONTRIBUTING.md)。
+
+## 许可证
+
+仓库尚未选择开源许可证：在补上明确的 `LICENSE` 文件之前，公开可见不等于授权复制、修改或再发布。该决定需由项目所有者做出，详见 [LICENSE-NOTICE.md](LICENSE-NOTICE.md)。
