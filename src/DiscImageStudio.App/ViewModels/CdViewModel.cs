@@ -79,7 +79,12 @@ public partial class CdViewModel : ObservableObject
             AddCdGeometry(arguments, string.Empty, actual: false);
             arguments.Add("--interleave");
             arguments.Add(_state.CdInterleave.ToString().ToLowerInvariant());
-            await _shell.RunDiscJobAsync("正在生成 CD 原始音轨…", arguments.ToArray(), output);
+            await _shell.RunDiscJobAsync(
+                "正在生成 CD 原始音轨…",
+                arguments.ToArray(),
+                output,
+                RecentJobEntry.CdFamily,
+                _state.CdImagePath);
         }
         catch (Exception exception)
         {

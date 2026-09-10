@@ -18,6 +18,8 @@ Disc Image Studio 是一个运行在 Windows 的光盘盘面图像生成与刻�
 
 ## 界面预览
 
+![](docs/images/tab-0.png)
+
 ![](docs/images/tab-3-2.png)
 
 ![](docs/images/tab-1.png)
@@ -29,8 +31,6 @@ Disc Image Studio 是一个运行在 Windows 的光盘盘面图像生成与刻�
 ![](docs/images/case1.jpg)
 
 ![](docs/images/case2.jpg)
-
-![](docs/images/case3.jpg)
 
 ---
 
@@ -55,6 +55,7 @@ Disc Image Studio 可将一张图片转换成符合 CD、DVD、蓝光（暂不�
 ### 应用形态
 
 - 双入口：不带参数将打开 GUI；带参数则进入统一命令行。
+- 启动后选定光盘类型后可直接新建或打开源图片，也可以按盘片预设快速创建，并回访最近生成的任务。
 - 模块化：CD 与 DVD 通过 `IOpticalDiscModule` 接入；蓝光暂未实现。
 
 ## 系统要求
@@ -142,3 +143,15 @@ docs/                        架构、引擎、预设、发布等文档
 ## 许可证
 
 仓库尚未选择开源许可证：在补上明确的 `LICENSE` 文件之前，公开可见不等于授权复制、修改或再发布。该决定需由项目所有者做出，详见 [LICENSE-NOTICE.md](LICENSE-NOTICE.md)。
+
+---
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=jiafeimiao-k-cat%2Fdiscimagestudio&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=jiafeimiao-k-cat/discimagestudio&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=jiafeimiao-k-cat/discimagestudio&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=jiafeimiao-k-cat/discimagestudio&type=date&legend=top-left" />
+ </picture>
+</a>

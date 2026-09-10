@@ -4,7 +4,7 @@
         xmlns:controls="clr-namespace:DiscImageStudio.Controls"
         xmlns:iconPacks="http://metro.mahapps.com/winfx/xaml/iconpacks"
         Title="Disc Image Studio"
-        Width="1180" Height="780" MinWidth="720" MinHeight="560"
+        Width="1240" Height="780" MinWidth="720" MinHeight="560"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None" ResizeMode="CanResize"
         Background="{StaticResource BackgroundBrush}"
@@ -40,6 +40,7 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <StackPanel x:Name="TopNavPanel" Grid.Row="0" VerticalAlignment="Top" Margin="0,24,0,0">
+                        <controls:SideNavItem x:Name="NavHome" LabelText="主页" IconKind="House" />
                         <controls:SideNavGroup x:Name="NavDiscGroup" LabelText="制作盘片" IconKind="Disc">
                             <!-- Plain text rows by design: no icons next to the DVD/CD entries.
                                  In the collapsed 72px bar they show their short label instead. -->

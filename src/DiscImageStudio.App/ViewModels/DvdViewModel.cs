@@ -1,5 +1,3 @@
-using System.Diagnostics;
-using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DiscImageStudio.Imaging;
@@ -24,7 +22,6 @@ public partial class DvdViewModel : ObservableObject
         BrowseDataCommand = new RelayCommand(BrowseData, () => !_shell.IsBusy);
         GenerateCommand = new AsyncRelayCommand(GenerateAsync, () => !_shell.IsBusy);
         PreviewCommand = new AsyncRelayCommand(PreviewAsync, () => !_shell.IsBusy);
-        OpenPresetsJsonCommand = new RelayCommand(OpenPresetsJson);
         ReloadPresetsCommand = new RelayCommand(ReloadPresets);
         _shell.BusyChanged += NotifyCommands;
     }
@@ -38,11 +35,12 @@ public partial class DvdViewModel : ObservableObject
 
     public RelayCommand BrowseDataCommand { get; }
 
+    /// <summary>Shared with the start page: opens the editable preset catalog.</summary>
+    public RelayCommand OpenPresetsJsonCommand => _shell.OpenPresetsJsonCommand;
+
     public IAsyncRelayCommand GenerateCommand { get; }
 
     public IAsyncRelayCommand PreviewCommand { get; }
-
-    public RelayCommand OpenPresetsJsonCommand { get; }
 
     public RelayCommand ReloadPresetsCommand { get; }
 
@@ -120,7 +118,12 @@ public partial class DvdViewModel : ObservableObject
                 arguments.Add(_state.DvdDataDirectory.Trim());
             }
 
-            await _shell.RunDiscJobAsync("正在生成 DVD ISO…", arguments.ToArray(), output);
+            await _shell.RunDiscJobAsync(
+                "正在生成 DVD ISO…",
+                arguments.ToArray(),
+                output,
+                RecentJobEntry.DvdFamily,
+                _state.DvdImagePath);
         }
         catch (Exception exception)
         {
@@ -189,25 +192,6 @@ public partial class DvdViewModel : ObservableObject
             options,
             "dvd",
             appendLog: _shell.AppendLog);
-    }
-
-    private void OpenPresetsJson()
-    {
-        try
-        {
-            _state.EnsurePresetsJsonExists();
-            Process.Start(new ProcessStartInfo(_state.DiscPresetJsonPath)
-            {
-                UseShellExecute = true,
-            });
-        }
-        catch (Exception exception)
-        {
-            _shell.ShowToast(
-                "打开失败",
-                $"无法打开预设 JSON。\n\n{exception.Message}\n\n文件位置：\n{_state.DiscPresetJsonPath}",
-                ToastKind.Error);
-        }
     }
 
     private void ReloadPresets()
