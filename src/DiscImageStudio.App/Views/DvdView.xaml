@@ -1,0 +1,154 @@
+<UserControl x:Class="DiscImageStudio.Views.DvdView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:DiscImageStudio.Controls">
+    <ScrollViewer controls:ScrollMaskBehavior.Enabled="True">
+        <StackPanel MaxWidth="800" Margin="40,24,40,40">
+            <TextBlock Style="{StaticResource H1Title}" Text="DVD 图像盘" Margin="0,0,0,24" />
+
+            <controls:SectionCard Header="文件" IconKind="Folder" Margin="0,0,0,24">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="源图片" />
+                    <Grid Margin="0,0,0,14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox Text="{Binding State.DvdImagePath, UpdateSourceTrigger=PropertyChanged}" />
+                        <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Content="浏览…"
+                                Command="{Binding BrowseImageCommand}" />
+                    </Grid>
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="图片处理模式" />
+                    <ComboBox SelectedIndex="{Binding State.DvdImageProcessingModeIndex}" Margin="0,0,0,12">
+                        <ComboBoxItem Content="原图直接映射" />
+                        <ComboBoxItem Content="环形复制（自动份数）" />
+                    </ComboBox>
+                    <controls:RevealPanel IsExpanded="{Binding State.IsDvdRingMode}"
+                                         IsEnabled="{Binding State.IsDvdRingMode}" Margin="0,0,0,4">
+                        <WrapPanel>
+                            <StackPanel Width="190" Margin="0,0,16,10">
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="内圈安全边界 (mm)" />
+                                <TextBox Text="{Binding State.DvdRingInnerMargin, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                            <StackPanel Width="190" Margin="0,0,16,10">
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="外圈安全边界 (mm)" />
+                                <TextBox Text="{Binding State.DvdRingOuterMargin, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                            <TextBlock Width="360" Style="{StaticResource HintText}" VerticalAlignment="Center"
+                                       Margin="0,0,0,10"
+                                       Text="图片会复制多份并朝外环形排列；空间不足时自动等比缩小，保证不变形、不裁切、不重叠。" />
+                        </WrapPanel>
+                    </controls:RevealPanel>
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="输出 ISO" />
+                    <Grid Margin="0,0,0,14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox Text="{Binding State.DvdOutputPath, UpdateSourceTrigger=PropertyChanged}" />
+                        <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Content="选择…"
+                                Command="{Binding BrowseOutputCommand}" />
+                    </Grid>
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="可选：放入内圈的文件夹（留空则整盘只绘图）" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox Text="{Binding State.DvdDataDirectory, UpdateSourceTrigger=PropertyChanged}" />
+                        <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Content="选择…"
+                                Command="{Binding BrowseDataCommand}" />
+                    </Grid>
+                </StackPanel>
+            </controls:SectionCard>
+
+            <controls:SectionCard Header="盘片与快速算法" IconKind="Disc" Margin="0,0,0,24">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="盘片预设" />
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox ItemsSource="{Binding State.DvdPresets}"
+                                  SelectedItem="{Binding State.SelectedDvdPreset}"
+                                  DisplayMemberPath="DisplayName" />
+                        <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Width="104"
+                                Content="打开 JSON" Command="{Binding OpenPresetsJsonCommand}" />
+                        <Button Grid.Column="2" Style="{StaticResource BrowseButton}" Width="96"
+                                Content="重新加载" Command="{Binding ReloadPresetsCommand}" />
+                    </Grid>
+                    <TextBlock Text="{Binding State.DvdPresetHint}" Style="{StaticResource HintText}"
+                               Margin="0,0,0,14" />
+                    <WrapPanel>
+                        <StackPanel Width="190" Margin="0,0,16,14">
+                            <TextBlock Style="{StaticResource FieldLabel}" Text="总扇区数" />
+                            <TextBox Text="{Binding State.DvdTotalSectors, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Width="190" Margin="0,0,16,14">
+                            <TextBlock Style="{StaticResource FieldLabel}" Text="内半径 (mm)" />
+                            <TextBox Text="{Binding State.DvdInnerRadius, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Width="190" Margin="0,0,16,14">
+                            <TextBlock Style="{StaticResource FieldLabel}" Text="外半径 (mm)" />
+                            <TextBox Text="{Binding State.DvdOuterRadius, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Width="190" Margin="0,0,16,14">
+                            <TextBlock Style="{StaticResource FieldLabel}" Text="Channel bit (nm)" />
+                            <TextBox Text="{Binding State.DvdChannelBit, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Width="190" Margin="0,0,16,14">
+                            <TextBlock Style="{StaticResource FieldLabel}" Text="起始角 (°)" />
+                            <TextBox Text="{Binding State.DvdStartAngle, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Width="190" Margin="0,0,16,14">
+                            <TextBlock Style="{StaticResource FieldLabel}" Text="卷标" />
+                            <TextBox Text="{Binding State.DvdVolumeLabel, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </WrapPanel>
+                </StackPanel>
+            </controls:SectionCard>
+
+            <controls:SectionCard Header="校准预览" IconKind="Eye" Margin="0,0,0,24">
+                <StackPanel>
+                    <WrapPanel>
+                        <StackPanel Width="190" Margin="0,0,16,14">
+                            <TextBlock Style="{StaticResource FieldLabel}" Text="实测内半径 (mm)" />
+                            <TextBox Text="{Binding State.DvdActualInnerRadius, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Width="190" Margin="0,0,16,14">
+                            <TextBlock Style="{StaticResource FieldLabel}" Text="实测外半径 (mm)" />
+                            <TextBox Text="{Binding State.DvdActualOuterRadius, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Width="190" Margin="0,0,16,14">
+                            <TextBlock Style="{StaticResource FieldLabel}" Text="预览尺寸" />
+                            <TextBox Text="{Binding State.DvdPreviewSize, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Width="190" Margin="0,0,16,14">
+                            <TextBlock Style="{StaticResource FieldLabel}" Text="每扇区采样" />
+                            <TextBox Text="{Binding State.DvdSamplesPerSector, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </WrapPanel>
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="预览 PNG" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox Text="{Binding State.DvdPreviewPath, UpdateSourceTrigger=PropertyChanged}" />
+                        <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Content="选择…"
+                                Command="{Binding BrowsePreviewCommand}" />
+                    </Grid>
+                </StackPanel>
+            </controls:SectionCard>
+
+            <StackPanel Orientation="Horizontal">
+                <Button Style="{StaticResource PrimaryButton}" Content="生成 DVD ISO"
+                        Command="{Binding GenerateCommand}" Margin="0,0,12,0" />
+                <Button Style="{StaticResource SecondaryButton}" Content="生成校准预览"
+                        Command="{Binding PreviewCommand}" />
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

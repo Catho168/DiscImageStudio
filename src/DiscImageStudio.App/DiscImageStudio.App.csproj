@@ -14,7 +14,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\DiscImageStudio.ico</ApplicationIcon>
     <Title>Disc Image Studio</Title>
-    <Product>Disc Image Studio 光盘绘图工坊</Product>
+    <Product>Disc Image Studio</Product>
     <Description>Create and stream-burn image-mapped CD audio tracks and DVD data discs.</Description>
     <Company>Disc Image Studio</Company>
     <Copyright>Copyright © 2026</Copyright>
@@ -27,11 +27,21 @@
     <DebugType>embedded</DebugType>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <PackageReference Include="MahApps.Metro.IconPacks.Lucide" Version="6.2.1" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\DiscImageStudio.Core\DiscImageStudio.Core.csproj" />
     <ProjectReference Include="..\DiscImageStudio.Burning\DiscImageStudio.Burning.csproj" />
     <ProjectReference Include="..\DiscImageStudio.Imaging\DiscImageStudio.Imaging.csproj" />
     <ProjectReference Include="..\DiscImageStudio.Cd\DiscImageStudio.Cd.csproj" />
     <ProjectReference Include="..\DiscImageStudio.Dvd\DiscImageStudio.Dvd.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Assets\Fonts\HarmonyOS_Sans_SC_Regular.ttf" />
+    <Resource Include="Assets\Fonts\HarmonyOS_Sans_SC_Medium.ttf" />
+    <Resource Include="Assets\Fonts\HarmonyOS_Sans_SC_Bold.ttf" />
+    <Resource Include="Assets\DiscImageStudio-256.png" />
   </ItemGroup>
   <Target Name="RejectInvariantGlobalizationForWpf" BeforeTargets="PrepareForBuild"
           Condition="'$(InvariantGlobalization)' == 'true'">

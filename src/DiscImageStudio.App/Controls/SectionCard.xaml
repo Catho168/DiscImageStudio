@@ -1,0 +1,15 @@
+<UserControl x:Class="DiscImageStudio.Controls.SectionCard"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:iconPacks="http://metro.mahapps.com/winfx/xaml/iconpacks">
+    <Border Style="{StaticResource CardStyle}">
+        <StackPanel>
+            <StackPanel x:Name="HeaderRow" Orientation="Horizontal" Margin="0,0,0,16">
+                <iconPacks:PackIconLucide x:Name="HeaderIcon" Width="24" Height="24" Visibility="Collapsed"
+                                          Foreground="{StaticResource TextSecondaryBrush}" />
+                <TextBlock x:Name="HeaderText" Style="{StaticResource CardTitle}" VerticalAlignment="Center" />
+            </StackPanel>
+            <ContentPresenter x:Name="BodyPresenter" />
+        </StackPanel>
+    </Border>
+</UserControl>

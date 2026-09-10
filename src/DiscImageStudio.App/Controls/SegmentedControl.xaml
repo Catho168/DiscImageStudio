@@ -1,0 +1,80 @@
+<UserControl x:Class="DiscImageStudio.Controls.SegmentedControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Name="SegmentedRoot"
+             UseLayoutRounding="True" SnapsToDevicePixels="True"
+             MinWidth="176">
+    <Grid x:Name="LayoutRoot" Height="36">
+        <!-- Rounded-rect track one level above the card surface, divider hairline;
+             12px radius matches the TextBox/ComboBox field language (not a pill) -->
+        <Border CornerRadius="12" Background="{StaticResource Surface2Brush}"
+                BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" />
+        <!-- Inner well: inset 3 keeps thumb and focus ring inside the rounded silhouette -->
+        <Grid x:Name="Cells" Margin="3">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <!-- Sliding selection thumb; code-behind translates it between the two equal cells -->
+            <Border x:Name="Thumb" Grid.Column="0" Margin="3" CornerRadius="8"
+                    Background="{StaticResource Surface3Brush}"
+                    BorderBrush="{StaticResource DividerBrush}" BorderThickness="1">
+                <Border.RenderTransform>
+                    <TranslateTransform x:Name="ThumbShift" />
+                </Border.RenderTransform>
+            </Border>
+            <RadioButton x:Name="OptionARadio" Grid.Column="0" Margin="3" Cursor="Hand"
+                         Click="OptionAClick" KeyDown="OptionKeyDown"
+                         MouseEnter="OptionMouseEnter" MouseLeave="OptionMouseLeave">
+                <RadioButton.Template>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Grid Background="Transparent">
+                            <!-- Focus ring hugs the rounded half-cell; the unchecked box itself
+                                 carries no other chrome -->
+                            <Border x:Name="FocusRing" CornerRadius="9" BorderThickness="2"
+                                    Background="Transparent" BorderBrush="Transparent" />
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              RecognizesAccessKey="True" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="FocusRing" Property="BorderBrush" Value="{StaticResource PrimaryBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </RadioButton.Template>
+                <TextBlock x:Name="OptionAText" FontSize="14" FontWeight="Medium"
+                           Text="{Binding LabelA, ElementName=SegmentedRoot}"
+                           VerticalAlignment="Center" HorizontalAlignment="Center" />
+            </RadioButton>
+            <RadioButton x:Name="OptionBRadio" Grid.Column="1" Margin="3" Cursor="Hand"
+                         Click="OptionBClick" KeyDown="OptionKeyDown"
+                         MouseEnter="OptionMouseEnter" MouseLeave="OptionMouseLeave">
+                <RadioButton.Template>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Grid Background="Transparent">
+                            <Border x:Name="FocusRing" CornerRadius="9" BorderThickness="2"
+                                    Background="Transparent" BorderBrush="Transparent" />
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              RecognizesAccessKey="True" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="FocusRing" Property="BorderBrush" Value="{StaticResource PrimaryBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </RadioButton.Template>
+                <TextBlock x:Name="OptionBText" FontSize="14" FontWeight="Medium"
+                           Text="{Binding LabelB, ElementName=SegmentedRoot}"
+                           VerticalAlignment="Center" HorizontalAlignment="Center" />
+            </RadioButton>
+        </Grid>
+    </Grid>
+</UserControl>

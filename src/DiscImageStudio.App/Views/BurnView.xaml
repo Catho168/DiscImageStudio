@@ -1,0 +1,140 @@
+<UserControl x:Class="DiscImageStudio.Views.BurnView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:DiscImageStudio.Controls"
+             xmlns:iconPacks="http://metro.mahapps.com/winfx/xaml/iconpacks">
+    <ScrollViewer controls:ScrollMaskBehavior.Enabled="True">
+        <StackPanel MaxWidth="800" Margin="40,24,40,40">
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,24">
+                <TextBlock Style="{StaticResource H1Title}" Text="流式刻录" />
+                <!-- 20px circular help hotspot aligned to the title baseline; hover lights the
+                     glyph and ring, the deleted PageSubtitle sentence lives on as its tooltip. -->
+                <Grid Width="20" Height="20" Margin="8,0,0,3" VerticalAlignment="Bottom"
+                      Background="Transparent" Cursor="Hand"
+                      ToolTipService.InitialShowDelay="150"
+                      ToolTip="流式刻录使用小型内存缓冲区边生成数据、边写入光盘，不必在磁盘保存完整 ISO 或 RAW 文件。">
+                    <Grid.Triggers>
+                        <EventTrigger RoutedEvent="MouseEnter">
+                            <BeginStoryboard>
+                                <Storyboard>
+                                    <ColorAnimation Storyboard.TargetName="HelpGlyph"
+                                                    Storyboard.TargetProperty="(TextBlock.Foreground).(SolidColorBrush.Color)"
+                                                    To="{StaticResource TextPrimaryColor}" Duration="0:0:0.15" />
+                                    <DoubleAnimation Storyboard.TargetName="HelpCircle"
+                                                     Storyboard.TargetProperty="Opacity"
+                                                     To="1" Duration="0:0:0.15" />
+                                </Storyboard>
+                            </BeginStoryboard>
+                        </EventTrigger>
+                        <EventTrigger RoutedEvent="MouseLeave">
+                            <BeginStoryboard>
+                                <Storyboard>
+                                    <ColorAnimation Storyboard.TargetName="HelpGlyph"
+                                                    Storyboard.TargetProperty="(TextBlock.Foreground).(SolidColorBrush.Color)"
+                                                    To="{StaticResource TextMutedColor}" Duration="0:0:0.15" />
+                                    <DoubleAnimation Storyboard.TargetName="HelpCircle"
+                                                     Storyboard.TargetProperty="Opacity"
+                                                     To="0" Duration="0:0:0.15" />
+                                </Storyboard>
+                            </BeginStoryboard>
+                        </EventTrigger>
+                    </Grid.Triggers>
+                    <Border x:Name="HelpCircle" CornerRadius="10"
+                            Background="{StaticResource PrimarySoftBrush}" Opacity="0" />
+                    <TextBlock x:Name="HelpGlyph" Text="?" FontSize="14"
+                               TextAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock.Foreground>
+                            <SolidColorBrush Color="{StaticResource TextMutedColor}" />
+                        </TextBlock.Foreground>
+                    </TextBlock>
+                </Grid>
+            </StackPanel>
+
+            <controls:SectionCard Header="刻录参数" IconKind="Flame" Margin="0,0,0,24">
+                <StackPanel>
+                    <controls:SegmentedControl IsSecondSelected="{Binding IsDvdBurn}"
+                                                Width="248" Margin="0,0,0,14"
+                                                HorizontalAlignment="Left" />
+                    <Border Background="{StaticResource Surface2Brush}" BorderBrush="{StaticResource DividerBrush}"
+                            BorderThickness="1" CornerRadius="12" Padding="14">
+                        <StackPanel>
+                            <TextBlock Text="{Binding SourceTitle}" Style="{StaticResource CardTitle}" FontSize="14" />
+                            <TextBlock Text="{Binding SourceDetails}" Style="{StaticResource HintText}"
+                                       Margin="0,6,0,0" />
+                        </StackPanel>
+                    </Border>
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                        <Button Style="{StaticResource SecondaryButton}" Content="打开 CD 参数" Height="36" Padding="14,0"
+                                Command="{Binding OpenCdParametersCommand}" Margin="0,0,10,0" />
+                        <Button Style="{StaticResource SecondaryButton}" Content="打开 DVD 参数" Height="36" Padding="14,0"
+                                Command="{Binding OpenDvdParametersCommand}" />
+                    </StackPanel>
+                </StackPanel>
+            </controls:SectionCard>
+
+            <controls:SectionCard Header="刻录选项" IconKind="Info" Margin="0,0,0,24">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="刻录机" />
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox ItemsSource="{Binding Devices}"
+                                  SelectedItem="{Binding SelectedDevice}"
+                                  DisplayMemberPath="DisplayName" />
+                        <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Content="刷新"
+                                Command="{Binding RefreshDevicesCommand}" />
+                    </Grid>
+                    <TextBlock Text="{Binding DeviceStatusText}" Style="{StaticResource HintText}" />
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="刻录速度" Margin="0,16,0,6" />
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox ItemsSource="{Binding Speeds}"
+                                  SelectedItem="{Binding SelectedSpeed}"
+                                  DisplayMemberPath="DisplayName"
+                                  IsEnabled="{Binding IsSpeedComboEnabled}" />
+                        <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Content="读取盘片"
+                                IsEnabled="{Binding IsSpeedRefreshEnabled}"
+                                Command="{Binding RefreshSpeedsCommand}" />
+                    </Grid>
+                    <TextBlock Text="{Binding SpeedStatusText}" Style="{StaticResource HintText}" />
+                </StackPanel>
+            </controls:SectionCard>
+
+            <!-- Danger zone: amber warning language -->
+            <Border Style="{StaticResource CardStyle}" BorderBrush="#4DF5A524" Background="{StaticResource WarningSoftBrush}"
+                    Margin="0,0,0,24">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <iconPacks:PackIconLucide Kind="TriangleAlert" Width="24" Height="24"
+                                                  Foreground="{StaticResource WarningBrush}" />
+                        <TextBlock Text="刻录前确认" Style="{StaticResource CardTitle}" Margin="10,0,0,0"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                    <TextBlock Style="{StaticResource BodyText}" Foreground="#E5C783" LineHeight="22"
+                               Text="流式刻录仅支持空白介质！刻录开始后，中断、断电或生成速度不足都可能导致盘片报废！" />
+                    <CheckBox Content="我确认已放入正确的空白盘"
+                              IsChecked="{Binding ConfirmChecked}" Margin="0,14,0,0" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource CardStyle}">
+                <StackPanel>
+                    <TextBlock Text="{Binding BurnStatusText}" Style="{StaticResource CardTitle}" FontSize="14" />
+                    <ProgressBar Minimum="0" Maximum="100" Value="{Binding BurnProgressValue, Mode=OneWay}"
+                                 Margin="0,12,0,16" />
+                    <StackPanel Orientation="Horizontal">
+                        <Button Style="{StaticResource PrimaryButton}" Content="开始流式刻录"
+                                Command="{Binding StartBurnCommand}" Margin="0,0,12,0" />
+                        <Button Style="{StaticResource SecondaryButton}" Content="取消刻录"
+                                Command="{Binding CancelBurnCommand}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
