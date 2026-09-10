@@ -33,6 +33,7 @@ public partial class MainWindow : Window
 
         _pages =
         [
+            new HomeView(_shell.Home),
             new DvdView(_shell.Dvd),
             new CdView(_shell.Cd),
             new BurnView(_shell.Burn),
@@ -42,6 +43,7 @@ public partial class MainWindow : Window
         ];
         _navItems =
         [
+            (NavHome, ShellViewModel.HomeTabIndex),
             (NavDvd, ShellViewModel.DvdTabIndex),
             (NavCd, ShellViewModel.CdTabIndex),
             (NavPreview, ShellViewModel.PreviewTabIndex),
@@ -57,8 +59,8 @@ public partial class MainWindow : Window
         NavDiscGroup.HeaderActivated += NavDiscGroup_HeaderActivated;
 
         _shell.PropertyChanged += Shell_PropertyChanged;
-        UpdateNavActive(ShellViewModel.DvdTabIndex);
-        PageHost.Content = _pages[ShellViewModel.DvdTabIndex];
+        UpdateNavActive(ShellViewModel.HomeTabIndex);
+        PageHost.Content = _pages[ShellViewModel.HomeTabIndex];
 
         SizeChanged += (_, _) => UpdateSidebarCollapse();
         PreviewKeyDown += (_, args) => BurnConfirmModal.HandleKeyDown(args.Key);

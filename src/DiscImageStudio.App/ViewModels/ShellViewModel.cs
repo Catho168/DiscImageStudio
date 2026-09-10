@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -10,15 +11,17 @@ namespace DiscImageStudio.ViewModels;
 
 public partial class ShellViewModel : ObservableObject
 {
-    public const int DvdTabIndex = 0;
-    public const int CdTabIndex = 1;
-    public const int BurnTabIndex = 2;
-    public const int PreviewTabIndex = 3;
-    public const int LogTabIndex = 4;
-    public const int AboutTabIndex = 5;
-    public const int PageCount = 6;
+    public const int HomeTabIndex = 0;
+    public const int DvdTabIndex = 1;
+    public const int CdTabIndex = 2;
+    public const int BurnTabIndex = 3;
+    public const int PreviewTabIndex = 4;
+    public const int LogTabIndex = 5;
+    public const int AboutTabIndex = 6;
+    public const int PageCount = 7;
 
     private readonly Dispatcher _dispatcher;
+    private readonly StringBuilder _log = new();
     private readonly string? _presetLoadWarning;
     private bool _isBusy;
     private bool _isWindowLoaded;
@@ -32,19 +35,23 @@ public partial class ShellViewModel : ObservableObject
         _presetLoadWarning = State.TryLoadPresets();
         State.SelectDefaultPresets();
         LivePreview = new LivePreviewViewModel(_dispatcher, this, State);
+        Home = new HomeViewModel(this, State, new RecentJobStore());
         Burn = new BurnViewModel(this, State);
         Dvd = new DvdViewModel(this, State);
         Cd = new CdViewModel(this, State);
         Log = new LogViewModel(this);
         About = new AboutViewModel();
         OpenOutputCommand = new RelayCommand(OpenOutput, () => OpenOutputEnabled);
-        BrowseCdImageCommand = new RelayCommand(BrowseCdImage, () => !IsBusy);
-        BrowseDvdImageCommand = new RelayCommand(BrowseDvdImage, () => !IsBusy);
+        OpenPresetsJsonCommand = new RelayCommand(OpenPresetsJson);
+        BrowseCdImageCommand = new RelayCommand(() => BrowseCdImage(), () => !IsBusy);
+        BrowseDvdImageCommand = new RelayCommand(() => BrowseDvdImage(), () => !IsBusy);
     }
 
     public DiscParametersState State { get; }
 
     public LivePreviewViewModel LivePreview { get; }
+
+    public HomeViewModel Home { get; }
 
     public BurnViewModel Burn { get; }
 
@@ -79,6 +86,9 @@ public partial class ShellViewModel : ObservableObject
 
     public RelayCommand OpenOutputCommand { get; }
 
+    /// <summary>Opens the editable disc-preset JSON; shared by the start page and the DVD page.</summary>
+    public RelayCommand OpenPresetsJsonCommand { get; }
+
     public RelayCommand BrowseCdImageCommand { get; }
 
     public RelayCommand BrowseDvdImageCommand { get; }
@@ -89,6 +99,11 @@ public partial class ShellViewModel : ObservableObject
     public event Action<string>? LogAppended;
 
     public event Action? LogCleared;
+
+    /// <summary>The entire log so far. It lives here rather than only in the log TextBox because
+    /// the log page is one of several: output produced while that page is hidden has to survive,
+    /// so the view re-renders this text every time the page becomes visible again.</summary>
+    public string LogText => _log.ToString();
 
     public Task<bool> ConfirmAsync(string title, string message, string confirmLabel)
         => ConfirmHandler?.Invoke(title, message, confirmLabel) ?? Task.FromResult(false);
@@ -132,9 +147,17 @@ public partial class ShellViewModel : ObservableObject
         CurrentPageIndex = pageIndex;
     }
 
-    public void AppendLog(string text) => LogAppended?.Invoke(text);
+    public void AppendLog(string text)
+    {
+        _log.Append(text);
+        LogAppended?.Invoke(text);
+    }
 
-    public void ClearLog() => LogCleared?.Invoke();
+    public void ClearLog()
+    {
+        _log.Clear();
+        LogCleared?.Invoke();
+    }
 
     public void ShowToast(string title, string message, ToastKind kind)
         => ShowToast(title, message, kind, kind is ToastKind.Error or ToastKind.Warning
@@ -168,13 +191,14 @@ public partial class ShellViewModel : ObservableObject
         }
     }
 
-    /// <summary>Browse for the CD source image; prefills output/preview when empty.</summary>
-    private void BrowseCdImage()
+    /// <summary>Browse for the CD source image; prefills output/preview when empty.
+    /// Returns false when the picker is cancelled.</summary>
+    internal bool BrowseCdImage()
     {
         string? picked = Dialogs?.PickImage();
         if (picked is null)
         {
-            return;
+            return false;
         }
 
         State.CdImagePath = picked;
@@ -188,15 +212,18 @@ public partial class ShellViewModel : ObservableObject
         {
             State.CdPreviewPath = Path.Combine(directory, "cd-preview.png");
         }
+
+        return true;
     }
 
-    /// <summary>Browse for the DVD source image; prefills output/preview when empty.</summary>
-    private void BrowseDvdImage()
+    /// <summary>Browse for the DVD source image; prefills output/preview when empty.
+    /// Returns false when the picker is cancelled.</summary>
+    internal bool BrowseDvdImage()
     {
         string? picked = Dialogs?.PickImage();
         if (picked is null)
         {
-            return;
+            return false;
         }
 
         State.DvdImagePath = picked;
@@ -210,11 +237,40 @@ public partial class ShellViewModel : ObservableObject
         {
             State.DvdPreviewPath = Path.Combine(directory, "dvd-preview.png");
         }
+
+        return true;
+    }
+
+    /// <summary>Opens the editable preset catalog in the shell's default JSON handler.</summary>
+    private void OpenPresetsJson()
+    {
+        try
+        {
+            State.EnsurePresetsJsonExists();
+            Process.Start(new ProcessStartInfo(State.DiscPresetJsonPath)
+            {
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception exception)
+        {
+            ShowToast(
+                "打开失败",
+                $"无法打开预设 JSON。\n\n{exception.Message}\n\n文件位置：\n{State.DiscPresetJsonPath}",
+                ToastKind.Error);
+        }
     }
 
     /// Streams a disc job through UnifiedCommandRunner on an STA thread, mirroring the
     /// original RunCommandAsync: busy gating, console redirection, log jump, preview jump.
-    internal async Task RunDiscJobAsync(string status, string[] arguments, string outputPath)
+    /// A generation job also passes its family and source picture, which is what the start
+    /// page's recent list reopens; previews and CLI runs leave both null.
+    internal async Task RunDiscJobAsync(
+        string status,
+        string[] arguments,
+        string outputPath,
+        string? discFamily = null,
+        string? sourceImagePath = null)
     {
         if (_isBusy)
         {
@@ -255,6 +311,11 @@ public partial class ShellViewModel : ObservableObject
             OpenOutputEnabled = true;
             StatusText = "完成";
             AppendLog($"[{DateTime.Now:HH:mm:ss}] 完成：{_lastOutputPath}\n");
+            if (discFamily is not null && !string.IsNullOrWhiteSpace(sourceImagePath))
+            {
+                Home.RecordJob(discFamily, Path.GetFullPath(sourceImagePath), _lastOutputPath);
+            }
+
             if (IsPngPath(_lastOutputPath))
             {
                 LivePreview.ShowResultPreview(_lastOutputPath);
@@ -264,6 +325,8 @@ public partial class ShellViewModel : ObservableObject
         else
         {
             StatusText = "未完成，请查看日志";
+            AppendLog(
+                $"[{DateTime.Now:HH:mm:ss}] 任务失败：退出码 {exitCode}，未生成 {Path.GetFullPath(outputPath)}\n");
             ShowToast("任务未完成", "请查看运行日志中的错误信息。", ToastKind.Warning);
         }
     }
