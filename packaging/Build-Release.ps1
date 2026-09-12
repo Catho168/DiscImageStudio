@@ -54,11 +54,15 @@ $isolatedAppDirectory = Join-Path $smokeDirectory 'app'
 $projectPath = Join-Path $workspaceRoot 'src\DiscImageStudio.App\DiscImageStudio.App.csproj'
 New-Item -ItemType Directory -Path $publishDirectory, $isolatedAppDirectory -Force | Out-Null
 
+# WPF's temporary project and the app can build the DVD executable with different
+# global properties but the same runtimeconfig output. Serialize this publish graph.
 & dotnet publish $projectPath `
     --configuration Release `
     --runtime win-x64 `
     --self-contained true `
     --output $publishDirectory `
+    -maxcpucount:1 `
+    -p:BuildInParallel=false `
     "-p:Version=$($metadata.Version)" `
     "-p:AssemblyVersion=$($metadata.FileVersion)" `
     "-p:FileVersion=$($metadata.FileVersion)" `
