@@ -8,7 +8,8 @@ public class AboutViewModel
 
     private static string BuildVersionText()
     {
-        Version version = Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 0);
-        return $"版本 {version.Major}.{version.Minor}.{version.Build}";
+        Assembly assembly = Assembly.GetExecutingAssembly();
+        string? version = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        return $"版本 {version?.Split('+')[0] ?? assembly.GetName().Version?.ToString(3) ?? "1.0.0"}";
     }
 }

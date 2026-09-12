@@ -1,5 +1,7 @@
 <Project>
   <PropertyGroup>
+    <VersionPrefix>1.0.26</VersionPrefix>
+    <VersionSuffix></VersionSuffix>
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
   </PropertyGroup>

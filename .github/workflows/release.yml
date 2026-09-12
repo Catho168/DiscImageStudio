@@ -1,0 +1,223 @@
+name: release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - Directory.Build.props
+      - CHANGELOG.md
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  metadata:
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    timeout-minutes: 5
+    outputs:
+      enabled: ${{ steps.changes.outputs.enabled }}
+      tag: ${{ steps.release.outputs.tag }}
+      commit: ${{ steps.release.outputs.commit }}
+      prerelease: ${{ steps.release.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require a version change together with changelog changes
+        id: changes
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_COMMIT: ${{ github.event.before }}
+        run: |
+          "enabled=false" >> $env:GITHUB_OUTPUT
+          if ($env:EVENT_NAME -eq 'push') {
+            if ($env:BEFORE_COMMIT -match '^0+$') {
+              'Initial repository push: use the manual release entry after setup.' >> $env:GITHUB_STEP_SUMMARY
+              exit 0
+            }
+            $changed = @(git diff --name-only $env:BEFORE_COMMIT HEAD -- Directory.Build.props CHANGELOG.md)
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot compare the release changes.' }
+            if ('Directory.Build.props' -notin $changed -or 'CHANGELOG.md' -notin $changed) {
+              'Skipped: update the version and changelog together to release.' >> $env:GITHUB_STEP_SUMMARY
+              exit 0
+            }
+            $previousXml = git show "${env:BEFORE_COMMIT}:Directory.Build.props"
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot read the previous version.' }
+            [xml]$previous = $previousXml -join "`n"
+            $prefixNode = $previous.SelectSingleNode('/Project/PropertyGroup/VersionPrefix')
+            $suffixNode = $previous.SelectSingleNode('/Project/PropertyGroup/VersionSuffix')
+            if ($null -eq $prefixNode) {
+              # The initial policy setup moves the existing version out of the app project.
+              $previousAppXml = git show "${env:BEFORE_COMMIT}:src/DiscImageStudio.App/DiscImageStudio.App.csproj"
+              if ($LASTEXITCODE -ne 0) { throw 'Cannot read the legacy app version.' }
+              [xml]$previousApp = $previousAppXml -join "`n"
+              $previousVersion = $previousApp.SelectSingleNode('/Project/PropertyGroup/Version').InnerText
+            } else {
+              $previousVersion = $prefixNode.InnerText
+              if ($null -ne $suffixNode -and $suffixNode.InnerText) { $previousVersion += '-' + $suffixNode.InnerText }
+            }
+            $current = ./packaging/Get-ReleaseMetadata.ps1
+            if ($current.Version -ceq $previousVersion) {
+              'Skipped: the configured version has not changed.' >> $env:GITHUB_STEP_SUMMARY
+              exit 0
+            }
+          }
+          "enabled=true" >> $env:GITHUB_OUTPUT
+
+      - name: Validate version, main ancestry and release notes
+        if: steps.changes.outputs.enabled == 'true'
+        id: release
+        run: |
+          $metadata = ./packaging/Get-ReleaseMetadata.ps1 -RequireReleaseNotes
+          $commit = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve the release commit.' }
+          git merge-base --is-ancestor $commit origin/main
+          if ($LASTEXITCODE -ne 0) { throw 'Release commit must belong to origin/main.' }
+          "tag=$($metadata.Tag)" >> $env:GITHUB_OUTPUT
+          "commit=$commit" >> $env:GITHUB_OUTPUT
+          "prerelease=$($metadata.Prerelease.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+
+  validate:
+    needs: metadata
+    if: needs.metadata.outputs.enabled == 'true'
+    uses: ./.github/workflows/build.yml
+    with:
+      ref: ${{ needs.metadata.outputs.commit }}
+
+  package:
+    needs: [metadata, validate]
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+      RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.metadata.outputs.commit }}
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Build and verify standalone EXE
+        run: ./packaging/Build-Release.ps1 -Tag $env:RELEASE_TAG
+
+      - name: Prepare release notes
+        run: |
+          $metadata = ./packaging/Get-ReleaseMetadata.ps1 -Tag $env:RELEASE_TAG -RequireReleaseNotes
+          $directory = Join-Path 'artifacts/release' $metadata.Tag
+          $checksum = (Get-Content -LiteralPath (Join-Path $directory 'SHA256SUMS.txt') -Raw).Trim()
+          $notes = @(
+            $metadata.Notes
+            ''
+            '### 下载与运行'
+            ''
+            '下载下方 win-x64.exe 后直接运行，支持 Windows 10 2004+ / Windows 11 x64，已内置 .NET 运行时。'
+            '此便携 EXE 未进行代码签名。即时流式刻录仍为实验性功能；硬件实测范围以仓库验证记录为准。'
+            ''
+            '### SHA-256'
+            ''
+            '```text'
+            $checksum
+            '```'
+            ''
+            "Source commit: $env:RELEASE_COMMIT"
+          ) -join "`n"
+          Set-Content -LiteralPath (Join-Path $directory 'release-notes.md') -Value $notes -Encoding utf8
+        env:
+          RELEASE_COMMIT: ${{ needs.metadata.outputs.commit }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ needs.metadata.outputs.tag }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            artifacts/release/${{ needs.metadata.outputs.tag }}/*.exe
+            artifacts/release/${{ needs.metadata.outputs.tag }}/SHA256SUMS.txt
+            artifacts/release/${{ needs.metadata.outputs.tag }}/release-notes.md
+
+  draft:
+    needs: [metadata, package]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+      RELEASE_COMMIT: ${{ needs.metadata.outputs.commit }}
+      IS_PRERELEASE: ${{ needs.metadata.outputs.prerelease }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-${{ needs.metadata.outputs.tag }}
+          path: release
+
+      - name: Create or refresh draft with the EXE attachment
+        run: |
+          # Never replace assets on an already published release.
+          $pages = gh api --paginate --slurp "repos/$env:GH_REPO/releases?per_page=100"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect existing releases.' }
+          $existing = @($pages | ConvertFrom-Json | ForEach-Object { $_ } |
+            Where-Object { $_.tag_name -ceq $env:RELEASE_TAG })
+          if ($existing.Count -gt 1) { throw 'Multiple releases have the requested tag.' }
+          if ($existing.Count -eq 1 -and -not $existing[0].draft) {
+            throw 'This release is already public. Publish fixes under a new version.'
+          }
+
+          $refsJson = gh api "repos/$env:GH_REPO/git/matching-refs/tags/$env:RELEASE_TAG"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect the release tag.' }
+          $matchingTags = @($refsJson | ConvertFrom-Json | Where-Object { $_.ref -ceq "refs/tags/$env:RELEASE_TAG" })
+          if ($matchingTags.Count -eq 0) {
+            $createdTag = gh api --method POST "repos/$env:GH_REPO/git/refs" `
+              -f "ref=refs/tags/$env:RELEASE_TAG" -f "sha=$env:RELEASE_COMMIT"
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot create the release tag.' }
+            $remoteTag = $createdTag | ConvertFrom-Json
+          } else {
+            $remoteTag = $matchingTags[0]
+          }
+          $tagObject = $remoteTag.object
+          while ($tagObject.type -eq 'tag') {
+            $annotatedTag = gh api "repos/$env:GH_REPO/git/tags/$($tagObject.sha)" | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve the annotated tag.' }
+            $tagObject = $annotatedTag.object
+          }
+          if ($tagObject.type -ne 'commit' -or $tagObject.sha -ne $env:RELEASE_COMMIT) {
+            throw 'The release tag already points to a different commit. Use a new version.'
+          }
+
+          $exe = "release/DiscImageStudio-$env:RELEASE_TAG-win-x64.exe"
+          $expectedHash = ((Get-Content 'release/SHA256SUMS.txt' -Raw).Trim() -split '\s+')[0]
+          if ((Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash -ine $expectedHash) {
+            throw 'Downloaded EXE checksum does not match.'
+          }
+          $options = @('--title', "Disc Image Studio $env:RELEASE_TAG", '--notes-file', 'release/release-notes.md')
+          if ($existing.Count -eq 1) {
+            gh release upload $env:RELEASE_TAG $exe --clobber
+            if ($LASTEXITCODE -ne 0) { throw 'EXE upload failed.' }
+            gh release edit $env:RELEASE_TAG @options --draft=true "--prerelease=$env:IS_PRERELEASE"
+          } else {
+            $options += @('--draft', '--verify-tag', '--target', $env:RELEASE_COMMIT)
+            if ($env:IS_PRERELEASE -eq 'true') { $options += '--prerelease' }
+            gh release create $env:RELEASE_TAG $exe @options
+          }
+          if ($LASTEXITCODE -ne 0) { throw 'Saving the draft release failed.' }
+          "Draft ready: https://github.com/$env:GH_REPO/releases" >> $env:GITHUB_STEP_SUMMARY

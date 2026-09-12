@@ -71,6 +71,10 @@ dotnet run --project tests/DiscImageStudio.ArchitectureTests --configuration Rel
 
 大改动（新模块、新 UI 页面、刻录层契约变更）建议先开 Issue 或 Draft PR 讨论方案，再写实现。
 
+## 版本与发布
+
+采用 `main` 加短期功能分支，以及按修复、功能、不兼容变化递增的语义化版本。日常贡献把变更记入 `CHANGELOG.md` 的 `Unreleased`；维护者在同一个发布准备 PR 中更新 `Directory.Build.props` 的版本配置和对应版本记录，合并到 `main` 后由 GitHub Actions 自动生成版本标签与 Release 草稿。普通代码 push 不生成 Release。完整触发条件、预发布后缀、草稿审核与重试规则见[发布指南](docs/RELEASING.md)。
+
 ## 许可证
 
 在仓库补上正式 `LICENSE` 之前，版权授权以 [LICENSE-NOTICE.md](LICENSE-NOTICE.md) 为准：公开可见不等于授权复制、修改或再发布。提交贡献时请注意，并在需要时与项目所有者确认。

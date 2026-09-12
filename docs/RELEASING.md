@@ -1,16 +1,81 @@
 # 发布指南
 
-## GitHub Release
+## 分支与版本政策
 
-1. 选择并添加明确的许可证。
-2. 更新 `CHANGELOG.md`、项目版本和隐私政策联系方式。
-3. 确认 GitHub Actions 的 `build` 工作流通过。
-4. 创建版本标签，例如 `v1.0.0`。
-5. 在 GitHub Release 中附上源代码和经过验证的安装包。
+日常开发使用 `main` 加短期功能分支，通过 Pull Request 合并。修复版本也从 `main` 发布；暂不维护长期发布分支。
+
+版本统一在仓库根目录的 `Directory.Build.props` 中维护。维护者按改动选择下一个版本：
+
+| 改动 | 版本变化 | 示例 |
+| --- | --- | --- |
+| 向后兼容的问题修复 | patch | `1.0.26` → `1.0.27` |
+| 向后兼容的新功能 | minor | `1.0.26` → `1.1.0` |
+| 不兼容的接口、命令或文件格式变化 | major | `1.0.26` → `2.0.0` |
+
+正式版在 `VersionPrefix` 中填写 `A.B.C`，将 `VersionSuffix` 留空；预发布在 `VersionSuffix` 中填写 `alpha.N`、`beta.N` 或 `rc.N`，其中 `N` 是不带前导零的正整数。例如 `VersionPrefix=1.0.27`、`VersionSuffix=rc.1` 对应 `1.0.27-rc.1`，不要把后缀写入 `VersionPrefix`。候选版转正式版时清空 `VersionSuffix`。
+
+GitHub Actions 从配置读取完整版本，自动创建对应的 `vA.B.C` 或 `vA.B.C-rc.N` 等标签。发布 EXE 的信息版本保留预发布后缀；文件版本与程序集版本使用四段数字 `A.B.C.0`。仓库数字段限制为 `0..65534`，以兼容 .NET 程序集版本；提交 Microsoft Store 时第一段还必须大于 `0`，MSIX 版本为 `A.B.C.0`。
+
+## GitHub Actions 发布 EXE
+
+### 准备发布
+
+1. 确认许可证决定、隐私政策与支持联系方式已满足本次分发要求；仓库当前的授权状态见 [LICENSE-NOTICE.md](../LICENSE-NOTICE.md)。
+2. 在功能分支修改 `Directory.Build.props` 的 `VersionPrefix`（预发布同时设置 `VersionSuffix`），并把本次内容从 `CHANGELOG.md` 的 `Unreleased` 整理到对应版本段。保留 `## Unreleased`，用于后续开发。
+3. 版本段标题必须使用 `## [1.0.27] - YYYY-MM-DD` 或 `## [1.0.27-rc.1] - YYYY-MM-DD` 的形式，将日期占位符替换为实际发布日期，且段落内容不能为空。预发布和正式版各自需要与标签完全对应的版本段。
+4. 将版本配置和发布日志放入同一个发布准备 PR，确认 `build` 工作流通过后合并到 `main`。该次 push 的变更范围必须同时包含这两个文件，且配置中的完整版本必须实际变化，才会启动自动发布。
+5. GitHub Actions 完成检查、自动创建版本标签并生成 Release 草稿；维护者检查后手动公开。
+
+例如未来修复版在 `Directory.Build.props` 中设置：
+
+```xml
+<VersionPrefix>1.0.27</VersionPrefix>
+<VersionSuffix></VersionSuffix>
+```
+
+同时在 `CHANGELOG.md` 中新增非空的 `## [1.0.27] - YYYY-MM-DD` 版本段并填写实际日期，合并到 `main` 后自动生成 `v1.0.27` 标签。候选版则将 `VersionSuffix` 设为 `rc.1`，日志版本写为 `1.0.27-rc.1`。
+
+### 自动检查与草稿
+
+`.github/workflows/release.yml` 关注 `main` 上对 `Directory.Build.props` 或 `CHANGELOG.md` 的变更，但只有该次 push **同时修改版本配置与发布日志，且完整版本变化**才进入发布流程。普通代码 push 只运行常规构建检查；仅补充 `Unreleased` 或未改版本的配置调整不会生成 Release。
+
+工作流从配置读取完整版本，校验格式及对应的非空、带日期 Changelog 段，确认发布提交属于 `origin/main`，并复用 `build.yml` 的构建与回归检查。全部通过后才生成发布 EXE、对应版本标签与草稿，无需手动创建或推送标签。
+
+GitHub Actions 生成包含 .NET 运行时的 Windows x64 单文件 EXE，无需另装 .NET。打包后将最终 EXE 单独放入隔离目录运行，执行自检、两扇区 RAW/WAV 生成检查及 GUI 截图检查，确认下载单个文件即可使用，再计算 SHA-256。GitHub Release 只附加该 EXE，例如：
+
+```text
+DiscImageStudio-v1.0.27-win-x64.exe
+```
+
+SHA-256 校验值写入 Release 说明，供下载后核对。工作流使用内置 `GITHUB_TOKEN` 创建 **GitHub Release 草稿**，无需配置个人访问令牌（PAT）。预发布标签自动设置 prerelease 标志；正式标签创建正式版草稿。它不会自动公开草稿，也不会提交到 Microsoft Store 或发布自签名测试证书。
+
+维护者在 GitHub 的 [Releases 页面](https://github.com/JiaFeiMiao-K-Cat/DiscImageStudio/releases) 检查草稿中的版本、发布说明、EXE 和校验值，并下载验证启动后，再手动公开。可用下列命令计算下载文件的 SHA-256，与 Release 说明中的值比较：
+
+```powershell
+Get-FileHash .\DiscImageStudio-v1.0.27-win-x64.exe -Algorithm SHA256
+```
+
+### 失败重试与更正
+
+可以重跑失败的 Actions 运行，也可以在 GitHub Actions 从 `main` 手动运行 `release` 工作流。手动触发没有标签输入，读取 `main` 当前配置和发布日志并执行全部发布检查，无需再次修改版本文件来重试。
+
+同一版本重试时，已有标签必须指向本次构建的同一提交，且已有 Release 必须仍为草稿。已经公开的 Release、标签与制品不得覆盖或移动；发现问题时，从 `main` 修复并发布新版本，预发布迭代则增加序号，例如 `rc.1` → `rc.2`。如果 `main` 已前进且同版本标签指向旧提交，应重跑原先失败的运行，或为新提交准备新版本。仅修改发布说明也应保留事实与更正记录，不得替换已公开的二进制文件。
+
+建议仓库管理员在 GitHub 配置 `main` 分支保护，要求 Pull Request 和 `build` 必需检查；为 `v*` 标签设置规则集，允许发布工作流创建标签并禁止更新、删除。工作流文件不等同于远端保护设置，这些保护需要管理员另行配置。
+
+## 本地 EXE 演练
+
+在仓库根目录运行与 GitHub Actions 相同的打包脚本：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File packaging/Build-Release.ps1
+```
+
+脚本自动使用 `Directory.Build.props` 中的版本。例如配置为 `1.0.26` 时，输出目录为 `artifacts/release/v1.0.26/`。脚本构建并单独验证自包含 `win-x64` EXE，生成 `DiscImageStudio-v1.0.26-win-x64.exe` 和 `SHA256SUMS.txt`；校验文件供本地检查和工作流生成 Release 说明使用，不作为 Release 附件。本地演练不要求已有版本标签或 Changelog 发布段，也不会创建 GitHub Release；正式发布必须满足上面的全部检查。
 
 ## Microsoft Store MSIX
 
-先在 Partner Center 保留产品名，并从 Product identity 页面复制：
+MSIX 是独立的手动分发通道。先在 Partner Center 保留产品名，并从 Product identity 页面复制：
 
 - Package/Identity/Name
 - Package/Identity/Publisher
@@ -23,11 +88,12 @@ powershell -ExecutionPolicy Bypass -File packaging/Build-MSIX.ps1 `
   -IdentityName "Partner Center Identity Name" `
   -Publisher "CN=Partner Center Publisher" `
   -PublisherDisplayName "Publisher display name" `
-  -DisplayName "Reserved product name" `
-  -Version "1.0.0.0"
+  -DisplayName "Reserved product name"
 ```
 
-也可以在 GitHub Actions 手动运行 `package-msix` 工作流并填写相同值。生成的 Store MSIX 可以保持未签名；若要旁加载测试，需使用 Publisher 匹配的证书签名。
+未填写 `-Version` 时，从 `Directory.Build.props` 读取正式版本并转换为 `A.B.C.0`。需要明确指定商店版本时，使用 `-Version "1.0.26.0"`；此覆盖值也会同步到包内 EXE 的版本，避免清单与程序版本不一致。Microsoft Store 通道不接受 `-rc.1` 等预发布后缀；准备 Store 包时应使用正式版本配置。
+
+也可以在 GitHub Actions 手动运行 `package-msix` 工作流并填写相同值，`version` 留空时同样读取仓库配置。该工作流先复用 `build.yml` 的 CI，再生成 MSIX 作为 Actions 附件；它不会自动提交商店或附加到 GitHub Release。生成的 Store MSIX 可以保持未签名；若要旁加载测试，需使用 Publisher 匹配的证书签名。
 
 ## 本机签名测试包
 
@@ -37,13 +103,13 @@ powershell -ExecutionPolicy Bypass -File packaging/Build-MSIX.ps1 `
 artifacts/certificates/DiscImageStudio-Test.cer
 ```
 
-使用证书指纹运行 `Build-MSIX.ps1 -CertificateThumbprint <thumbprint>` 生成签名包。然后双击 `packaging/Install-TestPackage.cmd`，或运行：
+使用证书指纹运行 `Build-MSIX.ps1 -CertificateThumbprint <thumbprint>`（同时填写上文的身份参数）生成签名包。然后双击 `packaging/Install-TestPackage.cmd`，或运行：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File packaging/Install-TestPackage.ps1
 ```
 
-安装脚本会请求一次管理员权限，将测试证书公钥导入“本地计算机/受信任人”，并安装签名 MSIX。不要把私钥或 PFX 文件提交到 GitHub。
+安装脚本会请求一次管理员权限，将测试证书公钥导入“本地计算机/受信任人”，并安装签名 MSIX。不要把私钥或 PFX 文件提交到 GitHub，也不要把本机自签名测试证书作为正式 Release 附件。
 
 ## Windows 11 未签名快速测试（可选）
 
@@ -55,14 +121,14 @@ powershell -ExecutionPolicy Bypass -File packaging/Build-MSIX.ps1 `
   -Publisher "CN=Disc Image Studio Test" `
   -PublisherDisplayName "Disc Image Studio Test" `
   -DisplayName "Disc Image Studio Test" `
-  -Version "1.0.0.0" `
+  -Version "1.0.26.0" `
   -UnsignedDevelopmentPackage
 ```
 
 然后用管理员 PowerShell 安装：
 
 ```powershell
-Add-AppxPackage -Path ".\artifacts\msix\DiscImageStudio_1.0.0.0_x64_unsigned-dev.msix" -AllowUnsigned
+Add-AppxPackage -Path ".\artifacts\msix\DiscImageStudio_1.0.26.0_x64_unsigned-dev.msix" -AllowUnsigned
 ```
 
 `-UnsignedDevelopmentPackage` 只用于支持该功能的 Windows 11 系统快速测试；部分 Windows 版本即使提供 `-AllowUnsigned` 仍可能拒绝可执行包，此时使用上面的签名测试方案。准备分发或提交 Microsoft Store 时不要使用该选项，正式包仍需使用 Partner Center 的真实身份。
@@ -74,4 +140,4 @@ Add-AppxPackage -Path ".\artifacts\msix\DiscImageStudio_1.0.0.0_x64_unsigned-dev
 - 对最终包运行 Windows App Certification Kit。
 - 提供至少一张 1366×768 或更大的真实桌面截图。
 - 将 `PRIVACY.md` 发布到公开 HTTPS 页面并填写真实支持联系方式。
-- 在认证备注中说明应用生成大文件、无需登录、不联网且不直接刻录光盘。
+- 在认证备注中说明应用生成大文件、无需登录、不联网，并包含使用 Windows IMAPI2 的实验性 CD/DVD 直接刻录功能；如实列出适用的设备、空白盘片要求与当前验证范围。

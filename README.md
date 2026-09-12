@@ -61,8 +61,14 @@ Disc Image Studio 可将一张图片转换成符合 CD、DVD、蓝光（暂不�
 ## 系统要求
 
 - Windows 10 2004（2004/20H1，19041）及以上，或 Windows 11。
-- 构建：.NET 9 SDK（`global.json` 锁定 9.0.x）；运行 GUI 需要 Windows 桌面运行时。
+- 构建：.NET 9 SDK（`global.json` 锁定 9.0.x）；自行构建的非自包含 GUI 需要 .NET 9 Windows 桌面运行时。Release EXE 已包含运行时，无需另行安装 .NET。
 - “即时刻录”功能需要一台 Windows 可识别的 CD / DVD 刻录机与空白盘片。
+
+## 下载与发布
+
+已公开的正式版与预发布版见 [GitHub Releases](https://github.com/JiaFeiMiao-K-Cat/DiscImageStudio/releases)。Windows x64 单文件程序命名为 `DiscImageStudio-v<版本>-win-x64.exe`，下载后直接运行；Release 说明中提供 SHA-256 校验值。预发布版用于测试，请留意版本说明。
+
+版本规则、GitHub Actions 自动生成 EXE、Release 草稿检查与 MSIX 打包方式见[发布指南](docs/RELEASING.md)。
 
 ## 构建与运行
 
@@ -127,7 +133,7 @@ docs/                        架构、引擎、预设、发布等文档
 ## 刻录与介质安全须知
 
 - Disc Image Studio 不安装驱动或服务；“即时刻录”功能使用了 Windows 自带的 IMAPI2，拒绝非空白介质。
-- “即时刻录”功能使用的流式刻录方法尚未经过实体盘验证，属于实验性功能，请只使用可报废的测试介质。刻录中断、断电或生成速度不足仍可能使盘片报废。
+- “即时刻录”功能已有部分实盘反馈，对不同设备、介质与刻录入口的验证覆盖仍有限，属于实验性功能，请只使用可报废的测试介质。刻录中断、断电或生成速度不足仍可能使盘片报废。
 - 实际可见效果取决于盘片、刻录机、固件与写入策略，请先生成校准预览，再用测试介质验证。
 - DVD 混合文件夹会在开始刻录前扫描目录并固定布局；期间源文件大小改变会安全终止任务，但已开始写入的盘片仍可能报废。
 

@@ -8,12 +8,20 @@ param(
     [string]$PublisherDisplayName = "Disc Image Studio",
     [string]$DisplayName = "Disc Image Studio 光盘绘图工坊",
     [ValidatePattern('^\d+\.\d+\.\d+\.\d+$')]
-    [string]$Version = "1.0.0.0",
+    [string]$Version,
     [string]$CertificateThumbprint,
     [switch]$UnsignedDevelopmentPackage
 )
 
 $ErrorActionPreference = "Stop"
+
+if ([string]::IsNullOrEmpty($Version)) {
+    $metadata = & (Join-Path $PSScriptRoot "Get-ReleaseMetadata.ps1")
+    if ($metadata.Prerelease) {
+        throw "Store packages require a stable version. Clear VersionSuffix or explicitly select a numeric test-package version."
+    }
+    $Version = $metadata.FileVersion
+}
 
 if ($UnsignedDevelopmentPackage -and -not [string]::IsNullOrWhiteSpace($CertificateThumbprint)) {
     throw "UnsignedDevelopmentPackage cannot be combined with CertificateThumbprint."
@@ -86,6 +94,9 @@ if ($LASTEXITCODE -ne 0) {
     --runtime win-x64 `
     --self-contained true `
     --output $publishDirectory `
+    -p:Version="$($versionParts[0]).$($versionParts[1]).$($versionParts[2])" `
+    -p:AssemblyVersion=$Version `
+    -p:FileVersion=$Version `
     -p:PublishSingleFile=true `
     -p:IncludeNativeLibrariesForSelfExtract=true
 if ($LASTEXITCODE -ne 0) {
@@ -97,6 +108,9 @@ if ((Get-SourceSnapshot) -ne $sourceSnapshotBeforePublish) {
 }
 
 $publishedExecutable = Join-Path $publishDirectory "DiscImageStudio.exe"
+if ([Diagnostics.FileVersionInfo]::GetVersionInfo($publishedExecutable).FileVersion -ne $Version) {
+    throw "Published executable version does not match the MSIX manifest version."
+}
 & $publishedExecutable burn-build-info
 if ($LASTEXITCODE -ne 0) {
     throw "Published executable contains the legacy CD session-finalization setter."
