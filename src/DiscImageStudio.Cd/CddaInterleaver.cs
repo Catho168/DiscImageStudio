@@ -2,7 +2,7 @@ using System.IO;
 
 namespace DiscImageStudio.Cd;
 
-internal sealed class CddaInterleaver
+internal sealed class CddaInterleaver(CdAudioByteOrder audioByteOrder)
 {
     private const int D = 4;
 
@@ -51,7 +51,7 @@ internal sealed class CddaInterleaver
         }
 
         Array.Clear(_sector, _sectorPosition, _sector.Length - _sectorPosition);
-        output.Write(_sector);
+        CdAudioSamples.WriteSector(output, _sector, audioByteOrder);
         _sectorPosition = 0;
     }
 
@@ -75,7 +75,7 @@ internal sealed class CddaInterleaver
             return;
         }
 
-        output.Write(_sector);
+        CdAudioSamples.WriteSector(output, _sector, audioByteOrder);
         _sectorPosition = 0;
     }
 }

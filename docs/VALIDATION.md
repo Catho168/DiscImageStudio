@@ -1,5 +1,16 @@
 # 本地验证记录
 
+## 2026 年 9 月 12 日：CD WAV 与流式字节序
+
+- 同步远端 `main` 至 `81e3485` 后，在 `codex/cd-wav-byte-order` 分支实现修正。
+- 完整 Release 构建通过：0 警告、0 错误；运行本次构建的 DVD `selftest` 与 `DiscImageStudio.ArchitectureTests`，全部通过。
+- 新增 `CdAudioCompatibilityTests`：非对称图案分别验证开启/关闭交织的 RAW/WAV 格式、44 字节 RIFF 头、WAVE CUE、逐 16 位交换、前向无头小端流与 WAV data 区一致。步长 1/3/48 的 RAW/WAV 预览均一致；奇数大小 JUNK、末尾 LIST 块正确跳过，非 PCM/单声道/48 kHz/8 位 WAV 被拒绝。
+- 新增 `CdRawImageByteOrderTests`：只构造内存镜像，逐扇区检查 300 个非对称音频扇区在 RAW 结果中原样保留，包括扇区边界和 EOF；镜像构造器未执行样本字节交换。未创建刻录设备或写入光盘。
+- 使用 `ui-snapshot --tab 2` 离屏渲染并检查 CD 页面，WAV/RAW 输出标签和两种工具的使用提示正常显示。
+- 用户报告的旧 RAW `-swab` 对照与本次软件验证已记录于 [CD 刻录兼容说明](CD_AUDIO_COMPATIBILITY.md)。用户随后反馈已完成实盘试验，确认本次修复后无重影；此处记录用户实测结论，不扩展为三个刻录入口均已逐项验证。
+
+## 既有验证记录
+
 验证日期：2026 年 9 月 3 日
 
 - `dotnet build DiscImageStudio.slnx --configuration Release`：0 警告、0 错误。

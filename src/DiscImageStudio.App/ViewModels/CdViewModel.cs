@@ -50,7 +50,7 @@ public partial class CdViewModel : ObservableObject
 
     private void BrowseOutput()
     {
-        string? picked = _shell.Dialogs?.PickSave("CD 原始音轨|*.raw|所有文件|*.*", ".raw", "cd-track.raw");
+        string? picked = _shell.Dialogs?.PickSave("WAV 音轨（推荐）|*.wav|RAW 音轨（旧格式）|*.raw|所有文件|*.*", ".wav", "cd-track.wav");
         if (picked is not null)
         {
             _state.CdOutputPath = picked;
@@ -71,7 +71,7 @@ public partial class CdViewModel : ObservableObject
         try
         {
             string input = RequirePath(_state.CdImagePath, "请选择 CD 源图片。");
-            string output = RequirePath(_state.CdOutputPath, "请选择 CD 原始音轨输出位置。");
+            string output = RequirePath(_state.CdOutputPath, "请选择 CD 音轨输出位置。");
             using RingImagePreparation.PreparedImage preparedImage = PrepareCdImage(
                 input,
                 RingImageQuality.GenerationSize);
@@ -80,7 +80,7 @@ public partial class CdViewModel : ObservableObject
             arguments.Add("--interleave");
             arguments.Add(_state.CdInterleave.ToString().ToLowerInvariant());
             await _shell.RunDiscJobAsync(
-                "正在生成 CD 原始音轨…",
+                "正在生成 CD 音轨…",
                 arguments.ToArray(),
                 output,
                 RecentJobEntry.CdFamily,
@@ -121,7 +121,7 @@ public partial class CdViewModel : ObservableObject
     {
         try
         {
-            string track = RequirePath(_state.CdOutputPath, "请选择或生成 CD 原始音轨。");
+            string track = RequirePath(_state.CdOutputPath, "请选择或生成 CD 音轨。");
             string output = RequirePath(_state.CdPreviewPath, "请选择 CD 预览输出位置。");
             List<string> arguments = ["cd-preview-track", "--track", track, "--output", output];
             AddCdGeometry(arguments, string.Empty, actual: true);

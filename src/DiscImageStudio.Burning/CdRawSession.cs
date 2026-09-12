@@ -101,6 +101,8 @@ internal sealed class DynamicCdRawImageSession : ICdRawImageSession
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(audioContent);
+        // AddTrack expects WAV-order PCM without a header. The RAW image creator
+        // preserves the supplied sample bytes; it does not correct big-endian input.
         _creator.AddTrack(AudioSectorType, audioContent);
         _resultImage = _creator.CreateResultImage();
         return (IStream)_resultImage;

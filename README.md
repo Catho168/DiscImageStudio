@@ -42,7 +42,7 @@ Disc Image Studio 可将一张图片转换成符合 CD、DVD、蓝光（暂不�
 
 ### 光盘数据生成
 
-- **CD-DA 支持**：2352 字节/扇区 RAW 音轨、延迟交织、1200 mm/s 默认扫描速度（ECMA-130 范围下限）、CLV 几何与轨道预览。
+- **CD-DA 支持**：推荐导出带格式头的 WAV 音轨及配套 CUE，兼容 cdrecord 与 ImgBurn；保留旧 RAW 音轨、延迟交织、1200 mm/s 默认扫描速度（ECMA-130 范围下限）、CLV 几何与轨道预览。详见 [CD 刻录兼容说明](docs/CD_AUDIO_COMPATIBILITY.md)。
 - **DVD 支持**：固定的快速纹理（dispersion）算法、快速输出、顺时针（CW）螺旋，支持 ISO 纯绘图盘与"内圈文件、外圈绘图"的混合数据盘。
 - **盘片预设**：内置 JSON + 用户层 JSON 分层配置，首次启动生成可编辑的自定义预设，同 ID 用户项可覆盖内置参数，内置修正随应用自动更新；预设只含容量与生成几何，详见[预设维护说明](docs/DISC_PRESETS.md)。
 
@@ -90,9 +90,9 @@ MSIX 打包、测试包签名与发布流程见[发布指南](docs/RELEASING.md)
 | `encode` | 将单个 DVD ECC 块编码为 NRZI 通道电平 |
 | `calibrate` | 按实测盘片半径渲染 DVD 校准预览 |
 | `selftest` | 运行 DVD 引擎的确定性回归自检 |
-| `cd-generate` | 将图片映射为 RAW CD-DA 音轨，可选延迟交织 |
+| `cd-generate` | 将图片映射为 WAV + CUE 或旧 RAW CD-DA 音轨，可选延迟交织 |
 | `cd-preview-warp` | 将生成几何投射到实测 CD 盘片几何 |
-| `cd-preview-track` | 使用实测几何渲染已有的 RAW CD-DA 音轨 |
+| `cd-preview-track` | 使用实测几何渲染已有的 WAV 或 RAW CD-DA 音轨 |
 
 完整 DVD 引擎说明见 [DVD_ENGINE.md](docs/DVD_ENGINE.md)。
 

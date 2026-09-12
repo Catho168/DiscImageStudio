@@ -41,6 +41,8 @@ flowchart LR
 
 ## 流式刻录层
 
+CD 的 `OpticalBurnRequest.ProduceContent` 明确要求无头的 44.1 kHz、16 位、双声道小端 PCM，`ContentLength` 只计音频数据。CD 生成器的默认无头流保留旧大端输出，调用 IMAPI 时由外壳显式选择 `CdAudioByteOrder.LittleEndian`；转换在延迟交织完成后的整扇区输出处进行。文件生成根据 `.wav` / `.raw` 后缀选择格式：WAV 使用同样的小端音频数据，额外写入 44 字节 RIFF 头和同名 WAVE CUE；旧 RAW 保持大端。Windows RAW 镜像构造器实测原样保留传入字节，不负责修正字节序。详见 [CD 刻录兼容说明](CD_AUDIO_COMPATIBILITY.md)。
+
 `DiscImageStudio.Burning` 只负责 Windows IMAPI2 设备枚举、介质检查、COM `IStream` 适配、64 MiB 有界内存缓冲（开刻前预填充 32 MiB）和刻录生命周期。自动速度会在真正开始 CD/DVD 刻录时重新读取当前盘片的写入配置并选择最低值，手动选择仍保持原值；设备不报告速度时使用刻录接口的保守回退。CD/DVD 生成器仍拥有介质格式：CD 顺序产生 2352 字节音频扇区，DVD 快速算法顺序产生 2048 字节数据扇区。刻录器按需读取这些块，因此磁盘上不出现完整镜像。原文件输出入口不经过该层，失败时不会破坏原工作流。
 
 DVD 混合文件夹模式采用两阶段顺序生成：第一阶段递归扫描目录，确定 ISO9660/Joliet 路径表、目录、文件 extent 和外圈绘图起始 LBA；第二阶段在严格前向、不可 Seek 的流中依次写入系统区、卷描述符、路径表、目录、文件内容、ECC 对齐填充和外圈绘图数据。布局计划只保存元数据，不缓存文件内容。未来蓝光可实现自己的顺序生成器后复用同一刻录契约。

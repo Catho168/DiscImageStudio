@@ -22,18 +22,18 @@ public sealed class CdDiscModule : IOpticalDiscModule
         ModuleId,
         "CD-DA",
         OpticalDiscFamily.CompactDisc,
-        "Raw 2352-byte/sector CD-DA track generation and CLV geometry previews.",
+        "WAV and raw 2352-byte/sector CD-DA track generation and CLV geometry previews.",
         SupportsCancellation: true,
         Commands:
         [
             new DiscCommandDescriptor(
                 "cd-generate",
-                "Generate CD raw track",
-                "Maps an image to a raw CD-DA track and optionally applies delay interleave.",
+                "Generate CD audio track",
+                "Maps an image to WAV + CUE (.wav) or legacy big-endian audio (.raw), with optional delay interleave.",
                 DiscModuleCapabilities.RawTrackGeneration,
                 [
                     new("input", "Source image", DiscOptionValueType.InputFile, Required: true),
-                    new("output", "Raw track", DiscOptionValueType.OutputFile, Required: true),
+                    new("output", "Audio track (.wav or .raw)", DiscOptionValueType.OutputFile, Required: true),
                     .. GeometryOptions,
                     new("interleave", "CD-DA delay interleave", DiscOptionValueType.Boolean, DefaultValue: "true"),
                 ]),
@@ -50,11 +50,11 @@ public sealed class CdDiscModule : IOpticalDiscModule
                 ]),
             new DiscCommandDescriptor(
                 "cd-preview-track",
-                "Preview CD raw track",
-                "Renders an existing raw CD-DA track with measured geometry.",
+                "Preview CD audio track",
+                "Renders an existing WAV or raw CD-DA track with measured geometry.",
                 DiscModuleCapabilities.EncodedOutputPreview,
                 [
-                    new("track", "Raw track", DiscOptionValueType.InputFile, Required: true),
+                    new("track", "WAV or raw track", DiscOptionValueType.InputFile, Required: true),
                     new("output", "Preview PNG", DiscOptionValueType.OutputFile, Required: true),
                     new("size", "Preview size", DiscOptionValueType.Integer, DefaultValue: "1600", Unit: "px"),
                     new("byte-step", "Byte sampling interval", DiscOptionValueType.Integer, DefaultValue: "48"),
@@ -107,7 +107,8 @@ public sealed class CdDiscModule : IOpticalDiscModule
         string message =
             $"CD track complete: {summary.Sectors} sectors, {summary.BytesWritten} bytes, "
             + $"interleave={summary.Interleaved}, elapsed={summary.Elapsed.TotalSeconds:F1}s, "
-            + $"output={summary.OutputTrack}";
+            + $"output={summary.OutputTrack}"
+            + (summary.CueSheetPath is null ? string.Empty : $", cue={summary.CueSheetPath}");
         return new DiscJobResult(ModuleId, request.Command, 0, message, summary.OutputTrack);
     }
 

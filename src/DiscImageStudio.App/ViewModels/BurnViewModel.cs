@@ -352,7 +352,8 @@ public partial class BurnViewModel : ObservableObject
                         output,
                         parameters,
                         interleave,
-                        cancellationToken: cancellationToken),
+                        cancellationToken: cancellationToken,
+                        audioByteOrder: CdAudioByteOrder.LittleEndian),
                     selectedWriteSpeed.Speed);
                 contentDescription = $"CD · {parameters.Sectors} 扇区 · {parameters.TotalBytes / (1024.0 * 1024.0):F1} MiB";
             }

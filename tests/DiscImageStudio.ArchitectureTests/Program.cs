@@ -38,6 +38,8 @@ Throws<ArgumentException>(() => catalog.Resolve("unknown-command"), "unknown com
 TestRingImageLayout();
 TestDiscPresets();
 TestDiscPresetJson();
+CdAudioCompatibilityTests.Run();
+CdRawImageByteOrderTests.Run();
 
 Console.WriteLine("architecture-selftest: all checks passed");
 return;

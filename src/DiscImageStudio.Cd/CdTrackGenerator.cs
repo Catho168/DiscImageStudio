@@ -16,7 +16,10 @@ public sealed record CdGenerationSummary(
     long Sectors,
     long BytesWritten,
     bool Interleaved,
-    TimeSpan Elapsed);
+    TimeSpan Elapsed)
+{
+    public string? CueSheetPath { get; init; }
+}
 
 public static class CdTrackGenerator
 {
@@ -34,6 +37,23 @@ public static class CdTrackGenerator
         parameters.Validate();
         string sourceFullPath = Path.GetFullPath(imagePath);
         string outputFullPath = Path.GetFullPath(outputPath);
+        string extension = Path.GetExtension(outputFullPath);
+        bool wave = extension.Equals(".wav", StringComparison.OrdinalIgnoreCase);
+        if (!wave && !extension.Equals(".raw", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("CD output must be .wav (PCM audio + CUE) or .raw (big-endian cdrecord audio).", nameof(outputPath));
+        }
+
+        if (wave)
+        {
+            CdWaveFile.ValidateLength(parameters.TotalBytes);
+        }
+
+        if (sourceFullPath.Equals(outputFullPath, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("The output must not overwrite the source image.", nameof(outputPath));
+        }
+
         EnsureParentDirectory(outputFullPath);
         using FileStream file = new(
             outputFullPath,
@@ -42,14 +62,21 @@ public static class CdTrackGenerator
             FileShare.None,
             bufferSize: 1024 * 1024,
             FileOptions.SequentialScan);
-        return GenerateToStream(
+        if (wave)
+        {
+            CdWaveFile.WriteHeader(file, parameters.TotalBytes);
+        }
+
+        CdGenerationSummary summary = GenerateToStream(
             sourceFullPath,
             file,
             parameters,
             interleave,
             progress,
             cancellationToken,
-            outputFullPath);
+            outputFullPath,
+            wave ? CdAudioByteOrder.LittleEndian : CdAudioByteOrder.BigEndian);
+        return wave ? summary with { CueSheetPath = CdWaveFile.WriteCue(outputFullPath) } : summary;
     }
 
     public static CdGenerationSummary GenerateToStream(
@@ -59,7 +86,8 @@ public static class CdTrackGenerator
         bool interleave,
         Action<CdProgress>? progress = null,
         CancellationToken cancellationToken = default,
-        string outputDescription = "direct-burn-stream")
+        string outputDescription = "direct-burn-stream",
+        CdAudioByteOrder audioByteOrder = CdAudioByteOrder.BigEndian)
     {
         ArgumentNullException.ThrowIfNull(output);
         if (!output.CanWrite)
@@ -67,11 +95,13 @@ public static class CdTrackGenerator
             throw new ArgumentException("CD output stream must be writable.", nameof(output));
         }
 
+        CdAudioSamples.Validate(audioByteOrder);
         parameters.Validate();
         string sourceFullPath = Path.GetFullPath(imagePath);
         RasterImage source = RasterImage.Load(sourceFullPath);
         long totalBytes = parameters.TotalBytes;
-        CddaInterleaver? cddaInterleaver = interleave ? new CddaInterleaver() : null;
+        CddaInterleaver? cddaInterleaver = interleave ? new CddaInterleaver(audioByteOrder) : null;
+        byte[]? plainSector = interleave ? null : new byte[CdDiscParameters.BytesPerSector];
         Stopwatch stopwatch = Stopwatch.StartNew();
         long progressInterval = Math.Max(CdDiscParameters.BytesPerSector, totalBytes / 200);
         long nextProgress = progressInterval;
@@ -87,7 +117,12 @@ public static class CdTrackGenerator
             byte value = gray < 128 ? BlackPaletteValue : WhitePaletteValue;
             if (cddaInterleaver is null)
             {
-                output.WriteByte(value);
+                int sectorOffset = (int)(globalByte % CdDiscParameters.BytesPerSector);
+                plainSector![sectorOffset] = value;
+                if (sectorOffset == plainSector.Length - 1)
+                {
+                    CdAudioSamples.WriteSector(output, plainSector, audioByteOrder);
+                }
             }
             else
             {
@@ -204,11 +239,37 @@ public static class CdTrackGenerator
             FileShare.Read,
             bufferSize: buffer.Length,
             FileOptions.SequentialScan);
-        int bytesRead;
-        while (globalOffset < maximumBytes
-            && (bytesRead = input.Read(buffer, 0, (int)Math.Min(buffer.Length, maximumBytes - globalOffset))) > 0)
+        Span<byte> signature = stackalloc byte[12];
+        int signatureLength = input.ReadAtLeast(signature, signature.Length, throwOnEndOfStream: false);
+        bool wave = Path.GetExtension(trackPath).Equals(".wav", StringComparison.OrdinalIgnoreCase)
+            || (signatureLength == 12 && signature[..4].SequenceEqual("RIFF"u8)
+                && signature[8..].SequenceEqual("WAVE"u8));
+        input.Position = 0;
+        if (wave)
         {
+            (long offset, long length) = CdWaveFile.ReadAudioRange(input);
+            input.Position = offset;
+            maximumBytes = Math.Min(maximumBytes, length);
+        }
+        else
+        {
+            maximumBytes = Math.Min(maximumBytes, input.Length);
+        }
+
+        while (globalOffset < maximumBytes)
+        {
+            int requested = (int)Math.Min(buffer.Length, maximumBytes - globalOffset);
+            int bytesRead = input.ReadAtLeast(buffer.AsSpan(0, requested), requested, throwOnEndOfStream: false);
+            if (bytesRead == 0)
+            {
+                break;
+            }
+
             cancellationToken.ThrowIfCancellationRequested();
+            if (wave)
+            {
+                CdAudioSamples.SwapByteOrder(buffer.AsSpan(0, bytesRead));
+            }
             long remainder = globalOffset % byteStep;
             int first = remainder == 0 ? 0 : checked((int)(byteStep - remainder));
             for (int index = first; index < bytesRead; index += byteStep)

@@ -205,7 +205,7 @@ public partial class ShellViewModel : ObservableObject
         string directory = Path.GetDirectoryName(picked) ?? Environment.CurrentDirectory;
         if (string.IsNullOrWhiteSpace(State.CdOutputPath))
         {
-            State.CdOutputPath = Path.Combine(directory, "cd-track.raw");
+            State.CdOutputPath = Path.Combine(directory, "cd-track.wav");
         }
 
         if (string.IsNullOrWhiteSpace(State.CdPreviewPath))

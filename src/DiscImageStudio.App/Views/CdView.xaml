@@ -39,7 +39,7 @@
                                        Text="图片会复制多份并朝外环形排列；空间不足时自动等比缩小，保证不变形、不裁切、不重叠。" />
                         </WrapPanel>
                     </controls:RevealPanel>
-                    <TextBlock Style="{StaticResource FieldLabel}" Text="输出原始音轨 (.raw)" />
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="输出音轨 (.wav / .raw)" />
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -49,6 +49,8 @@
                         <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Content="选择…"
                                 Command="{Binding BrowseOutputCommand}" />
                     </Grid>
+                    <TextBlock Style="{StaticResource HintText}" Margin="0,8,0,0"
+                               Text="推荐 WAV，同时生成 CUE；ImgBurn 打开 CUE，cdrecord 直接刻录 WAV。RAW 保留旧格式。" />
                 </StackPanel>
             </controls:SectionCard>
 
@@ -144,7 +146,7 @@
             </controls:SectionCard>
 
             <WrapPanel>
-                <Button Style="{StaticResource PrimaryButton}" Content="生成 CD 原始音轨"
+                <Button Style="{StaticResource PrimaryButton}" Content="生成 CD 音轨"
                         Command="{Binding GenerateCommand}" Margin="0,0,12,10" />
                 <Button Style="{StaticResource SecondaryButton}" Content="预览几何校准"
                         Command="{Binding PreviewWarpCommand}" Margin="0,0,12,10" />

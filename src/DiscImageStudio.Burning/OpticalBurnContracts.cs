@@ -49,6 +49,11 @@ public sealed record OpticalBurnProgress(
     public double Fraction => TotalBytes == 0 ? 0 : (double)CompletedBytes / TotalBytes;
 }
 
+/// <summary>
+/// CD producers supply headerless 44.1 kHz, 16-bit stereo little-endian PCM,
+/// as required by IMAPI_CD_SECTOR_AUDIO. ContentLength excludes any WAV header.
+/// DVD producers supply complete 2048-byte data sectors.
+/// </summary>
 public sealed record OpticalBurnRequest(
     string DeviceId,
     OpticalBurnMediaKind MediaKind,
