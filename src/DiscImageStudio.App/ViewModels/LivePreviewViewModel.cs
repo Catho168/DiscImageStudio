@@ -3,13 +3,16 @@ using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DiscImageStudio.Cd;
+using DiscImageStudio.Dvd;
 using DiscImageStudio.Imaging;
 using DiscImageStudio.Services;
 
 namespace DiscImageStudio.ViewModels;
 
-/// Live preview pipeline: 450ms debounce, revision-based stale-result discard,
-/// running/pending coalescing, cancel-on-change. Drawn on STA worker threads.
+/// Live read-back preview pipeline: 450ms debounce, revision-based stale-result discard,
+/// running/pending coalescing, cancel-on-change. Drawn on STA worker threads. The input
+/// is the generated burn artifact (CD track or DVD ISO), matching the cdimage calibration
+/// model: one parameter set describes the measured disc geometry used to read it back.
 public partial class LivePreviewViewModel : ObservableObject
 {
     private readonly DispatcherTimer _livePreviewTimer;
@@ -25,12 +28,18 @@ public partial class LivePreviewViewModel : ObservableObject
     private bool _suppressModeAutoUpdate;
     private int _livePreviewRevision;
     private string? _lastLivePreviewPath;
+    // True only while the canvas shows the read-back simulation, which is the picture the
+    // download action exports. A job's own PNG output takes the canvas over without a file of
+    // its own to export, so the action must fall back to disabled there.
+    private bool _downloadablePreview;
+    private string? _calibratedTrackPath;
+    private string? _calibratedIsoPath;
 
     [ObservableProperty]
     private bool _isDvdSelected;
 
     [ObservableProperty]
-    private string _headingText = "实时预览 - CD";
+    private string _headingText = "实时预览";
 
     [ObservableProperty]
     private string _resultPreviewTitle = "实时预览 - CD";
@@ -54,6 +63,7 @@ public partial class LivePreviewViewModel : ObservableObject
     {
         _shell = shell;
         _state = state;
+        _state.PropertyChanged += State_PropertyChanged;
         _livePreviewTimer = new DispatcherTimer
         {
             Interval = TimeSpan.FromMilliseconds(450),
@@ -64,16 +74,117 @@ public partial class LivePreviewViewModel : ObservableObject
             _ = RefreshAsync();
         };
         RefreshCommand = new RelayCommand(RefreshNow);
+        DownloadPreviewCommand = new RelayCommand(DownloadPreview, CanDownloadPreview);
     }
 
     internal bool IsLivePreviewReady => _isLivePreviewReady;
 
     public RelayCommand RefreshCommand { get; }
 
+    /// <summary>Writes the current preview next to the generated artifact it was read back from.</summary>
+    public RelayCommand DownloadPreviewCommand { get; }
+
     /// <summary>Shared browsing commands, identical to the CD/DVD page pickers.</summary>
     public RelayCommand BrowseCdImageCommand => _shell.BrowseCdImageCommand;
 
     public RelayCommand BrowseDvdImageCommand => _shell.BrowseDvdImageCommand;
+
+    /// <summary>Picks the generated artifact to read back, matching the CD/DVD page pickers.</summary>
+    public RelayCommand BrowseCdTrackCommand => _shell.BrowseCdTrackCommand;
+
+    public RelayCommand BrowseDvdIsoCommand => _shell.BrowseDvdIsoCommand;
+
+    /// <summary>
+    /// Switching to another artifact adopts the geometry it was generated with, so an imported
+    /// track or ISO starts from its own parameters instead of whatever was fitted before.
+    /// </summary>
+    private void State_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(DiscParametersState.CdTrackPath))
+        {
+            AdoptTrackMetadata(_state.CdTrackPath.Trim());
+            DownloadPreviewCommand.NotifyCanExecuteChanged();
+        }
+        else if (e.PropertyName == nameof(DiscParametersState.DvdIsoPath))
+        {
+            AdoptIsoMetadata(_state.DvdIsoPath.Trim());
+            DownloadPreviewCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    private void AdoptTrackMetadata(string trackPath)
+    {
+        if (trackPath.Length == 0
+            || string.Equals(trackPath, _calibratedTrackPath, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _calibratedTrackPath = trackPath;
+        CdTrackMetadata? metadata = CdTrackMetadata.TryLoad(trackPath);
+        if (metadata is null)
+        {
+            return;
+        }
+
+        DiscParametersState state = _state;
+        string sectors = metadata.Sectors.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        string innerRadius = FormatNumber(metadata.InnerRadiusMm);
+        string outerRadius = FormatNumber(metadata.OuterRadiusMm);
+        if (state.CdSectors.Trim() == sectors
+            && state.CdInnerRadius.Trim() == innerRadius
+            && state.CdOuterRadius.Trim() == outerRadius
+            && state.CdInterleave == metadata.Interleaved)
+        {
+            return;
+        }
+
+        state.CdSectors = sectors;
+        state.CdInnerRadius = innerRadius;
+        state.CdOuterRadius = outerRadius;
+        state.CdInterleave = metadata.Interleaved;
+        _shell.AppendLog(
+            $"[{DateTime.Now:HH:mm:ss}] 已按 {System.IO.Path.GetFileName(trackPath)} 的生成参数载入标定几何："
+            + $"r0={innerRadius} mm, r1={outerRadius} mm, {sectors} 扇区，交织={metadata.Interleaved}。\n");
+    }
+
+    private void AdoptIsoMetadata(string isoPath)
+    {
+        if (isoPath.Length == 0
+            || string.Equals(isoPath, _calibratedIsoPath, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _calibratedIsoPath = isoPath;
+        DvdImageMetadata? metadata = DvdImageMetadata.TryLoad(isoPath);
+        if (metadata is null)
+        {
+            return;
+        }
+
+        DiscParametersState state = _state;
+        string totalSectors = metadata.TotalSectors.ToString(
+            System.Globalization.CultureInfo.InvariantCulture);
+        string innerRadius = FormatNumber(metadata.InnerRadiusMm);
+        string outerRadius = FormatNumber(metadata.OuterRadiusMm);
+        if (state.DvdTotalSectors.Trim() == totalSectors
+            && state.DvdInnerRadius.Trim() == innerRadius
+            && state.DvdOuterRadius.Trim() == outerRadius)
+        {
+            return;
+        }
+
+        state.DvdTotalSectors = totalSectors;
+        state.DvdInnerRadius = innerRadius;
+        state.DvdOuterRadius = outerRadius;
+        _shell.AppendLog(
+            $"[{DateTime.Now:HH:mm:ss}] 已按 {System.IO.Path.GetFileName(isoPath)} 的生成参数载入标定几何："
+            + $"r0={innerRadius} mm, r1={outerRadius} mm, {totalSectors} 总扇区。\n");
+    }
+
+    private static string FormatNumber(double value)
+        => value.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
 
     /// <summary>Disc-type radio semantics: clear the stale canvas and reschedule.</summary>
     partial void OnIsDvdSelectedChanged(bool value)
@@ -112,10 +223,11 @@ public partial class LivePreviewViewModel : ObservableObject
     internal void UpdateMode(bool clearResult)
     {
         string discName = IsDvdSelected ? "DVD" : "CD";
-        HeadingText = $"实时预览 - {discName}";
         ResultPreviewTitle = $"实时预览 - {discName}";
-        ResultPreviewPlaceholderText = $"请先选择 {discName} 源图片。";
-        StatusText = $"等待 {discName} 源图片";
+        ResultPreviewPlaceholderText = IsDvdSelected
+            ? "请先选择生成的 DVD ISO。"
+            : "请先选择生成的 CD 音轨。";
+        StatusText = IsDvdSelected ? "等待生成的 DVD ISO" : "等待生成的 CD 音轨";
 
         if (!clearResult)
         {
@@ -125,6 +237,8 @@ public partial class LivePreviewViewModel : ObservableObject
         ResultImage = null;
         HasResultImage = false;
         ResultPreviewPath = string.Empty;
+        _downloadablePreview = false;
+        DownloadPreviewCommand.NotifyCanExecuteChanged();
         string? previousPath = _lastLivePreviewPath;
         _lastLivePreviewPath = null;
         RingImagePreparation.TryDeleteTemporaryFile(previousPath);
@@ -198,12 +312,10 @@ public partial class LivePreviewViewModel : ObservableObject
         _livePreviewCancellation = cancellation;
 
         if (!TryReadCdSettings(
-                out string imagePath,
-                out CdDiscParameters generated,
-                out CdDiscParameters actual,
+                out string trackPath,
+                out CdDiscParameters parameters,
                 out int outputSize,
                 out int samplesPerSector,
-                out RingImageLayoutOptions? ringLayout,
                 out string message))
         {
             StatusText = message;
@@ -215,6 +327,7 @@ public partial class LivePreviewViewModel : ObservableObject
             return;
         }
 
+        bool deinterleave = _state.CdInterleave;
         Directory.CreateDirectory(RingImagePreparation.LivePreviewDirectory);
         string outputPath = Path.Combine(
             RingImagePreparation.LivePreviewDirectory,
@@ -223,23 +336,17 @@ public partial class LivePreviewViewModel : ObservableObject
         bool keepOutput = false;
         try
         {
+            // Read-back simulation: undo the generation's delay interleave, then map the
+            // logical bytes onto the spiral described by the calibration geometry.
             await StaWorker.RunAsync(() =>
             {
-                using RingImagePreparation.PreparedImage preparedImage = ringLayout is null
-                    ? RingImagePreparation.PreparedImage.Original(imagePath)
-                    : RingImagePreparation.PrepareRingImage(
-                        imagePath,
-                        ringLayout,
-                        "cd-live",
-                        cancellation.Token,
-                        writeLog: false);
-                CdTrackGenerator.PreviewWarp(
-                    preparedImage.Path,
+                CdTrackGenerator.PreviewTrack(
+                    trackPath,
                     outputPath,
-                    generated,
-                    actual,
+                    parameters,
                     outputSize,
-                    samplesPerSector,
+                    CdDiscParameters.BytesPerSector / samplesPerSector,
+                    deinterleave,
                     cancellation.Token);
                 return 0;
             });
@@ -251,12 +358,14 @@ public partial class LivePreviewViewModel : ObservableObject
 
             string? previousPath = _lastLivePreviewPath;
             _lastLivePreviewPath = outputPath;
+            _downloadablePreview = true;
             ShowResultPreview(outputPath);
             keepOutput = true;
             _isLivePreviewReady = true;
             ResultPreviewTitle = "实时预览 - CD";
-            ResultPreviewPath = Path.GetFileName(imagePath);
-            StatusText = $"已实时更新 · 灰度 · {outputSize} px · 每扇区 {samplesPerSector} 个快速采样";
+            ResultPreviewPath = Path.GetFileName(trackPath);
+            StatusText = $"已实时更新 · 读回模拟 · {(deinterleave ? "逆交织" : "纯音轨")}"
+                + $" · {outputSize} px · 每扇区 {samplesPerSector} 个采样";
             RingImagePreparation.TryDeleteTemporaryFile(previousPath);
         }
         catch (OperationCanceledException)
@@ -287,13 +396,13 @@ public partial class LivePreviewViewModel : ObservableObject
         string outputPath = Path.Combine(
             RingImagePreparation.LivePreviewDirectory,
             $"dvd-live-preview-{revision}.png");
+        string summaryJsonPath = outputPath + ".json";
         if (!TryBuildDvdCommand(
                 outputPath,
-                out string imagePath,
+                out string isoPath,
                 out string[] arguments,
                 out int outputSize,
                 out int samplesPerSector,
-                out RingImageLayoutOptions? ringLayout,
                 out string message))
         {
             StatusText = message;
@@ -309,23 +418,12 @@ public partial class LivePreviewViewModel : ObservableObject
         bool keepOutput = false;
         try
         {
-            int exitCode = await StaWorker.RunAsync(() =>
-            {
-                using RingImagePreparation.PreparedImage preparedImage = ringLayout is null
-                    ? RingImagePreparation.PreparedImage.Original(imagePath)
-                    : RingImagePreparation.PrepareRingImage(
-                        imagePath,
-                        ringLayout,
-                        "dvd-live",
-                        cancellation.Token,
-                        writeLog: false);
-                string[] effectiveArguments = (string[])arguments.Clone();
-                SetOptionValue(effectiveArguments, "--image", preparedImage.Path);
-                return UnifiedCommandRunner.Run(effectiveArguments);
-            });
+            // Read-back simulation: the solver classifies the generated ISO's payload
+            // bytes and splats them under the measured disc geometry.
+            int exitCode = await StaWorker.RunAsync(() => UnifiedCommandRunner.Run(arguments));
             if (exitCode != 0)
             {
-                throw new InvalidOperationException("DVD 预览引擎未能完成渲染。");
+                throw new InvalidOperationException("DVD 读回模拟引擎未能完成渲染。");
             }
 
             cancellation.Token.ThrowIfCancellationRequested();
@@ -336,12 +434,13 @@ public partial class LivePreviewViewModel : ObservableObject
 
             string? previousPath = _lastLivePreviewPath;
             _lastLivePreviewPath = outputPath;
+            _downloadablePreview = true;
             ShowResultPreview(outputPath);
             keepOutput = true;
             _isLivePreviewReady = true;
             ResultPreviewTitle = "实时预览 - DVD";
-            ResultPreviewPath = Path.GetFileName(imagePath);
-            StatusText = $"已实时更新 · 灰度 · CW · {outputSize} px · 每扇区 {samplesPerSector} 个快速采样";
+            ResultPreviewPath = Path.GetFileName(isoPath);
+            StatusText = $"已实时更新 · 读回模拟 · CW · {outputSize} px · 每扇区 {samplesPerSector} 个采样";
             RingImagePreparation.TryDeleteTemporaryFile(previousPath);
         }
         catch (OperationCanceledException)
@@ -354,6 +453,7 @@ public partial class LivePreviewViewModel : ObservableObject
         }
         finally
         {
+            TryDeleteFile(summaryJsonPath);
             if (!keepOutput)
             {
                 RingImagePreparation.TryDeleteTemporaryFile(outputPath);
@@ -362,67 +462,41 @@ public partial class LivePreviewViewModel : ObservableObject
     }
 
     private bool TryReadCdSettings(
-        out string imagePath,
-        out CdDiscParameters generated,
-        out CdDiscParameters actual,
+        out string trackPath,
+        out CdDiscParameters parameters,
         out int outputSize,
         out int samplesPerSector,
-        out RingImageLayoutOptions? ringLayout,
         out string message)
     {
-        imagePath = _state.CdImagePath.Trim();
-        generated = null!;
-        actual = null!;
+        trackPath = _state.CdTrackPath.Trim();
+        parameters = null!;
         outputSize = 0;
         samplesPerSector = 0;
-        ringLayout = null;
-        if (imagePath.Length == 0)
+        if (trackPath.Length == 0)
         {
-            message = "请先选择 CD 源图片。";
+            message = "请先选择生成的 CD 音轨（制作页生成后自动填入）。";
             return false;
         }
 
-        if (!File.Exists(imagePath))
+        if (!File.Exists(trackPath))
         {
-            message = "CD 源图片不存在。";
+            message = "CD 音轨文件不存在。";
             return false;
         }
 
         try
         {
             long sectors = ParameterParser.ParsePositiveLong(_state.CdSectors, "扇区数");
-            double imageOuterRadius = ParameterParser.ParsePositiveDouble(_state.CdImageOuterRadius, "图片外半径");
-            generated = new CdDiscParameters(
-                ParameterParser.ParsePositiveDouble(_state.CdInnerRadius, "生成内半径"),
-                ParameterParser.ParsePositiveDouble(_state.CdOuterRadius, "生成外半径"),
-                sectors,
-                ParameterParser.ParsePositiveDouble(_state.CdVelocity, "生成线速度"),
-                ParameterParser.ParseDouble(_state.CdStartAngle, "生成起始角") * Math.PI / 180.0,
-                imageOuterRadius);
-            actual = new CdDiscParameters(
-                ParameterParser.ParsePositiveDouble(_state.CdActualInnerRadius, "实测内半径"),
-                ParameterParser.ParsePositiveDouble(_state.CdActualOuterRadius, "实测外半径"),
-                sectors,
-                ParameterParser.ParsePositiveDouble(_state.CdActualVelocity, "实测线速度"),
-                ParameterParser.ParseDouble(_state.CdActualStartAngle, "实测起始角") * Math.PI / 180.0,
-                imageOuterRadius);
-            generated.Validate();
-            actual.Validate();
+            parameters = new CdDiscParameters(
+                ParameterParser.ParsePositiveDouble(_state.CdInnerRadius, "内半径"),
+                ParameterParser.ParsePositiveDouble(_state.CdOuterRadius, "外半径"),
+                sectors);
+            parameters.Validate();
 
             int configuredSize = ParameterParser.ParsePositiveInt(_state.CdPreviewSize, "预览尺寸");
             int configuredSamples = ParameterParser.ParsePositiveInt(_state.CdSamplesPerSector, "每扇区采样");
             outputSize = Math.Clamp(configuredSize, 256, 900);
             samplesPerSector = Math.Clamp(configuredSamples, 1, 2);
-            if (_state.CdImageProcessingModeIndex == 1)
-            {
-                ringLayout = ParameterParser.CreateRingLayoutOptions(
-                    imageOuterRadius,
-                    generated.InnerRadiusMm,
-                    generated.OuterRadiusMm,
-                    _state.CdRingInnerMargin,
-                    _state.CdRingOuterMargin,
-                    Math.Max(RingImageQuality.LivePreviewSize, outputSize));
-            }
 
             message = string.Empty;
             return true;
@@ -436,27 +510,25 @@ public partial class LivePreviewViewModel : ObservableObject
 
     private bool TryBuildDvdCommand(
         string outputPath,
-        out string imagePath,
+        out string isoPath,
         out string[] arguments,
         out int outputSize,
         out int samplesPerSector,
-        out RingImageLayoutOptions? ringLayout,
         out string message)
     {
-        imagePath = _state.DvdImagePath.Trim();
+        isoPath = _state.DvdIsoPath.Trim();
         arguments = [];
         outputSize = 0;
         samplesPerSector = 0;
-        ringLayout = null;
-        if (imagePath.Length == 0)
+        if (isoPath.Length == 0)
         {
-            message = "请先选择 DVD 源图片。";
+            message = "请先选择生成的 DVD ISO（制作页生成后自动填入）。";
             return false;
         }
 
-        if (!File.Exists(imagePath))
+        if (!File.Exists(isoPath))
         {
-            message = "DVD 源图片不存在。";
+            message = "DVD ISO 文件不存在。";
             return false;
         }
 
@@ -468,17 +540,13 @@ public partial class LivePreviewViewModel : ObservableObject
                 throw new ArgumentOutOfRangeException("总扇区数", "总扇区数超出 DVD 引擎支持范围。");
             }
 
-            double generatedInner = ParameterParser.ParsePositiveDouble(_state.DvdInnerRadius, "生成内半径");
-            double generatedOuter = ParameterParser.ParsePositiveDouble(_state.DvdOuterRadius, "生成外半径");
-            double actualInner = ParameterParser.ParsePositiveDouble(_state.DvdActualInnerRadius, "实测内半径");
-            double actualOuter = ParameterParser.ParsePositiveDouble(_state.DvdActualOuterRadius, "实测外半径");
-            if (generatedInner >= generatedOuter || actualInner >= actualOuter)
+            double innerRadius = ParameterParser.ParsePositiveDouble(_state.DvdInnerRadius, "内半径");
+            double outerRadius = ParameterParser.ParsePositiveDouble(_state.DvdOuterRadius, "外半径");
+            if (innerRadius >= outerRadius)
             {
                 throw new ArgumentOutOfRangeException("半径", "内半径必须小于外半径。");
             }
 
-            double channelBit = ParameterParser.ParsePositiveDouble(_state.DvdChannelBit, "Channel bit");
-            double startAngle = ParameterParser.ParseDouble(_state.DvdStartAngle, "起始角");
             outputSize = Math.Clamp(
                 ParameterParser.ParsePositiveInt(_state.DvdPreviewSize, "预览尺寸"),
                 256,
@@ -487,34 +555,18 @@ public partial class LivePreviewViewModel : ObservableObject
                 ParameterParser.ParsePositiveInt(_state.DvdSamplesPerSector, "每扇区采样"),
                 1,
                 2);
-            if (_state.DvdImageProcessingModeIndex == 1)
-            {
-                ringLayout = ParameterParser.CreateRingLayoutOptions(
-                    generatedOuter,
-                    generatedInner,
-                    generatedOuter,
-                    _state.DvdRingInnerMargin,
-                    _state.DvdRingOuterMargin,
-                    Math.Max(RingImageQuality.LivePreviewSize, outputSize));
-            }
 
-            string totalSectors = totalSectorsValue.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            // The simulate command falls back to the ISO's solve sidecar JSON for the
+            // drawing range, so the app only passes the measured calibration geometry.
             arguments =
             [
-                "calibrate",
-                "--image", imagePath,
+                "simulate",
+                "--iso", isoPath,
                 "--output", outputPath,
-                "--total-sectors", totalSectors,
-                "--fill-sectors", totalSectors,
-                "--generated-inner-radius-mm", generatedInner.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
-                "--generated-outer-radius-mm", generatedOuter.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
-                "--actual-inner-radius-mm", actualInner.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
-                "--actual-outer-radius-mm", actualOuter.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
-                "--channel-bit-nm", channelBit.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
-                "--start-angle-deg", startAngle.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+                "--total-sectors", totalSectorsValue.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                "--inner-radius-mm", innerRadius.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+                "--outer-radius-mm", outerRadius.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
                 "--spiral-direction", "cw",
-                "--image-threshold", "128",
-                "--alpha-threshold", "1",
                 "--preview-size", outputSize.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 "--samples-per-sector", samplesPerSector.ToString(System.Globalization.CultureInfo.InvariantCulture),
             ];
@@ -528,24 +580,25 @@ public partial class LivePreviewViewModel : ObservableObject
         }
     }
 
-    private static void SetOptionValue(string[] arguments, string option, string value)
+    private static void TryDeleteFile(string path)
     {
-        for (int index = 0; index + 1 < arguments.Length; index++)
+        try
         {
-            if (arguments[index].Equals(option, StringComparison.OrdinalIgnoreCase))
+            if (File.Exists(path))
             {
-                arguments[index + 1] = value;
-                return;
+                File.Delete(path);
             }
         }
-
-        throw new ArgumentException($"Missing command option {option}.", nameof(arguments));
+        catch (IOException)
+        {
+        }
     }
 
     internal void PrepareResultPreview(string outputPath)
     {
         ResultImage = null;
         HasResultImage = false;
+        _downloadablePreview = false;
         ResultPreviewTitle = "输出预览";
         ResultPreviewPath = string.Empty;
         ResultPreviewPlaceholderText = ShellViewModel.IsPngPath(outputPath)
@@ -587,5 +640,58 @@ public partial class LivePreviewViewModel : ObservableObject
         _livePreviewCancellation?.Cancel();
         _livePreviewCancellation?.Dispose();
         RingImagePreparation.TryDeleteTemporaryFile(_lastLivePreviewPath);
+    }
+
+    partial void OnHasResultImageChanged(bool value) => DownloadPreviewCommand.NotifyCanExecuteChanged();
+
+    private bool CanDownloadPreview()
+        => HasResultImage && _downloadablePreview && PreviewArtifactDirectory() is not null;
+
+    /// <summary>
+    /// Exports the live preview next to the artifact it was read back from, named after that
+    /// artifact (<c>cd-track-preview.png</c>): the read-back picture belongs with the track or
+    /// ISO the user keeps, not in the preview's temporary directory.
+    /// </summary>
+    private void DownloadPreview()
+    {
+        string? previewPath = _lastLivePreviewPath;
+        string? directory = PreviewArtifactDirectory();
+        if (!_downloadablePreview || previewPath is null || directory is null || !File.Exists(previewPath))
+        {
+            return;
+        }
+
+        string artifactPath = IsDvdSelected ? _state.DvdIsoPath.Trim() : _state.CdTrackPath.Trim();
+        string baseName = Path.GetFileNameWithoutExtension(artifactPath);
+        string destination = Path.Combine(
+            directory,
+            (baseName.Length == 0 ? "live-preview" : baseName) + "-preview.png");
+        try
+        {
+            File.Copy(previewPath, destination, overwrite: true);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _shell.ShowToast("导出失败", exception.Message, ToastKind.Error);
+            _shell.AppendLog($"[{DateTime.Now:HH:mm:ss}] 预览导出失败：{exception.Message}\n");
+            return;
+        }
+
+        _shell.SetLastOutputPath(destination);
+        _shell.ShowToast("预览已导出", destination, ToastKind.Success);
+        _shell.AppendLog($"[{DateTime.Now:HH:mm:ss}] 预览已导出：{destination}\n");
+    }
+
+    /// <summary>Folder holding the artifact currently being read back, or null when unknown.</summary>
+    private string? PreviewArtifactDirectory()
+    {
+        string path = IsDvdSelected ? _state.DvdIsoPath.Trim() : _state.CdTrackPath.Trim();
+        if (path.Length == 0)
+        {
+            return null;
+        }
+
+        string? directory = Path.GetDirectoryName(path);
+        return string.IsNullOrEmpty(directory) || !Directory.Exists(directory) ? null : directory;
     }
 }

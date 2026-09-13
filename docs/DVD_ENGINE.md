@@ -335,6 +335,26 @@ dotnet run --project src/DvdImageSolver --configuration Release -- calibrate `
 
 标定默认预览整盘。若实际只生成了部分镜像，可给出与求解命令相同的 `--lba` 和 `--fill-sectors`，未写入的盘面区域会保持透明。
 
+## 生成 ISO 的读回模拟
+
+`calibrate` 的输入是源图片，描述"按生成几何写入、按实测几何读回"的理想效果；`simulate` 则读取已经生成的 ISO 镜像本身：把每个采样到的 payload 字节经 DVD 扰码还原后分类为 dispersion 池的黑（`0xA5`）/白（`0x92`）码字，再用实测半径的螺旋线把码字中心投到盘面。这是与 cdimage 校准对话框同构的闭环——生成几何已经固化在 ISO 里，模拟只需要一套实测几何参数。
+
+```powershell
+dotnet run --project src/DvdImageSolver --configuration Release -- simulate `
+  --iso drawing.iso `
+  --output readback-preview.png `
+  --inner-radius-mm 24.2 `
+  --outer-radius-mm 57.8 `
+  --preview-size 2048 `
+  --samples-per-sector 16
+```
+
+`--total-sectors`、`--lba` 与 `--fill-sectors` 缺省时读取求解命令写出的 `drawing.iso.json`（绘制起始 LBA 与绘制扇区数），没有 sidecar 时回退为整个 ISO 文件、从 LBA 0 开始。`--samples-per-sector` 控制每个扇区采样的 payload 字节个数（1–2048，默认16）。扰码后不属于黑/白码字的字节（文件系统前缀、ECC 校验等）跳过不计。输出旁同样写出 `readback-preview.png.json`，其中 `mappingMode` 为 `payload-scramble-classify-splat`，并记录分类命中数、螺距与总圈数。
+
+采样位置取码字中心：生成端 `FastDispersionImageWriter` 按 `PayloadDirectChannelOffset + 8`（16 位码字的一半）把图片目标落在码字中心，读回端使用同一位置，两个方向的投影因此不会相差 8 个通道位（约 1 µm 轨道长度）。除此之外读回与生成共用同一套螺旋线、方向与扰码掩码，所以"生成时的参数"与"预览时的参数"一致时，读回图逐采样复现生成图。
+
+实时预览页在切换 ISO 时读取 sidecar 的 `imageMapping.totalSectors`、`innerRadiusMm`、`outerRadiusMm` 并载入标定几何：外部导入的镜像不会因为沿用上一次的盘片尺寸而被压成细环，用户之后的微调仍以这组参数为起点。
+
 ## 仅执行前向编码
 
 ```powershell

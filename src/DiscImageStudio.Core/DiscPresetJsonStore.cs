@@ -11,7 +11,6 @@ public sealed record CdDiscPresetDefinition(
     long Sectors,
     double InnerRadiusMm,
     double OuterRadiusMm,
-    double LinearVelocityMmPerSecond,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     string? DisplayNameResourceKey = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -24,7 +23,6 @@ public sealed record DvdDiscPresetDefinition(
     uint TotalSectors,
     double InnerRadiusMm,
     double OuterRadiusMm,
-    double ChannelBitLengthNm,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     string? DisplayNameResourceKey = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -43,7 +41,7 @@ public sealed record DiscPresetJsonDocument(
 
 public static class DiscPresetJsonStore
 {
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
     public const string FileName = "disc-presets.json";
 
     private const string BuiltInResourceName =
@@ -84,8 +82,7 @@ public static class DiscPresetJsonStore
                     "用户预设，可直接修改或复制后添加更多 CD 参数。",
                     359_849,
                     24.5,
-                    56.8,
-                    1_200),
+                    56.8),
             ],
             [
                 new DvdDiscPresetDefinition(
@@ -94,8 +91,7 @@ public static class DiscPresetJsonStore
                     "用户预设，可直接修改或复制后添加更多 DVD 参数。",
                     2_295_104,
                     24.0,
-                    58.0,
-                    133.33),
+                    58.0),
             ],
             DisabledCdPresetIds: [],
             DisabledDvdPresetIds: []);
@@ -255,10 +251,6 @@ public static class DiscPresetJsonStore
             }
 
             ValidateRadiusRange(preset.Id, preset.InnerRadiusMm, preset.OuterRadiusMm);
-            ValidatePositiveFinite(
-                preset.Id,
-                "linearVelocityMmPerSecond",
-                preset.LinearVelocityMmPerSecond);
         }
 
         foreach (DvdDiscPresetDefinition? preset in document.DvdPresets)
@@ -291,7 +283,6 @@ public static class DiscPresetJsonStore
             }
 
             ValidateRadiusRange(preset.Id, preset.InnerRadiusMm, preset.OuterRadiusMm);
-            ValidatePositiveFinite(preset.Id, "channelBitLengthNm", preset.ChannelBitLengthNm);
         }
     }
 

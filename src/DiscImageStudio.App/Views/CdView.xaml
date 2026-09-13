@@ -49,8 +49,23 @@
                         <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Content="选择…"
                                 Command="{Binding BrowseOutputCommand}" />
                     </Grid>
+                    <!-- CUE sheets only make sense next to PCM WAV output, so the option follows
+                         the chosen output format instead of sitting permanently in the card. -->
+                    <StackPanel Margin="0,12,0,0">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding State.IsCdWaveOutput}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <CheckBox Content="同时导出 CUE 文件" IsChecked="{Binding State.CdWriteCue}" />
+                    </StackPanel>
                     <TextBlock Style="{StaticResource HintText}" Margin="0,8,0,0"
-                               Text="推荐 WAV，同时生成 CUE；ImgBurn 打开 CUE，cdrecord 直接刻录 WAV。RAW 保留旧格式。" />
+                               Text="推荐 WAV：勾选后同时写出同名 CUE，ImgBurn 打开 CUE，cdrecord 直接刻录 WAV。RAW 保留旧格式。生成后可在“实时预览”页对该音轨做几何校准。" />
                 </StackPanel>
             </controls:SectionCard>
 
@@ -86,72 +101,17 @@
                             <TextBlock Style="{StaticResource FieldLabel}" Text="扇区数" />
                             <TextBox Text="{Binding State.CdSectors, UpdateSourceTrigger=PropertyChanged}" />
                         </StackPanel>
-                        <StackPanel Width="190" Margin="0,0,16,14">
-                            <TextBlock Style="{StaticResource FieldLabel}" Text="线速度 (mm/s)" />
-                            <TextBox Text="{Binding State.CdVelocity, UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
-                        <StackPanel Width="190" Margin="0,0,16,14">
-                            <TextBlock Style="{StaticResource FieldLabel}" Text="起始角 theta0 (°)" />
-                            <TextBox Text="{Binding State.CdStartAngle, UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
-                        <StackPanel Width="190" Margin="0,0,16,14">
-                            <TextBlock Style="{StaticResource FieldLabel}" Text="图片外半径 (mm)" />
-                            <TextBox Text="{Binding State.CdImageOuterRadius, UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
                     </WrapPanel>
+                    <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,12"
+                               Text="线速度固定为 1200 mm/s（ECMA-130），起始角为 0°，图片外半径为 57.5 mm。" />
                     <CheckBox Content="启用 CD-DA 延迟交织"
                               IsChecked="{Binding State.CdInterleave}" />
-                </StackPanel>
-            </controls:SectionCard>
-
-            <controls:SectionCard Header="实测几何与预览" IconKind="Eye" Margin="0,0,0,24">
-                <StackPanel>
-                    <WrapPanel>
-                        <StackPanel Width="190" Margin="0,0,16,14">
-                            <TextBlock Style="{StaticResource FieldLabel}" Text="实测内半径 (mm)" />
-                            <TextBox Text="{Binding State.CdActualInnerRadius, UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
-                        <StackPanel Width="190" Margin="0,0,16,14">
-                            <TextBlock Style="{StaticResource FieldLabel}" Text="实测外半径 (mm)" />
-                            <TextBox Text="{Binding State.CdActualOuterRadius, UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
-                        <StackPanel Width="190" Margin="0,0,16,14">
-                            <TextBlock Style="{StaticResource FieldLabel}" Text="实测线速度 (mm/s)" />
-                            <TextBox Text="{Binding State.CdActualVelocity, UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
-                        <StackPanel Width="190" Margin="0,0,16,14">
-                            <TextBlock Style="{StaticResource FieldLabel}" Text="实测起始角 (°)" />
-                            <TextBox Text="{Binding State.CdActualStartAngle, UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
-                        <StackPanel Width="190" Margin="0,0,16,14">
-                            <TextBlock Style="{StaticResource FieldLabel}" Text="预览尺寸" />
-                            <TextBox Text="{Binding State.CdPreviewSize, UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
-                        <StackPanel Width="190" Margin="0,0,16,14">
-                            <TextBlock Style="{StaticResource FieldLabel}" Text="每扇区采样" />
-                            <TextBox Text="{Binding State.CdSamplesPerSector, UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
-                    </WrapPanel>
-                    <TextBlock Style="{StaticResource FieldLabel}" Text="预览 PNG" />
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBox Text="{Binding State.CdPreviewPath, UpdateSourceTrigger=PropertyChanged}" />
-                        <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Content="选择…"
-                                Command="{Binding BrowsePreviewCommand}" />
-                    </Grid>
                 </StackPanel>
             </controls:SectionCard>
 
             <WrapPanel>
                 <Button Style="{StaticResource PrimaryButton}" Content="生成 CD 音轨"
                         Command="{Binding GenerateCommand}" Margin="0,0,12,10" />
-                <Button Style="{StaticResource SecondaryButton}" Content="预览几何校准"
-                        Command="{Binding PreviewWarpCommand}" Margin="0,0,12,10" />
-                <Button Style="{StaticResource SecondaryButton}" Content="预览已有音轨"
-                        Command="{Binding PreviewTrackCommand}" Margin="0,0,0,10" />
             </WrapPanel>
         </StackPanel>
     </ScrollViewer>

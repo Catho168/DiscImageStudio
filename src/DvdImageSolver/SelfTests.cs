@@ -933,6 +933,31 @@ internal static class SelfTests
                 exactDispersion.Payloads,
                 File.ReadAllBytes(fastIsoPath),
                 "fast dispersion matches exact-replay payload bytes");
+
+            // The read-back simulation must classify every dispersion payload byte of the
+            // generated ISO and reproduce a non-trivial two-level scan image from it.
+            string readbackPath = Path.Combine(directory, "readback.png");
+            IsoReadbackSummary readback = IsoReadbackRenderer.Render(
+                fastIsoPath,
+                readbackPath,
+                new IsoReadbackOptions(
+                    TotalSectors: 64,
+                    StartLba: 0,
+                    FillSectors: 16,
+                    PsnOffset: 0x30000,
+                    InnerRadiusMm: 24,
+                    OuterRadiusMm: 24.1,
+                    ChannelBitLengthNm: 133.33,
+                    Clockwise: false,
+                    PreviewSize: 256,
+                    SamplesPerSector: 64));
+            True(File.Exists(readbackPath), "ISO readback preview exists");
+            Equal("payload-scramble-classify-splat", readback.MappingMode, "ISO readback mapping mode");
+            Equal(16L * 64, readback.TotalSamples, "ISO readback sample count");
+            Equal(readback.TotalSamples, readback.ClassifiedSamples, "ISO readback classification");
+            (int darkPixels, int lightPixels) = CountDarkAndLightPixels(readbackPath);
+            True(darkPixels > 0, "ISO readback renders dark code words");
+            True(lightPixels > 0, "ISO readback renders light code words");
         }
         finally
         {
@@ -1007,6 +1032,39 @@ internal static class SelfTests
         encoder.Frames.Add(BitmapFrame.Create(bitmap));
         using FileStream output = File.Create(path);
         encoder.Save(output);
+    }
+
+    private static (int DarkPixels, int LightPixels) CountDarkAndLightPixels(string path)
+    {
+        using FileStream stream = File.OpenRead(path);
+        BitmapFrame frame = BitmapFrame.Create(
+            stream,
+            BitmapCreateOptions.PreservePixelFormat,
+            BitmapCacheOption.OnLoad);
+        FormatConvertedBitmap converted = new(frame, PixelFormats.Bgra32, null, 0);
+        int stride = checked(converted.PixelWidth * 4);
+        byte[] pixels = new byte[checked(stride * converted.PixelHeight)];
+        converted.CopyPixels(pixels, stride, 0);
+        int dark = 0;
+        int light = 0;
+        for (int offset = 0; offset < pixels.Length; offset += 4)
+        {
+            if (pixels[offset + 3] != 255)
+            {
+                continue;
+            }
+
+            if (pixels[offset] < 128)
+            {
+                dark++;
+            }
+            else if (pixels[offset] > 200)
+            {
+                light++;
+            }
+        }
+
+        return (dark, light);
     }
 
     private static int CountIntermediateOpaquePixels(string path)

@@ -7,47 +7,8 @@
         <StackPanel MaxWidth="800" Margin="40,24,40,40">
             <StackPanel Orientation="Horizontal" Margin="0,0,0,24">
                 <TextBlock Style="{StaticResource H1Title}" Text="流式刻录" />
-                <!-- 20px circular help hotspot aligned to the title baseline; hover lights the
-                     glyph and ring, the deleted PageSubtitle sentence lives on as its tooltip. -->
-                <Grid Width="20" Height="20" Margin="8,0,0,3" VerticalAlignment="Bottom"
-                      Background="Transparent" Cursor="Hand"
-                      ToolTipService.InitialShowDelay="150"
-                      ToolTip="流式刻录使用小型内存缓冲区边生成数据、边写入光盘，不必在磁盘保存完整 ISO 或 RAW 文件。">
-                    <Grid.Triggers>
-                        <EventTrigger RoutedEvent="MouseEnter">
-                            <BeginStoryboard>
-                                <Storyboard>
-                                    <ColorAnimation Storyboard.TargetName="HelpGlyph"
-                                                    Storyboard.TargetProperty="(TextBlock.Foreground).(SolidColorBrush.Color)"
-                                                    To="{StaticResource TextPrimaryColor}" Duration="0:0:0.15" />
-                                    <DoubleAnimation Storyboard.TargetName="HelpCircle"
-                                                     Storyboard.TargetProperty="Opacity"
-                                                     To="1" Duration="0:0:0.15" />
-                                </Storyboard>
-                            </BeginStoryboard>
-                        </EventTrigger>
-                        <EventTrigger RoutedEvent="MouseLeave">
-                            <BeginStoryboard>
-                                <Storyboard>
-                                    <ColorAnimation Storyboard.TargetName="HelpGlyph"
-                                                    Storyboard.TargetProperty="(TextBlock.Foreground).(SolidColorBrush.Color)"
-                                                    To="{StaticResource TextMutedColor}" Duration="0:0:0.15" />
-                                    <DoubleAnimation Storyboard.TargetName="HelpCircle"
-                                                     Storyboard.TargetProperty="Opacity"
-                                                     To="0" Duration="0:0:0.15" />
-                                </Storyboard>
-                            </BeginStoryboard>
-                        </EventTrigger>
-                    </Grid.Triggers>
-                    <Border x:Name="HelpCircle" CornerRadius="10"
-                            Background="{StaticResource PrimarySoftBrush}" Opacity="0" />
-                    <TextBlock x:Name="HelpGlyph" Text="?" FontSize="14"
-                               TextAlignment="Center" VerticalAlignment="Center">
-                        <TextBlock.Foreground>
-                            <SolidColorBrush Color="{StaticResource TextMutedColor}" />
-                        </TextBlock.Foreground>
-                    </TextBlock>
-                </Grid>
+                <controls:HelpHint Margin="8,0,0,3" VerticalAlignment="Bottom"
+                                   Hint="流式刻录使用小型内存缓冲区边生成数据、边写入光盘，不必在磁盘保存完整 ISO 或 RAW 文件。" />
             </StackPanel>
 
             <controls:SectionCard Header="刻录参数" IconKind="Flame" Margin="0,0,0,24">

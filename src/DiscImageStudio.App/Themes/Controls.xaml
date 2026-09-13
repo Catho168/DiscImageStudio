@@ -582,40 +582,6 @@
         </Style.Triggers>
     </Style>
 
-    <!-- Thin indeterminate strip for the status bar (4px marquee) -->
-    <Style x:Key="BusyStrip" TargetType="ProgressBar" BasedOn="{StaticResource {x:Type ProgressBar}}">
-        <Setter Property="Height" Value="4" />
-        <Setter Property="IsIndeterminate" Value="True" />
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="ProgressBar">
-                    <Grid ClipToBounds="True">
-                        <Border x:Name="PART_Track" Background="{TemplateBinding Background}" Opacity="0.35" />
-                        <Border x:Name="PART_Indicator" Background="{TemplateBinding Foreground}"
-                                CornerRadius="2" Width="160" HorizontalAlignment="Left">
-                            <Border.RenderTransform>
-                                <TranslateTransform x:Name="SweepTransform" X="-160" />
-                            </Border.RenderTransform>
-                        </Border>
-                    </Grid>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsIndeterminate" Value="True">
-                            <Trigger.EnterActions>
-                                <BeginStoryboard>
-                                    <Storyboard RepeatBehavior="Forever">
-                                        <DoubleAnimation Storyboard.TargetName="SweepTransform"
-                                                         Storyboard.TargetProperty="X"
-                                                         From="-160" To="1200" Duration="0:0:1.4" />
-                                    </Storyboard>
-                                </BeginStoryboard>
-                            </Trigger.EnterActions>
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
-
     <!-- RevealPanel: collapsible parameter group -->
     <Style TargetType="controls:RevealPanel">
         <Setter Property="IsTabStop" Value="False" />

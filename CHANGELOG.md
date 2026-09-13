@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- 删除 CD 的线速度、起始角、图片外半径与 DVD 的 Channel bit、起始角参数：分别固定为 1200 mm/s、0°、57.5 mm 与 133.33 nm、0°，界面与预设 JSON（升级到 schema 3，不再包含 `linearVelocityMmPerSecond`、`channelBitLengthNm`）均不再暴露；旧版用户预设文件会被拒绝并回退内置预设。
+- 实时预览页重构为读回模拟闭环：输入改为生成产物（CD 为 WAV/RAW 音轨、DVD 为 ISO 镜像，生成完成后自动填入路径），只保留一套盘片几何参数用于标定实测盘面，校准值与生成页共享、可直接用于重新生成；CD 复用 `cd-preview-track` 渲染音轨，DVD 引擎新增 `simulate` 命令（读取 ISO payload，经扰码分类黑/白码字后按实测半径投影）；实时预览页不再提供源图片、图片处理与盘片预设入口。
+- CD 读回：`cd-preview-track` 默认抵消生成端的延迟交织（`--deinterleave`，缺省 `true`），按 `i + offset(i % 24)` 取回逻辑字节，与 `CddaInterleaver` 共用同一份延迟表。此前按文件顺序铺点，交织音轨的读回图与源图相差约 17.5% 的绘制像素（表现为轻微扭曲）；现在生成参数与预览参数一致时读回图逐采样复现源图，只有延迟线尾部不到一个扇区的字节无法恢复。
+- `cd-generate` 在音轨旁写出 `<track>.json`（`format: cd-da-track-v1`，含 r0/r1/扇区数/线速度/起始角/图片外半径/是否交织）；实时预览在切换音轨或 ISO 时把 sidecar 中的几何与交织开关载入标定参数，导入其他来源的产物也能按正确模型读回。
+- 修复实时预览页“浏览”按钮失效：`BrowseCdTrackCommand` 与 `BrowseDvdIsoCommand` 没有在 `LivePreviewViewModel` 上暴露，绑定找不到命令；音轨与 ISO 路径框同时改为可直接输入或粘贴。
+- DVD 读回采样位置改用码字中心（`PayloadDirectChannelOffset + 8`），与生成端 `FastDispersionImageWriter` 的目标位置一致，消除 8 个通道位（约 1 µm）的系统偏移。
+- 删除窗口底部的状态栏：准备/完成/失败状态与流式刻录进度不再跳转到全局底栏，任务的实时输出仍写入运行日志；原先只存在于底栏的“打开输出位置”移到运行日志页标题栏，命令的可用状态由 `OpenOutputEnabled` 驱动。
+- CD 页面在输出为 `.wav` 时显示“同时导出 CUE 文件”（缺省勾选）；`cd-generate` 新增 `--cue`（缺省 `true`），取消勾选时只写出 WAV，不再生成同名 CUE。
+- 抽出可复用的 `HelpHint` 悬停问号控件（流式刻录标题与实时预览“逆交织”共用），删除仅服务于底栏的 `BusyStrip` 进度条样式。
+
 ## [1.0.26] - 2026-09-12
 
 - 首次提供 GitHub Release：Windows x64 单文件 EXE 已内置 .NET，下载后即可运行。

@@ -4,11 +4,17 @@ public sealed record CdDiscParameters(
     double InnerRadiusMm,
     double OuterRadiusMm,
     long Sectors,
-    double LinearVelocityMmPerSecond,
+    double LinearVelocityMmPerSecond = 1200.0,
     double StartAngleRadians = 0.0,
     double ImageOuterRadiusMm = 57.5)
 {
     public const int BytesPerSector = 2352;
+
+    /// <summary>ECMA-130 CLV scanning speed; the UI no longer exposes it as a parameter.</summary>
+    public const double StandardLinearVelocityMmPerSecond = 1200.0;
+
+    /// <summary>Radius on the source image canvas that maps to the disc outer edge.</summary>
+    public const double StandardImageOuterRadiusMm = 57.5;
 
     public long TotalBytes => checked(Sectors * BytesPerSector);
 

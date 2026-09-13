@@ -45,6 +45,8 @@ public partial class ShellViewModel : ObservableObject
         OpenPresetsJsonCommand = new RelayCommand(OpenPresetsJson);
         BrowseCdImageCommand = new RelayCommand(() => BrowseCdImage(), () => !IsBusy);
         BrowseDvdImageCommand = new RelayCommand(() => BrowseDvdImage(), () => !IsBusy);
+        BrowseCdTrackCommand = new RelayCommand(() => BrowseCdTrack(), () => !IsBusy);
+        BrowseDvdIsoCommand = new RelayCommand(() => BrowseDvdIso(), () => !IsBusy);
     }
 
     public DiscParametersState State { get; }
@@ -75,15 +77,17 @@ public partial class ShellViewModel : ObservableObject
     private int _currentPageIndex;
 
     [ObservableProperty]
-    private string _statusText = "就绪";
-
-    [ObservableProperty]
     private bool _openOutputEnabled;
+
+    // The log page's button relies on the command's own CanExecute rather than a second
+    // IsEnabled binding, so the enablement has to reach the command.
+    partial void OnOpenOutputEnabledChanged(bool value) => OpenOutputCommand.NotifyCanExecuteChanged();
 
     public bool IsBusy => _isBusy;
 
     public bool IsWindowLoaded => _isWindowLoaded;
 
+    /// <summary>Reveals the last job's output folder; shared by the log page's header.</summary>
     public RelayCommand OpenOutputCommand { get; }
 
     /// <summary>Opens the editable disc-preset JSON; shared by the start page and the DVD page.</summary>
@@ -92,6 +96,12 @@ public partial class ShellViewModel : ObservableObject
     public RelayCommand BrowseCdImageCommand { get; }
 
     public RelayCommand BrowseDvdImageCommand { get; }
+
+    /// <summary>Live preview page: picks the generated CD track to simulate.</summary>
+    public RelayCommand BrowseCdTrackCommand { get; }
+
+    /// <summary>Live preview page: picks the generated DVD ISO to simulate.</summary>
+    public RelayCommand BrowseDvdIsoCommand { get; }
 
     /// Fired on every busy transition so page commands can refresh CanExecute.
     public event Action? BusyChanged;
@@ -191,7 +201,15 @@ public partial class ShellViewModel : ObservableObject
         }
     }
 
-    /// <summary>Browse for the CD source image; prefills output/preview when empty.
+    /// <summary>Points the log page's "open output location" action at a file written outside a
+    /// job, such as the live preview's export.</summary>
+    internal void SetLastOutputPath(string path)
+    {
+        _lastOutputPath = Path.GetFullPath(path);
+        OpenOutputEnabled = true;
+    }
+
+    /// <summary>Browse for the CD source image; prefills the output when empty.
     /// Returns false when the picker is cancelled.</summary>
     internal bool BrowseCdImage()
     {
@@ -208,15 +226,36 @@ public partial class ShellViewModel : ObservableObject
             State.CdOutputPath = Path.Combine(directory, "cd-track.wav");
         }
 
-        if (string.IsNullOrWhiteSpace(State.CdPreviewPath))
-        {
-            State.CdPreviewPath = Path.Combine(directory, "cd-preview.png");
-        }
-
         return true;
     }
 
-    /// <summary>Browse for the DVD source image; prefills output/preview when empty.
+    /// <summary>Browse for the generated CD track used by the live read-back preview.</summary>
+    internal bool BrowseCdTrack()
+    {
+        string? picked = Dialogs?.PickOpen("选择生成的 CD 音轨", "WAV 音轨|*.wav|RAW 音轨|*.raw|所有文件|*.*");
+        if (picked is null)
+        {
+            return false;
+        }
+
+        State.CdTrackPath = picked;
+        return true;
+    }
+
+    /// <summary>Browse for the generated DVD ISO used by the live read-back preview.</summary>
+    internal bool BrowseDvdIso()
+    {
+        string? picked = Dialogs?.PickOpen("选择生成的 DVD ISO", "ISO 镜像|*.iso|所有文件|*.*");
+        if (picked is null)
+        {
+            return false;
+        }
+
+        State.DvdIsoPath = picked;
+        return true;
+    }
+
+    /// <summary>Browse for the DVD source image; prefills the ISO output when empty.
     /// Returns false when the picker is cancelled.</summary>
     internal bool BrowseDvdImage()
     {
@@ -231,11 +270,6 @@ public partial class ShellViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(State.DvdOutputPath))
         {
             State.DvdOutputPath = Path.Combine(directory, "dvd-image.iso");
-        }
-
-        if (string.IsNullOrWhiteSpace(State.DvdPreviewPath))
-        {
-            State.DvdPreviewPath = Path.Combine(directory, "dvd-preview.png");
         }
 
         return true;
@@ -279,7 +313,6 @@ public partial class ShellViewModel : ObservableObject
         }
 
         SetBusy(true);
-        StatusText = status;
         SelectPage(LogTabIndex);
         if (IsPngPath(outputPath))
         {
@@ -309,7 +342,6 @@ public partial class ShellViewModel : ObservableObject
         {
             _lastOutputPath = Path.GetFullPath(outputPath);
             OpenOutputEnabled = true;
-            StatusText = "完成";
             AppendLog($"[{DateTime.Now:HH:mm:ss}] 完成：{_lastOutputPath}\n");
             if (discFamily is not null && !string.IsNullOrWhiteSpace(sourceImagePath))
             {
@@ -324,7 +356,6 @@ public partial class ShellViewModel : ObservableObject
         }
         else
         {
-            StatusText = "未完成，请查看日志";
             AppendLog(
                 $"[{DateTime.Now:HH:mm:ss}] 任务失败：退出码 {exitCode}，未生成 {Path.GetFullPath(outputPath)}\n");
             ShowToast("任务未完成", "请查看运行日志中的错误信息。", ToastKind.Warning);
@@ -342,6 +373,8 @@ public partial class ShellViewModel : ObservableObject
         OnPropertyChanged(nameof(IsBusy));
         BrowseCdImageCommand.NotifyCanExecuteChanged();
         BrowseDvdImageCommand.NotifyCanExecuteChanged();
+        BrowseCdTrackCommand.NotifyCanExecuteChanged();
+        BrowseDvdIsoCommand.NotifyCanExecuteChanged();
         BusyChanged?.Invoke();
     }
 

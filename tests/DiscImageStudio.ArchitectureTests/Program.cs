@@ -162,16 +162,16 @@ static void TestDiscPresets()
     True(CdDiscPreset.Manual.IsCustom, "CD manual state is separate from JSON presets");
     True(DvdDiscPreset.Manual.IsCustom, "DVD manual state is separate from JSON presets");
 
+    double cdVelocity = CdDiscParameters.StandardLinearVelocityMmPerSecond;
+    True(
+        cdVelocity is >= 1_200 and <= 1_400,
+        "CD scanning speed stays in the ECMA-130 range");
     foreach (CdDiscPresetDefinition preset in builtIn.CdPresets)
     {
-        True(
-            preset.LinearVelocityMmPerSecond is >= 1_200 and <= 1_400,
-            $"CD preset '{preset.Id}' uses the ECMA-130 scanning velocity range");
         new CdDiscParameters(
             preset.InnerRadiusMm,
             preset.OuterRadiusMm,
-            preset.Sectors,
-            preset.LinearVelocityMmPerSecond).Validate();
+            preset.Sectors).Validate();
     }
 
     foreach (DvdDiscPresetDefinition preset in builtIn.DvdPresets)
@@ -179,9 +179,7 @@ static void TestDiscPresets()
         new DvdStreamingOptions(
             preset.TotalSectors,
             preset.InnerRadiusMm,
-            preset.OuterRadiusMm,
-            preset.ChannelBitLengthNm,
-            StartAngleDegrees: 0).Validate();
+            preset.OuterRadiusMm).Validate();
     }
 
     CdDiscPresetDefinition cd80 = builtIn.CdPresets.Single(value => value.Id == "cd-80");
@@ -264,8 +262,7 @@ static void TestDiscPresetJson()
                     "同 ID 的用户参数覆盖内置参数。",
                     350_000,
                     24.6,
-                    57.0,
-                    1_200))
+                    57.0))
                 .ToArray(),
             DisabledDvdPresetIds = ["dvd-5-80mm"],
         };
@@ -300,7 +297,7 @@ static void TestDiscPresetJson()
             """
             {
               // 用户可以为实测盘片留下说明。
-              "schemaVersion": 2,
+              "schemaVersion": 3,
               "cdPresets": [],
               "dvdPresets": [],
               "disabledCdPresetIds": [],
@@ -314,12 +311,12 @@ static void TestDiscPresetJson()
             path,
             """
             {
-              "schemaVersion": 2,
+              "schemaVersion": 3,
               "cdPresets": [
                 {
                   "id": "old-shape",
                   "displayName": "旧结构",
-                  "description": "包含不属于预设的图片字段。",
+                  "description": "包含已移除的速度与图片字段。",
                   "sectors": 350000,
                   "innerRadiusMm": 24.5,
                   "outerRadiusMm": 57.0,
@@ -341,7 +338,7 @@ static void TestDiscPresetJson()
             () => DiscPresetJsonStore.Load(path),
             "pre-layered schema rejection");
 
-        File.WriteAllText(path, "{ \"schemaVersion\": 2, \"cdPresets\": [ }");
+        File.WriteAllText(path, "{ \"schemaVersion\": 3, \"cdPresets\": [ }");
         Throws<InvalidDataException>(
             () => DiscPresetJsonStore.Load(path),
             "malformed preset JSON rejection");

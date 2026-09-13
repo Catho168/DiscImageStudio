@@ -31,18 +31,15 @@
   "description": "Verbatim DVD-R AZO 43533 实测数据区：23.9968875–57.9779875 mm，共 2,297,888 个扇区。",
   "totalSectors": 2297888,
   "innerRadiusMm": 23.9968875,
-  "outerRadiusMm": 57.9779875,
-  "channelBitLengthNm": 133.33
+  "outerRadiusMm": 57.9779875
 }
 ```
 
-DVD 的 `totalSectors` 必须大于 0 且是 16 的倍数，以满足 ECC Block 和流式刻录布局要求。
+DVD 的 `totalSectors` 必须大于 0 且是 16 的倍数，以满足 ECC Block 和流式刻录布局要求。Channel bit 长度固定为 133.33 nm，起始角为 0°，不属于预设参数。
 
 ## 添加 CD 预设
 
-在 `cdPresets` 数组中复制一个现有对象。CD 预设只包含容量、生成内外半径和生成时使用的 `linearVelocityMmPerSecond`。
-
-图片映射画布、实测半径、实测线速度和起始角属于图片布局或校准设置，不属于盘片预设；选择或修改预设不会覆盖这些独立设置。
+在 `cdPresets` 数组中复制一个现有对象。CD 预设只包含容量（扇区数）和生成内外半径；扫描速度固定为 1200 mm/s（ECMA-130），起始角为 0°，图片外半径为 57.5 mm，均不属于预设参数。
 
 ## i18n 兼容字段
 
@@ -50,9 +47,9 @@ DVD 的 `totalSectors` 必须大于 0 且是 16 的倍数，以满足 ECC Block 
 
 ## 编辑规则
 
-- 保留顶层的 `"schemaVersion": 2`、`cdPresets`、`dvdPresets`、`disabledCdPresetIds` 和 `disabledDvdPresetIds`。
+- 保留顶层的 `"schemaVersion": 3`、`cdPresets`、`dvdPresets`、`disabledCdPresetIds` 和 `disabledDvdPresetIds`。
 - 每组预设中的 `id` 必须唯一；`__manual__` 是界面“未保存的自定义参数”状态的保留 ID，不能写进 JSON。
-- 除上述可选 i18n 字段外，只能填写模板中列出的生成参数；其他字段会被拒绝，避免把图片布局或校准参数混入盘片预设。
-- 半径、线速度和 channel bit 必须是大于 0 的有限数值，生成外半径必须大于生成内半径。
+- 除上述可选 i18n 字段外，只能填写模板中列出的生成参数；其他字段（包括旧版本中的 `linearVelocityMmPerSecond` 和 `channelBitLengthNm`）会被拒绝。
+- 半径必须是大于 0 的有限数值，生成外半径必须大于生成内半径。
 - 文件允许 `//` 或 `/* ... */` 注释以及数组末尾的逗号。
 - 如果格式或参数无效，程序会指出问题并继续保留上一次成功加载的预设，不会自动覆盖用户文件。

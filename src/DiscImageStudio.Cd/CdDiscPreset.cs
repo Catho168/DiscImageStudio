@@ -7,7 +7,6 @@ public sealed record CdDiscPreset(
     long Sectors,
     double InnerRadiusMm,
     double OuterRadiusMm,
-    double LinearVelocityMmPerSecond,
     string? DisplayNameResourceKey = null,
     string? DescriptionResourceKey = null,
     bool IsCustom = false)
@@ -19,6 +18,5 @@ public sealed record CdDiscPreset(
         359_849,
         24.5,
         56.8,
-        1_200,
         IsCustom: true);
 }

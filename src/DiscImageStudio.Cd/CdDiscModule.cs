@@ -36,28 +36,31 @@ public sealed class CdDiscModule : IOpticalDiscModule
                     new("output", "Audio track (.wav or .raw)", DiscOptionValueType.OutputFile, Required: true),
                     .. GeometryOptions,
                     new("interleave", "CD-DA delay interleave", DiscOptionValueType.Boolean, DefaultValue: "true"),
+                    new("cue", "Write a CUE sheet next to the WAV track", DiscOptionValueType.Boolean, DefaultValue: "true"),
                 ]),
             new DiscCommandDescriptor(
                 "cd-preview-warp",
                 "Preview CD geometry",
-                "Projects generated geometry onto measured disc geometry.",
+                "Renders the image at the given CD spiral geometry.",
                 DiscModuleCapabilities.GeometryPreview,
                 [
                     new("input", "Source image", DiscOptionValueType.InputFile, Required: true),
                     new("output", "Preview PNG", DiscOptionValueType.OutputFile, Required: true),
+                    .. GeometryOptions,
                     new("size", "Preview size", DiscOptionValueType.Integer, DefaultValue: "1600", Unit: "px"),
                     new("samples-per-sector", "Samples per sector", DiscOptionValueType.Integer, DefaultValue: "16"),
                 ]),
             new DiscCommandDescriptor(
                 "cd-preview-track",
                 "Preview CD audio track",
-                "Renders an existing WAV or raw CD-DA track with measured geometry.",
+                "Renders an existing WAV or raw CD-DA track with measured geometry, undoing the delay interleave by default.",
                 DiscModuleCapabilities.EncodedOutputPreview,
                 [
                     new("track", "WAV or raw track", DiscOptionValueType.InputFile, Required: true),
                     new("output", "Preview PNG", DiscOptionValueType.OutputFile, Required: true),
                     new("size", "Preview size", DiscOptionValueType.Integer, DefaultValue: "1600", Unit: "px"),
                     new("byte-step", "Byte sampling interval", DiscOptionValueType.Integer, DefaultValue: "48"),
+                    new("deinterleave", "Undo CD-DA delay interleave", DiscOptionValueType.Boolean, DefaultValue: "true"),
                 ]),
         ]);
 
@@ -93,8 +96,9 @@ public sealed class CdDiscModule : IOpticalDiscModule
         CdGenerationSummary summary = CdTrackGenerator.Generate(
             options.Require("input"),
             output,
-            ReadParameters(options, string.Empty),
+            ReadParameters(options),
             options.GetBoolean("interleave", true),
+            options.GetBoolean("cue", true),
             value => progress?.Report(new DiscJobProgress(
                 ModuleId,
                 "generate",
@@ -123,8 +127,7 @@ public sealed class CdDiscModule : IOpticalDiscModule
         CdTrackGenerator.PreviewWarp(
             options.Require("input"),
             output,
-            ReadParameters(options, "gen-"),
-            ReadParameters(options, "actual-"),
+            ReadParameters(options),
             options.GetInt("size", 1600),
             options.GetInt("samples-per-sector", 16),
             cancellationToken);
@@ -147,9 +150,10 @@ public sealed class CdDiscModule : IOpticalDiscModule
         CdTrackGenerator.PreviewTrack(
             options.Require("track"),
             output,
-            ReadParameters(options, string.Empty),
+            ReadParameters(options),
             options.GetInt("size", 1600),
             options.GetInt("byte-step", 48),
+            options.GetBoolean("deinterleave", true),
             cancellationToken);
         return new DiscJobResult(
             ModuleId,
@@ -159,16 +163,16 @@ public sealed class CdDiscModule : IOpticalDiscModule
             output);
     }
 
-    private static CdDiscParameters ReadParameters(CdCommandOptions options, string prefix)
+    private static CdDiscParameters ReadParameters(CdCommandOptions options)
     {
-        double startAngleDegrees = options.GetDouble(prefix + "theta0", 0.0);
+        double startAngleDegrees = options.GetDouble("theta0", 0.0);
         return new CdDiscParameters(
-            options.GetDouble(prefix + "r0", 24.5),
-            options.GetDouble(prefix + "r1", 56.8),
-            options.GetLong(prefix + "sectors", 359849),
-            options.GetDouble(prefix + "velocity", 1200.0),
+            options.GetDouble("r0", 24.5),
+            options.GetDouble("r1", 56.8),
+            options.GetLong("sectors", 359849),
+            options.GetDouble("velocity", CdDiscParameters.StandardLinearVelocityMmPerSecond),
             startAngleDegrees * Math.PI / 180.0,
-            options.GetDouble(prefix + "outer", 57.5));
+            options.GetDouble("outer", CdDiscParameters.StandardImageOuterRadiusMm));
     }
 
     private sealed class CdCommandOptions

@@ -226,7 +226,7 @@ public partial class HomeViewModel : ObservableObject
         {
             (string title, string detail) = SplitPresetName(
                 preset.DisplayName,
-                $"{preset.Sectors:N0} 扇区 · {preset.LinearVelocityMmPerSecond:0} mm/s");
+                $"{preset.Sectors:N0} 扇区 · {preset.InnerRadiusMm:0.#}–{preset.OuterRadiusMm:0.#} mm");
             Tiles.Add(new QuickCreateTile(title, "CD", detail, PackIconLucideKind.Disc3, IsDvd: false, preset.Id));
         }
 

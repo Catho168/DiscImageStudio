@@ -31,6 +31,7 @@ public static class CdTrackGenerator
         string outputPath,
         CdDiscParameters parameters,
         bool interleave,
+        bool writeCue = true,
         Action<CdProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
@@ -76,7 +77,22 @@ public static class CdTrackGenerator
             cancellationToken,
             outputFullPath,
             wave ? CdAudioByteOrder.LittleEndian : CdAudioByteOrder.BigEndian);
-        return wave ? summary with { CueSheetPath = CdWaveFile.WriteCue(outputFullPath) } : summary;
+        file.Dispose();
+        CdTrackMetadata.Save(
+            outputFullPath,
+            new CdTrackMetadata(
+                sourceFullPath,
+                outputFullPath,
+                parameters.InnerRadiusMm,
+                parameters.OuterRadiusMm,
+                parameters.Sectors,
+                parameters.LinearVelocityMmPerSecond,
+                parameters.StartAngleRadians * 180.0 / Math.PI,
+                parameters.ImageOuterRadiusMm,
+                interleave));
+        return wave && writeCue
+            ? summary with { CueSheetPath = CdWaveFile.WriteCue(outputFullPath) }
+            : summary;
     }
 
     public static CdGenerationSummary GenerateToStream(
@@ -153,14 +169,12 @@ public static class CdTrackGenerator
     public static void PreviewWarp(
         string imagePath,
         string outputPath,
-        CdDiscParameters generated,
-        CdDiscParameters actual,
+        CdDiscParameters parameters,
         int outputSize,
         int samplesPerSector,
         CancellationToken cancellationToken = default)
     {
-        generated.Validate();
-        actual.Validate();
+        parameters.Validate();
         ValidatePreview(outputSize, samplesPerSector);
         RasterImage source = RasterImage.Load(Path.GetFullPath(imagePath));
         byte[] pixels = CreateWhitePixels(outputSize);
@@ -168,7 +182,7 @@ public static class CdTrackGenerator
         int[] levelSums = new int[pixelCount];
         int[] sampleCounts = new int[pixelCount];
         long step = Math.Max(1, CdDiscParameters.BytesPerSector / samplesPerSector);
-        long totalBytes = generated.TotalBytes;
+        long totalBytes = parameters.TotalBytes;
         for (long globalByte = 0; globalByte < totalBytes; globalByte += step)
         {
             if ((globalByte & 0xFFFFF) == 0)
@@ -176,9 +190,9 @@ public static class CdTrackGenerator
                 cancellationToken.ThrowIfCancellationRequested();
             }
 
-            byte gray = Sample(source, generated, globalByte);
+            byte gray = Sample(source, parameters, globalByte);
             byte level = gray < 128 ? (byte)0 : (byte)255;
-            (double pixelX, double pixelY) = actual.ImagePointFromByte(globalByte, outputSize);
+            (double pixelX, double pixelY) = parameters.ImagePointFromByte(globalByte, outputSize);
             int x = (int)Math.Round(pixelX);
             int y = (int)Math.Round(pixelY);
             if ((uint)x >= (uint)outputSize || (uint)y >= (uint)outputSize)
@@ -209,12 +223,20 @@ public static class CdTrackGenerator
         WritePng(Path.GetFullPath(outputPath), outputSize, pixels);
     }
 
+    /// <summary>
+    /// Renders a generated track as the disc would look. The generator's delay interleave moves
+    /// each logical byte forward in the file, so <paramref name="deinterleave"/> must match the
+    /// interleave setting the track was generated with: with identical geometry the read-back
+    /// then reproduces the source image exactly. Without it the raw file order is rendered, which
+    /// is only correct for a track generated with the interleave switched off.
+    /// </summary>
     public static void PreviewTrack(
         string trackPath,
         string outputPath,
         CdDiscParameters actual,
         int outputSize,
         int byteStep,
+        bool deinterleave,
         CancellationToken cancellationToken = default)
     {
         actual.Validate();
@@ -229,15 +251,12 @@ public static class CdTrackGenerator
         }
 
         byte[] pixels = CreateWhitePixels(outputSize);
-        byte[] buffer = new byte[1024 * 1024];
-        long globalOffset = 0;
-        long maximumBytes = actual.TotalBytes;
         using FileStream input = new(
             Path.GetFullPath(trackPath),
             FileMode.Open,
             FileAccess.Read,
             FileShare.Read,
-            bufferSize: buffer.Length,
+            bufferSize: 1024 * 1024,
             FileOptions.SequentialScan);
         Span<byte> signature = stackalloc byte[12];
         int signatureLength = input.ReadAtLeast(signature, signature.Length, throwOnEndOfStream: false);
@@ -245,17 +264,60 @@ public static class CdTrackGenerator
             || (signatureLength == 12 && signature[..4].SequenceEqual("RIFF"u8)
                 && signature[8..].SequenceEqual("WAVE"u8));
         input.Position = 0;
+        long audioOffset = 0;
+        long audioLength = input.Length;
         if (wave)
         {
-            (long offset, long length) = CdWaveFile.ReadAudioRange(input);
-            input.Position = offset;
-            maximumBytes = Math.Min(maximumBytes, length);
+            (audioOffset, audioLength) = CdWaveFile.ReadAudioRange(input);
+        }
+
+        long maximumBytes = Math.Min(actual.TotalBytes, audioLength);
+        if (deinterleave)
+        {
+            SplatDeinterleaved(
+                input,
+                audioOffset,
+                audioLength,
+                maximumBytes,
+                wave,
+                actual,
+                outputSize,
+                byteStep,
+                pixels,
+                cancellationToken);
         }
         else
         {
-            maximumBytes = Math.Min(maximumBytes, input.Length);
+            SplatFileOrder(
+                input,
+                audioOffset,
+                maximumBytes,
+                wave,
+                actual,
+                outputSize,
+                byteStep,
+                pixels,
+                cancellationToken);
         }
 
+        WritePng(Path.GetFullPath(outputPath), outputSize, pixels);
+    }
+
+    /// <summary>Renders the file's bytes in file order; correct for a track without interleave.</summary>
+    private static void SplatFileOrder(
+        FileStream input,
+        long audioOffset,
+        long maximumBytes,
+        bool wave,
+        CdDiscParameters actual,
+        int outputSize,
+        int byteStep,
+        byte[] pixels,
+        CancellationToken cancellationToken)
+    {
+        byte[] buffer = new byte[1024 * 1024];
+        long globalOffset = 0;
+        input.Position = audioOffset;
         while (globalOffset < maximumBytes)
         {
             int requested = (int)Math.Min(buffer.Length, maximumBytes - globalOffset);
@@ -270,22 +332,83 @@ public static class CdTrackGenerator
             {
                 CdAudioSamples.SwapByteOrder(buffer.AsSpan(0, bytesRead));
             }
+
             long remainder = globalOffset % byteStep;
             int first = remainder == 0 ? 0 : checked((int)(byteStep - remainder));
             for (int index = first; index < bytesRead; index += byteStep)
             {
                 long globalByte = globalOffset + index;
-                byte level = PaletteToGray(buffer[index]);
-                (double pixelX, double pixelY) = actual.ImagePointFromByte(globalByte, outputSize);
-                int x = (int)Math.Round(pixelX);
-                int y = (int)Math.Round(pixelY);
-                SetGrayPixel(pixels, outputSize, x, y, level);
+                Splat(actual, outputSize, pixels, globalByte, PaletteToGray(buffer[index]));
             }
 
             globalOffset += bytesRead;
         }
+    }
 
-        WritePng(Path.GetFullPath(outputPath), outputSize, pixels);
+    /// <summary>
+    /// Undoes the generator's delay interleave: the logical byte at index i sits at file index
+    /// i + CddaInterleaveTable.FileOffsetFor(i % 24), which needs a bounded look-ahead window.
+    /// </summary>
+    private static void SplatDeinterleaved(
+        FileStream input,
+        long audioOffset,
+        long audioLength,
+        long maximumBytes,
+        bool wave,
+        CdDiscParameters actual,
+        int outputSize,
+        int byteStep,
+        byte[] pixels,
+        CancellationToken cancellationToken)
+    {
+        const int WindowBytes = 1024 * 1024;
+        int lookAhead = CddaInterleaveTable.MaximumFileOffset;
+        byte[] buffer = new byte[WindowBytes + lookAhead];
+        for (long windowStart = 0; windowStart < maximumBytes; windowStart += WindowBytes)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            int logicalCount = (int)Math.Min(WindowBytes, maximumBytes - windowStart);
+            long remaining = audioLength - windowStart;
+            int wanted = (int)Math.Min(buffer.Length, Math.Max(0, remaining));
+            if (wanted == 0)
+            {
+                break;
+            }
+
+            input.Position = audioOffset + windowStart;
+            int bytesRead = input.ReadAtLeast(buffer.AsSpan(0, wanted), wanted, throwOnEndOfStream: false);
+            bytesRead &= ~1;
+            if (wave)
+            {
+                CdAudioSamples.SwapByteOrder(buffer.AsSpan(0, bytesRead));
+            }
+
+            long first = ((windowStart + byteStep - 1) / byteStep) * byteStep;
+            for (long logical = first; logical < windowStart + logicalCount; logical += byteStep)
+            {
+                long local = logical
+                    + CddaInterleaveTable.FileOffsetFor((int)(logical % CddaInterleaveTable.BytesPerFrame))
+                    - windowStart;
+                if (local >= bytesRead)
+                {
+                    // The delay line loses the last frames of the track; nothing to recover.
+                    continue;
+                }
+
+                Splat(actual, outputSize, pixels, logical, PaletteToGray(buffer[local]));
+            }
+        }
+    }
+
+    private static void Splat(
+        CdDiscParameters actual,
+        int outputSize,
+        byte[] pixels,
+        long globalByte,
+        byte level)
+    {
+        (double pixelX, double pixelY) = actual.ImagePointFromByte(globalByte, outputSize);
+        SetGrayPixel(pixels, outputSize, (int)Math.Round(pixelX), (int)Math.Round(pixelY), level);
     }
 
     private static byte Sample(

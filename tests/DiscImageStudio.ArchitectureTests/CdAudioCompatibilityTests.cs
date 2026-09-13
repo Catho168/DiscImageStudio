@@ -29,6 +29,7 @@ internal static class CdAudioCompatibilityTests
             }
 
             TestCommandOutput(directory, sourcePath, parameters);
+            TestReadbackInvertsInterleave(directory, sourcePath);
         }
         finally
         {
@@ -82,8 +83,8 @@ internal static class CdAudioCompatibilityTests
         {
             string rawPreview = Path.Combine(directory, $"{name}-raw-{byteStep}.png");
             string wavPreview = Path.Combine(directory, $"{name}-wav-{byteStep}.png");
-            CdTrackGenerator.PreviewTrack(rawPath, rawPreview, parameters, 256, byteStep);
-            CdTrackGenerator.PreviewTrack(wavPath, wavPreview, parameters, 256, byteStep);
+            CdTrackGenerator.PreviewTrack(rawPath, rawPreview, parameters, 256, byteStep, interleave);
+            CdTrackGenerator.PreviewTrack(wavPath, wavPreview, parameters, 256, byteStep, interleave);
             True(
                 ReadPngPixels(rawPreview).SequenceEqual(ReadPngPixels(wavPreview)),
                 $"{name} WAV preview normalizes PCM byte order at step {byteStep}");
@@ -119,6 +120,130 @@ internal static class CdAudioCompatibilityTests
             File.ReadAllBytes(Path.Combine(directory, "interleaved 音轨.WAV"))
                 .SequenceEqual(File.ReadAllBytes(outputPath)),
             "CD command WAV matches file generation API");
+
+        // The CUE sheet is opt-out: skipping it must change nothing about the WAV itself.
+        string noCuePath = Path.Combine(directory, "command no cue.wav");
+        DiscJobResult noCueResult = new CdDiscModule().ExecuteAsync(new DiscJobRequest(
+            "cd-generate",
+            [
+                "--input", sourcePath,
+                "--output", noCuePath,
+                "--r0", parameters.InnerRadiusMm.ToString(CultureInfo.InvariantCulture),
+                "--r1", parameters.OuterRadiusMm.ToString(CultureInfo.InvariantCulture),
+                "--sectors", parameters.Sectors.ToString(CultureInfo.InvariantCulture),
+                "--velocity", parameters.LinearVelocityMmPerSecond.ToString(CultureInfo.InvariantCulture),
+                "--outer", parameters.ImageOuterRadiusMm.ToString(CultureInfo.InvariantCulture),
+                "--interleave", "true",
+                "--cue", "false",
+            ])).GetAwaiter().GetResult();
+        True(noCueResult.Succeeded, "CD command generates WAV without a cue sheet");
+        True(
+            !File.Exists(Path.ChangeExtension(noCuePath, ".cue")),
+            "CD command with --cue false writes no cue sheet");
+        True(
+            File.ReadAllBytes(outputPath).SequenceEqual(File.ReadAllBytes(noCuePath)),
+            "skipping the cue sheet leaves the WAV bytes unchanged");
+    }
+
+    /// <summary>
+    /// The delay interleave moves every logical byte forward in the file, so reading an
+    /// interleaved track back with the flag it was generated with must reproduce the plain
+    /// track's disc pattern. The delay line cannot recover the last frames of the track; those
+    /// samples may only be missing, never wrong, because a wrong sample would mean the read-back
+    /// is not the inverse of the generator.
+    /// </summary>
+    private static void TestReadbackInvertsInterleave(string directory, string sourcePath)
+    {
+        CdDiscParameters parameters = new(
+            InnerRadiusMm: 24.5,
+            OuterRadiusMm: 56.8,
+            Sectors: 8,
+            LinearVelocityMmPerSecond: 1200,
+            ImageOuterRadiusMm: 58);
+        string plainPath = Path.Combine(directory, "readback-plain.raw");
+        string interleavedPath = Path.Combine(directory, "readback-interleaved.raw");
+        CdTrackGenerator.Generate(sourcePath, plainPath, parameters, interleave: false);
+        CdTrackGenerator.Generate(sourcePath, interleavedPath, parameters, interleave: true);
+
+        CdTrackMetadata metadata = CdTrackMetadata.TryLoad(interleavedPath)
+            ?? throw new InvalidOperationException("interleaved sidecar was not written");
+        True(metadata.Interleaved, "track sidecar records the interleave setting");
+        Equal(parameters.Sectors, metadata.Sectors, "track sidecar records the sector count");
+        Equal(parameters.InnerRadiusMm, metadata.InnerRadiusMm, "track sidecar records the inner radius");
+        Equal(parameters.OuterRadiusMm, metadata.OuterRadiusMm, "track sidecar records the outer radius");
+        True(CdTrackMetadata.TryLoad(plainPath) is { Interleaved: false }, "plain sidecar records no interleave");
+
+        const int size = 900;
+        byte[] expected = Preview(plainPath, parameters, size, deinterleave: false);
+        byte[] actual = Preview(interleavedPath, parameters, size, deinterleave: true);
+        byte[] fileOrder = Preview(interleavedPath, parameters, size, deinterleave: false);
+
+        // The delay line cannot recover the last frames of the track, so differences are
+        // allowed only inside the pixel footprint of those final bytes.
+        HashSet<int> tailPixels = TrailingSectorPixels(parameters, size);
+        int unexplained = 0;
+        for (int offset = 0; offset < expected.Length; offset += 4)
+        {
+            if (expected[offset] == actual[offset])
+            {
+                continue;
+            }
+
+            if (!tailPixels.Contains(offset / 4))
+            {
+                unexplained++;
+            }
+        }
+
+        Equal(0, unexplained, "interleaved read-back reproduces the plain track sample for sample");
+
+        int scrambled = 0;
+        for (int offset = 0; offset < expected.Length; offset += 4)
+        {
+            if (expected[offset] != fileOrder[offset])
+            {
+                scrambled++;
+            }
+        }
+
+        True(
+            scrambled > 100,
+            "reading an interleaved track in file order renders a different picture");
+    }
+
+    /// <summary>
+    /// Pixels covered by the last two sectors of the track: the delay line's look-ahead is
+    /// under one sector, so anything it drops falls inside this footprint.
+    /// </summary>
+    private static HashSet<int> TrailingSectorPixels(CdDiscParameters parameters, int size)
+    {
+        HashSet<int> pixels = [];
+        long first = Math.Max(0, parameters.TotalBytes - (2 * CdDiscParameters.BytesPerSector));
+        for (long byteIndex = first; byteIndex < parameters.TotalBytes; byteIndex++)
+        {
+            (double pixelX, double pixelY) = parameters.ImagePointFromByte(byteIndex, size);
+            int x = (int)Math.Round(pixelX);
+            int y = (int)Math.Round(pixelY);
+            if ((uint)x < (uint)size && (uint)y < (uint)size)
+            {
+                pixels.Add((y * size) + x);
+            }
+        }
+
+        return pixels;
+    }
+
+    private static byte[] Preview(
+        string trackPath,
+        CdDiscParameters parameters,
+        int size,
+        bool deinterleave)
+    {
+        string path = Path.Combine(
+            Path.GetDirectoryName(trackPath)!,
+            $"{Path.GetFileNameWithoutExtension(trackPath)}-{deinterleave}-{size}.png");
+        CdTrackGenerator.PreviewTrack(trackPath, path, parameters, size, 1, deinterleave);
+        return ReadPngPixels(path);
     }
 
     private static void ValidateCueFile(string wavPath)
@@ -153,8 +278,8 @@ internal static class CdAudioCompatibilityTests
         CdDiscParameters largerGeometry = parameters with { Sectors = parameters.Sectors + 1 };
         string rawPreview = Path.Combine(directory, "raw-larger-geometry.png");
         string decoratedPreview = Path.Combine(directory, "metadata-preview.png");
-        CdTrackGenerator.PreviewTrack(rawPath, rawPreview, largerGeometry, 256, 1);
-        CdTrackGenerator.PreviewTrack(decoratedPath, decoratedPreview, largerGeometry, 256, 1);
+        CdTrackGenerator.PreviewTrack(rawPath, rawPreview, largerGeometry, 256, 1, deinterleave: true);
+        CdTrackGenerator.PreviewTrack(decoratedPath, decoratedPreview, largerGeometry, 256, 1, deinterleave: true);
         True(
             ReadPngPixels(rawPreview).SequenceEqual(ReadPngPixels(decoratedPreview)),
             "WAV reader skips odd-sized unknown chunks and excludes trailing metadata");
@@ -181,7 +306,12 @@ internal static class CdAudioCompatibilityTests
             File.WriteAllBytes(invalidPath, invalid);
             Throws<InvalidDataException>(
                 () => CdTrackGenerator.PreviewTrack(
-                    invalidPath, Path.Combine(directory, "unsupported-preview.png"), parameters, 256, 1),
+                    invalidPath,
+                    Path.Combine(directory, "unsupported-preview.png"),
+                    parameters,
+                    256,
+                    1,
+                    deinterleave: true),
                 "WAV preview rejects " + name);
         }
     }

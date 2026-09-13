@@ -42,7 +42,7 @@ Disc Image Studio 可将一张图片转换成符合 CD、DVD、蓝光（暂不�
 
 ### 光盘数据生成
 
-- **CD-DA 支持**：推荐导出带格式头的 WAV 音轨及配套 CUE，兼容 cdrecord 与 ImgBurn；保留旧 RAW 音轨、延迟交织、1200 mm/s 默认扫描速度（ECMA-130 范围下限）、CLV 几何与轨道预览。详见 [CD 刻录兼容说明](docs/CD_AUDIO_COMPATIBILITY.md)。
+- **CD-DA 支持**：推荐导出带格式头的 WAV 音轨及配套 CUE，兼容 cdrecord 与 ImgBurn；保留旧 RAW 音轨、延迟交织、固定 1200 mm/s 扫描速度（ECMA-130 范围下限）、CLV 几何与轨道预览。详见 [CD 刻录兼容说明](docs/CD_AUDIO_COMPATIBILITY.md)。
 - **DVD 支持**：固定的快速纹理（dispersion）算法、快速输出、顺时针（CW）螺旋，支持 ISO 纯绘图盘与"内圈文件、外圈绘图"的混合数据盘。
 - **盘片预设**：内置 JSON + 用户层 JSON 分层配置，首次启动生成可编辑的自定义预设，同 ID 用户项可覆盖内置参数，内置修正随应用自动更新；预设只含容量与生成几何，详见[预设维护说明](docs/DISC_PRESETS.md)。
 
@@ -94,11 +94,12 @@ MSIX 打包、测试包签名与发布流程见[发布指南](docs/RELEASING.md)
 | --- | --- |
 | `solve` | 使用固定快速纹理映射（CW 方向）生成 DVD 镜像 |
 | `encode` | 将单个 DVD ECC 块编码为 NRZI 通道电平 |
-| `calibrate` | 按实测盘片半径渲染 DVD 校准预览 |
+| `calibrate` | 按盘片半径渲染 DVD 几何预览 |
+| `simulate` | 按实测半径对生成的 DVD ISO 做读回模拟 |
 | `selftest` | 运行 DVD 引擎的确定性回归自检 |
 | `cd-generate` | 将图片映射为 WAV + CUE 或旧 RAW CD-DA 音轨，可选延迟交织 |
-| `cd-preview-warp` | 将生成几何投射到实测 CD 盘片几何 |
-| `cd-preview-track` | 使用实测几何渲染已有的 WAV 或 RAW CD-DA 音轨 |
+| `cd-preview-warp` | 按 CD 盘片几何渲染图片 |
+| `cd-preview-track` | 按标定几何渲染已有的 WAV 或 RAW CD-DA 音轨（读回模拟，默认逆交织） |
 
 完整 DVD 引擎说明见 [DVD_ENGINE.md](docs/DVD_ENGINE.md)。
 
@@ -134,7 +135,7 @@ docs/                        架构、引擎、预设、发布等文档
 
 - Disc Image Studio 不安装驱动或服务；“即时刻录”功能使用了 Windows 自带的 IMAPI2，拒绝非空白介质。
 - “即时刻录”功能已有部分实盘反馈，对不同设备、介质与刻录入口的验证覆盖仍有限，属于实验性功能，请只使用可报废的测试介质。刻录中断、断电或生成速度不足仍可能使盘片报废。
-- 实际可见效果取决于盘片、刻录机、固件与写入策略，请先生成校准预览，再用测试介质验证。
+- 实际可见效果取决于盘片、刻录机、固件与写入策略。
 - DVD 混合文件夹会在开始刻录前扫描目录并固定布局；期间源文件大小改变会安全终止任务，但已开始写入的盘片仍可能报废。
 
 ## 隐私与安全
