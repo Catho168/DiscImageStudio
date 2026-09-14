@@ -13,14 +13,14 @@ namespace DiscImageStudio.ViewModels;
 /// running/pending coalescing, cancel-on-change. Drawn on STA worker threads.
 ///
 /// Two input modes share that pipeline:
-/// - Read-back simulation (default): the input is the generated burn artifact (CD track or
-///   DVD ISO, matching the cdimage calibration model), so the picture shows what the disc
-///   really carries. One parameter set describes the measured disc geometry.
-/// - Calibration preview: the input is the source picture and two parameter sets describe it
-///   — the generated geometry lays it out, the measured geometry reads it back. Rendering
-///   never touches the multi-hundred-megabyte artifact, which is what makes parameter
+/// - Calibration preview (default): the input is the source picture and two parameter sets
+///   describe it — the generated geometry lays it out, the measured geometry reads it back.
+///   Rendering never touches the multi-hundred-megabyte artifact, which is what makes parameter
 ///   iteration cheap; the price is that the picture is a projection of the source, not a
 ///   read-back of the bytes that were actually written.
+/// - Read-back simulation: the input is the generated burn artifact (CD track or DVD ISO,
+///   matching the cdimage calibration model), so the picture shows what the disc really
+///   carries. One parameter set describes the measured disc geometry.
 public partial class LivePreviewViewModel : ObservableObject
 {
     private readonly DispatcherTimer _livePreviewTimer;
@@ -51,11 +51,17 @@ public partial class LivePreviewViewModel : ObservableObject
     /// source picture through the generated/measured parameter pair.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsReadbackPreview))]
-    private bool _isCalibrationPreview;
+    private bool _isCalibrationPreview = true;
 
     /// <summary>Inverse of <see cref="IsCalibrationPreview"/>, so the view can trigger its
-    /// read-back panels without an inverse-binding converter.</summary>
-    public bool IsReadbackPreview => !IsCalibrationPreview;
+    /// read-back panels without an inverse-binding converter. Settable because the input switch
+    /// puts this mode on its right-hand option, and the switch's <c>IsSecondSelected</c> is
+    /// two-way: a write lands here and flips the single source of truth.</summary>
+    public bool IsReadbackPreview
+    {
+        get => !IsCalibrationPreview;
+        set => IsCalibrationPreview = !value;
+    }
 
     [ObservableProperty]
     private string _headingText = "实时预览";

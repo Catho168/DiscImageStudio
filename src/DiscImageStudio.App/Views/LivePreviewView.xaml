@@ -70,10 +70,12 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
+                <!-- The source picture is the default input, so it takes the left option and the
+                     switch binds the artifact mode's inverse flag for its right-hand side. -->
                 <controls:SegmentedControl Grid.Row="0" Width="300" HorizontalAlignment="Left"
                                             Margin="0,0,0,16"
-                                            LabelA="输入产物" LabelB="输入原图"
-                                            IsSecondSelected="{Binding IsCalibrationPreview}" />
+                                            LabelA="输入原图" LabelB="输入镜像"
+                                            IsSecondSelected="{Binding IsReadbackPreview}" />
 
                 <Border Grid.Row="1" Style="{StaticResource CardStyle}" Padding="0">
                     <Grid>
@@ -152,7 +154,7 @@
                                     <TextBlock Text="图片处理" Style="{StaticResource PanelHeading}" />
                                     <ComboBox SelectedIndex="{Binding State.CdImageProcessingModeIndex}" Margin="0,0,0,10">
                                         <ComboBoxItem Content="原图直接映射" />
-                                        <ComboBoxItem Content="环形复制（自动份数）" />
+                                        <ComboBoxItem Content="环形复制" />
                                     </ComboBox>
                                     <controls:RevealPanel IsExpanded="{Binding State.IsCdRingMode}"
                                                          IsEnabled="{Binding State.IsCdRingMode}" Margin="0,0,0,8">
@@ -164,7 +166,7 @@
                                             <TextBox Text="{Binding State.CdRingOuterMargin, UpdateSourceTrigger=PropertyChanged}"
                                                      Margin="0,0,0,10" />
                                             <TextBlock Style="{StaticResource HintText}"
-                                                       Text="图片会复制多份并朝外环形排列；空间不足时自动等比缩小，保证不变形、不裁切、不重叠。" />
+                                                       Text="图片会复制多份并朝外环形排列。" />
                                         </StackPanel>
                                     </controls:RevealPanel>
 
@@ -194,7 +196,7 @@
                                                 Content="重新加载" Command="{Binding ReloadPresetsCommand}" />
                                     </Grid>
 
-                                    <TextBlock Text="生成几何" Style="{StaticResource PanelHeading}" />
+                                    <TextBlock Text="生成参数" Style="{StaticResource PanelHeading}" />
                                     <WrapPanel>
                                         <StackPanel Width="122" Margin="0,0,12,12">
                                             <TextBlock Style="{StaticResource FieldLabel}" Text="内半径 (mm)" />
@@ -210,7 +212,7 @@
                                         </StackPanel>
                                     </WrapPanel>
     
-                                    <TextBlock Text="实测几何" Style="{StaticResource SubHeading}" />
+                                    <TextBlock Text="实测参数" Style="{StaticResource SubHeading}" />
                                     <WrapPanel>
                                         <StackPanel Width="122" Margin="0,0,12,12">
                                             <TextBlock Style="{StaticResource FieldLabel}" Text="内半径 (mm)" />
@@ -230,7 +232,7 @@
                                         </StackPanel>
                                     </WrapPanel>
                                     <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,12"
-                                               Text="生成几何决定图片铺在盘面的位置，实测几何决定读取位置；两者不同时图形将按实测数据解析。" />
+                                               Text="生成参数即您在进行镜像文件生成时使用的参数，实测参数则决定了预览的读取模式，即模拟真实情况下的盘片效果。" />
                                 </StackPanel>
                             </StackPanel>
     
@@ -250,7 +252,7 @@
                                                 Content="浏览…" Command="{Binding BrowseDvdIsoCommand}" />
                                     </Grid>
     
-                                    <TextBlock Text="盘片几何 · 标定 · CW" Style="{StaticResource PanelHeading}" />
+                                    <TextBlock Text="盘片几何" Style="{StaticResource PanelHeading}" />
                                     <WrapPanel>
                                         <StackPanel Width="122" Margin="0,0,12,12">
                                             <TextBlock Style="{StaticResource FieldLabel}" Text="总扇区数" />
@@ -288,7 +290,7 @@
                                     <TextBlock Text="图片处理" Style="{StaticResource PanelHeading}" />
                                     <ComboBox SelectedIndex="{Binding State.DvdImageProcessingModeIndex}" Margin="0,0,0,10">
                                         <ComboBoxItem Content="原图直接映射" />
-                                        <ComboBoxItem Content="环形复制（自动份数）" />
+                                        <ComboBoxItem Content="环形复制" />
                                     </ComboBox>
                                     <controls:RevealPanel IsExpanded="{Binding State.IsDvdRingMode}"
                                                          IsEnabled="{Binding State.IsDvdRingMode}" Margin="0,0,0,8">
@@ -300,7 +302,7 @@
                                             <TextBox Text="{Binding State.DvdRingOuterMargin, UpdateSourceTrigger=PropertyChanged}"
                                                      Margin="0,0,0,10" />
                                             <TextBlock Style="{StaticResource HintText}"
-                                                       Text="图片会复制多份并朝外环形排列；空间不足时自动等比缩小，保证不变形、不裁切、不重叠。" />
+                                                       Text="图片会复制多份并朝外环形排列。" />
                                         </StackPanel>
                                     </controls:RevealPanel>
 
@@ -328,7 +330,7 @@
                                                 Content="重新加载" Command="{Binding ReloadPresetsCommand}" />
                                     </Grid>
 
-                                    <TextBlock Text="生成几何 · CW" Style="{StaticResource PanelHeading}" />
+                                    <TextBlock Text="生成参数" Style="{StaticResource PanelHeading}" />
                                     <WrapPanel>
                                         <StackPanel Width="122" Margin="0,0,12,12">
                                             <TextBlock Style="{StaticResource FieldLabel}" Text="总扇区数" />
@@ -344,7 +346,7 @@
                                         </StackPanel>
                                     </WrapPanel>
     
-                                    <TextBlock Text="实测几何" Style="{StaticResource SubHeading}" />
+                                    <TextBlock Text="实测参数" Style="{StaticResource SubHeading}" />
                                     <WrapPanel>
                                         <StackPanel Width="122" Margin="0,0,12,12">
                                             <TextBlock Style="{StaticResource FieldLabel}" Text="内半径 (mm)" />
@@ -364,7 +366,7 @@
                                         </StackPanel>
                                     </WrapPanel>
                                     <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,12"
-                                               Text="生成几何决定图片铺在盘面的位置，实测几何决定读取位置；两者不同时图形将按实测数据解析。" />
+                                               Text="生成参数即您在进行镜像文件生成时使用的参数，实测参数则决定了预览的读取模式，即模拟真实情况下的盘片效果。" />
                                 </StackPanel>
                             </StackPanel>
     

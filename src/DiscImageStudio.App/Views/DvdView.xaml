@@ -21,7 +21,7 @@
                     <TextBlock Style="{StaticResource FieldLabel}" Text="图片处理模式" />
                     <ComboBox SelectedIndex="{Binding State.DvdImageProcessingModeIndex}" Margin="0,0,0,12">
                         <ComboBoxItem Content="原图直接映射" />
-                        <ComboBoxItem Content="环形复制（自动份数）" />
+                        <ComboBoxItem Content="环形复制" />
                     </ComboBox>
                     <controls:RevealPanel IsExpanded="{Binding State.IsDvdRingMode}"
                                          IsEnabled="{Binding State.IsDvdRingMode}" Margin="0,0,0,4">
@@ -36,7 +36,7 @@
                             </StackPanel>
                             <TextBlock Width="360" Style="{StaticResource HintText}" VerticalAlignment="Center"
                                        Margin="0,0,0,10"
-                                       Text="图片会复制多份并朝外环形排列；空间不足时自动等比缩小，保证不变形、不裁切、不重叠。" />
+                                       Text="图片会复制多份并朝外环形排列。" />
                         </WrapPanel>
                     </controls:RevealPanel>
                     <TextBlock Style="{StaticResource FieldLabel}" Text="输出 ISO" />
@@ -100,7 +100,7 @@
                         </StackPanel>
                     </WrapPanel>
                     <TextBlock Style="{StaticResource HintText}"
-                               Text="Channel bit 固定为 133.33 nm，起始角为 0°；几何校准请使用实时预览页。" />
+                               Text="Channel bit 固定为 133.33 nm，起始角为 0°。" />
                 </StackPanel>
             </controls:SectionCard>
 

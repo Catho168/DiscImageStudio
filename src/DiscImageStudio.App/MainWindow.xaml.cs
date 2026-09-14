@@ -110,7 +110,10 @@ public partial class MainWindow : Window
         if (!string.IsNullOrWhiteSpace(liveInputPath))
         {
             bool dvd = string.Equals(liveDisc, "dvd", StringComparison.OrdinalIgnoreCase);
-            bool calibration = string.Equals(liveMode, "calibrate", StringComparison.OrdinalIgnoreCase);
+            // Omitting --live-mode keeps the page default (source picture); scripts probe the
+            // other mode by naming it.
+            bool calibration = liveMode is null
+                || string.Equals(liveMode, "calibrate", StringComparison.OrdinalIgnoreCase);
             bool ring = string.Equals(liveProcessing, "ring", StringComparison.OrdinalIgnoreCase);
             _shell.LivePreview.SetDiscType(dvd, clearResult: false);
             _shell.LivePreview.SetPreviewMode(calibration, clearResult: false);
