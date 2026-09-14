@@ -49,6 +49,12 @@ public partial class DiscParametersState : ObservableObject
     [ObservableProperty] private string _cdSamplesPerSector = "16";
     [ObservableProperty] private bool _cdInterleave = true;
 
+    // Second parameter set of the live preview page's calibration mode: the disc the reader
+    // follows, as opposed to the generated geometry above. It is preview-only and never
+    // feeds a generation job, so it is not a preset field either.
+    [ObservableProperty] private string _cdActualInnerRadius = "24.3";
+    [ObservableProperty] private string _cdActualOuterRadius = "56.6";
+
     // DVD page / live preview shared fields. Channel-bit length (133.33 nm) and start
     // angle (0°) are fixed physical constants, same as the CD constants above. The live
     // preview reads back the generated ISO through DvdIsoPath.
@@ -64,6 +70,10 @@ public partial class DiscParametersState : ObservableObject
     [ObservableProperty] private string _dvdVolumeLabel = DefaultDvdVolumeLabel;
     [ObservableProperty] private string _dvdPreviewSize = "1600";
     [ObservableProperty] private string _dvdSamplesPerSector = "16";
+
+    /// <summary>Second parameter set of the DVD calibration preview, same role as the CD one.</summary>
+    [ObservableProperty] private string _dvdActualInnerRadius = "24.0";
+    [ObservableProperty] private string _dvdActualOuterRadius = "58.0";
 
     [ObservableProperty] private string _cdPresetHint = string.Empty;
     [ObservableProperty] private string _dvdPresetHint = string.Empty;

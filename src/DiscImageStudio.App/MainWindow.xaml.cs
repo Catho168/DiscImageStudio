@@ -89,7 +89,9 @@ public partial class MainWindow : Window
         int selectedTab,
         string? previewPath,
         string? liveInputPath = null,
-        string? liveDisc = null)
+        string? liveDisc = null,
+        string? liveMode = null,
+        string? liveProcessing = null)
     {
         if (selectedTab < 0 || selectedTab >= ShellViewModel.PageCount)
         {
@@ -108,14 +110,35 @@ public partial class MainWindow : Window
         if (!string.IsNullOrWhiteSpace(liveInputPath))
         {
             bool dvd = string.Equals(liveDisc, "dvd", StringComparison.OrdinalIgnoreCase);
+            bool calibration = string.Equals(liveMode, "calibrate", StringComparison.OrdinalIgnoreCase);
+            bool ring = string.Equals(liveProcessing, "ring", StringComparison.OrdinalIgnoreCase);
             _shell.LivePreview.SetDiscType(dvd, clearResult: false);
-            if (dvd)
+            _shell.LivePreview.SetPreviewMode(calibration, clearResult: false);
+            if (ring)
             {
-                _shell.State.DvdIsoPath = Path.GetFullPath(liveInputPath);
+                _shell.State.CdImageProcessingModeIndex = 1;
+                _shell.State.DvdImageProcessingModeIndex = 1;
+            }
+
+            string fullInput = Path.GetFullPath(liveInputPath);
+            if (calibration)
+            {
+                if (dvd)
+                {
+                    _shell.State.DvdImagePath = fullInput;
+                }
+                else
+                {
+                    _shell.State.CdImagePath = fullInput;
+                }
+            }
+            else if (dvd)
+            {
+                _shell.State.DvdIsoPath = fullInput;
             }
             else
             {
-                _shell.State.CdTrackPath = Path.GetFullPath(liveInputPath);
+                _shell.State.CdTrackPath = fullInput;
             }
 
             _shell.SelectPage(ShellViewModel.PreviewTabIndex);

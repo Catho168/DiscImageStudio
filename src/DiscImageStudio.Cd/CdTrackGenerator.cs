@@ -166,15 +166,24 @@ public static class CdTrackGenerator
             stopwatch.Elapsed);
     }
 
+    /// <summary>
+    /// Projects the picture through two parameter sets: the sample is taken where
+    /// <paramref name="generated"/> lays the picture out on the disc, and drawn where
+    /// <paramref name="actual"/> reads that byte back. Passing the same geometry twice
+    /// reproduces the picture untouched, so the difference between the two is exactly the
+    /// distortion a disc whose measured geometry differs from the generated one would show.
+    /// </summary>
     public static void PreviewWarp(
         string imagePath,
         string outputPath,
-        CdDiscParameters parameters,
+        CdDiscParameters generated,
+        CdDiscParameters actual,
         int outputSize,
         int samplesPerSector,
         CancellationToken cancellationToken = default)
     {
-        parameters.Validate();
+        generated.Validate();
+        actual.Validate();
         ValidatePreview(outputSize, samplesPerSector);
         RasterImage source = RasterImage.Load(Path.GetFullPath(imagePath));
         byte[] pixels = CreateWhitePixels(outputSize);
@@ -182,7 +191,7 @@ public static class CdTrackGenerator
         int[] levelSums = new int[pixelCount];
         int[] sampleCounts = new int[pixelCount];
         long step = Math.Max(1, CdDiscParameters.BytesPerSector / samplesPerSector);
-        long totalBytes = parameters.TotalBytes;
+        long totalBytes = generated.TotalBytes;
         for (long globalByte = 0; globalByte < totalBytes; globalByte += step)
         {
             if ((globalByte & 0xFFFFF) == 0)
@@ -190,9 +199,9 @@ public static class CdTrackGenerator
                 cancellationToken.ThrowIfCancellationRequested();
             }
 
-            byte gray = Sample(source, parameters, globalByte);
+            byte gray = Sample(source, generated, globalByte);
             byte level = gray < 128 ? (byte)0 : (byte)255;
-            (double pixelX, double pixelY) = parameters.ImagePointFromByte(globalByte, outputSize);
+            (double pixelX, double pixelY) = actual.ImagePointFromByte(globalByte, outputSize);
             int x = (int)Math.Round(pixelX);
             int y = (int)Math.Round(pixelY);
             if ((uint)x >= (uint)outputSize || (uint)y >= (uint)outputSize)

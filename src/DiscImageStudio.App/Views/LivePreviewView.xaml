@@ -8,9 +8,42 @@
             <Setter Property="FontSize" Value="14" />
             <Setter Property="Margin" Value="0,0,0,10" />
         </Style>
+        <Style x:Key="SubHeading" TargetType="TextBlock" BasedOn="{StaticResource PanelHeading}">
+            <Setter Property="Margin" Value="0,6,0,10" />
+        </Style>
         <!-- Preview output group shared by the export flyout's CD and DVD variants. -->
         <Style x:Key="PreviewFieldLabel" TargetType="TextBlock" BasedOn="{StaticResource FieldLabel}">
             <Setter Property="Margin" Value="0,10,0,6" />
+        </Style>
+        <!-- One parameter panel per (disc type, preview mode) pair; the disc type hides a
+             group, the preview mode hides the two halves inside it. -->
+        <Style x:Key="CdGroup" TargetType="StackPanel">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsDvdSelected}" Value="True">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="DvdGroup" TargetType="StackPanel">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsDvdSelected}" Value="False">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="ReadbackGroup" TargetType="StackPanel">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsCalibrationPreview}" Value="True">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="CalibrationGroup" TargetType="StackPanel">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsCalibrationPreview}" Value="False">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                </DataTrigger>
+            </Style.Triggers>
         </Style>
     </UserControl.Resources>
     <Grid Margin="40,24,40,32">
@@ -29,121 +62,231 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <Border Grid.Column="0" Style="{StaticResource CardStyle}" Padding="0">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="*" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-                    <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto"
-                                  controls:ScrollMaskBehavior.Enabled="True">
-                        <StackPanel Margin="18,18,18,10">
-                        <TextBlock Text="光盘类型" Style="{StaticResource PanelHeading}" />
-                        <controls:SegmentedControl Margin="0,0,0,18"
-                                                    IsSecondSelected="{Binding IsDvdSelected}" />
+            <!-- The input switch governs the parameter panel below it, so it lives in the left
+                 column but outside the card: inside, it reads as the panel's own control. Its
+                 top edge lines up with the canvas card, so the two columns start together. -->
+            <Grid Grid.Column="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <controls:SegmentedControl Grid.Row="0" Width="300" HorizontalAlignment="Left"
+                                            Margin="0,0,0,16"
+                                            LabelA="输入产物" LabelB="输入原图"
+                                            IsSecondSelected="{Binding IsCalibrationPreview}" />
 
-                        <!-- CD parameter group -->
-                        <StackPanel>
-                            <StackPanel.Style>
-                                <Style TargetType="StackPanel">
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsDvdSelected}" Value="True">
-                                            <Setter Property="Visibility" Value="Collapsed" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </StackPanel.Style>
-                            <TextBlock Text="生成音轨" Style="{StaticResource PanelHeading}" />
-                            <Grid Margin="0,0,0,10">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBox Text="{Binding State.CdTrackPath, UpdateSourceTrigger=PropertyChanged}" />
-                                <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Width="76"
-                                        Content="浏览…" Command="{Binding BrowseCdTrackCommand}" />
-                            </Grid>
-                            <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,18"
-                                       Text="可直接粘贴或浏览已生成的音轨；旁边的 .json 会在切换音轨时载入生成参数。" />
-
-                            <TextBlock Text="盘片几何（标定）" Style="{StaticResource PanelHeading}" />
-                            <WrapPanel>
-                                <StackPanel Width="122" Margin="0,0,12,12">
-                                    <TextBlock Style="{StaticResource FieldLabel}" Text="内半径 (mm)" />
-                                    <TextBox Text="{Binding State.CdInnerRadius, UpdateSourceTrigger=PropertyChanged}" />
+                <Border Grid.Row="1" Style="{StaticResource CardStyle}" Padding="0">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto"
+                                      controls:ScrollMaskBehavior.Enabled="True">
+                            <StackPanel Margin="18,18,18,10">
+                            <TextBlock Text="光盘类型" Style="{StaticResource PanelHeading}" />
+                            <controls:SegmentedControl Margin="0,0,0,18"
+                                                        IsSecondSelected="{Binding IsDvdSelected}" />
+    
+                            <!-- CD parameter groups -->
+                            <StackPanel Style="{StaticResource CdGroup}">
+    
+                                <!-- CD read-back: the generated track is the input. -->
+                                <StackPanel Style="{StaticResource ReadbackGroup}">
+                                    <TextBlock Text="生成音轨" Style="{StaticResource PanelHeading}" />
+                                    <Grid Margin="0,0,0,10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox Text="{Binding State.CdTrackPath, UpdateSourceTrigger=PropertyChanged}" />
+                                        <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Width="76"
+                                                Content="浏览…" Command="{Binding BrowseCdTrackCommand}" />
+                                    </Grid>
+                                    <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,18"
+                                               Text="可直接粘贴或浏览已生成的音轨。" />
+    
+                                    <TextBlock Text="盘片几何（标定）" Style="{StaticResource PanelHeading}" />
+                                    <WrapPanel>
+                                        <StackPanel Width="122" Margin="0,0,12,12">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="内半径 (mm)" />
+                                            <TextBox Text="{Binding State.CdInnerRadius, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Width="122" Margin="0,0,0,12">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="外半径 (mm)" />
+                                            <TextBox Text="{Binding State.CdOuterRadius, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Width="122" Margin="0,0,0,12">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="扇区数" />
+                                            <TextBox Text="{Binding State.CdSectors, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                    </WrapPanel>
+                                    <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,12"
+                                               Text="校准值会同步到制作页，用于下一次生成。" />
+                                    <StackPanel Orientation="Horizontal">
+                                        <CheckBox Content="逆交织" VerticalAlignment="Center"
+                                                  IsChecked="{Binding State.CdInterleave}" />
+                                        <controls:HelpHint Margin="8,0,0,0" VerticalAlignment="Center"
+                                                           Hint="如您在盘片制作时勾选了“启用 CD-DA 延迟交织”，则应勾选该选项。" />
+                                    </StackPanel>
                                 </StackPanel>
-                                <StackPanel Width="122" Margin="0,0,0,12">
-                                    <TextBlock Style="{StaticResource FieldLabel}" Text="外半径 (mm)" />
-                                    <TextBox Text="{Binding State.CdOuterRadius, UpdateSourceTrigger=PropertyChanged}" />
+    
+                                <!-- CD calibration: the source picture is the input. -->
+                                <StackPanel Style="{StaticResource CalibrationGroup}">
+                                    <TextBlock Text="源图片" Style="{StaticResource PanelHeading}" />
+                                    <Grid Margin="0,0,0,10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox Text="{Binding State.CdImagePath, UpdateSourceTrigger=PropertyChanged}" />
+                                        <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Width="76"
+                                                Content="浏览…" Command="{Binding BrowseCdImageCommand}" />
+                                    </Grid>
+                                    <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,18"
+                                               Text="与盘片制作页同步，非特殊需要无需在本页重复设置。" />
+    
+                                    <TextBlock Text="生成几何" Style="{StaticResource PanelHeading}" />
+                                    <WrapPanel>
+                                        <StackPanel Width="122" Margin="0,0,12,12">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="内半径 (mm)" />
+                                            <TextBox Text="{Binding State.CdInnerRadius, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Width="122" Margin="0,0,0,12">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="外半径 (mm)" />
+                                            <TextBox Text="{Binding State.CdOuterRadius, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Width="122" Margin="0,0,0,12">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="扇区数" />
+                                            <TextBox Text="{Binding State.CdSectors, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                    </WrapPanel>
+    
+                                    <TextBlock Text="实测几何" Style="{StaticResource SubHeading}" />
+                                    <WrapPanel>
+                                        <StackPanel Width="122" Margin="0,0,12,12">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="内半径 (mm)" />
+                                            <TextBox Text="{Binding State.CdActualInnerRadius, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Width="122" Margin="0,0,0,12">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="外半径 (mm)" />
+                                            <TextBox Text="{Binding State.CdActualOuterRadius, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Width="122" Margin="0,0,12,12">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="导出尺寸 (px)" />
+                                            <TextBox Text="{Binding State.CdPreviewSize, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Width="122" Margin="0,0,0,12">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="每扇区采样" />
+                                            <TextBox Text="{Binding State.CdSamplesPerSector, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                    </WrapPanel>
+                                    <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,12"
+                                               Text="生成几何决定图片铺在盘面的位置，实测几何决定读取位置；两者不同时图形将按实测数据解析。" />
                                 </StackPanel>
-                                <StackPanel Width="122" Margin="0,0,0,12">
-                                    <TextBlock Style="{StaticResource FieldLabel}" Text="扇区数" />
-                                    <TextBox Text="{Binding State.CdSectors, UpdateSourceTrigger=PropertyChanged}" />
-                                </StackPanel>
-                            </WrapPanel>
-                            <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,12"
-                                       Text="调整半径与扇区数，使模拟图与实盘扫描一致；校准值会同步到制作页，用于下一次生成。" />
-                            <StackPanel Orientation="Horizontal">
-                                <CheckBox Content="逆交织" VerticalAlignment="Center"
-                                          IsChecked="{Binding State.CdInterleave}" />
-                                <controls:HelpHint Margin="8,0,0,0" VerticalAlignment="Center"
-                                                   Hint="如您在盘片制作时勾选了“启用 CD-DA 延迟交织”，则应勾选该选项。" />
                             </StackPanel>
+    
+                            <!-- DVD parameter groups -->
+                            <StackPanel Style="{StaticResource DvdGroup}">
+    
+                                <!-- DVD read-back: the generated ISO is the input. -->
+                                <StackPanel Style="{StaticResource ReadbackGroup}">
+                                    <TextBlock Text="生成 ISO" Style="{StaticResource PanelHeading}" />
+                                    <Grid Margin="0,0,0,10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox Text="{Binding State.DvdIsoPath, UpdateSourceTrigger=PropertyChanged}" />
+                                        <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Width="76"
+                                                Content="浏览…" Command="{Binding BrowseDvdIsoCommand}" />
+                                    </Grid>
+    
+                                    <TextBlock Text="盘片几何 · 标定 · CW" Style="{StaticResource PanelHeading}" />
+                                    <WrapPanel>
+                                        <StackPanel Width="122" Margin="0,0,12,12">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="总扇区数" />
+                                            <TextBox Text="{Binding State.DvdTotalSectors, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Width="122" Margin="0,0,0,12">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="内半径 (mm)" />
+                                            <TextBox Text="{Binding State.DvdInnerRadius, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Width="122" Margin="0,0,0,12">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="外半径 (mm)" />
+                                            <TextBox Text="{Binding State.DvdOuterRadius, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                    </WrapPanel>
+                                    <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,18"
+                                               Text="校准值将同步到制作页，用于下一次生成。" />
+                                </StackPanel>
+    
+                                <!-- DVD calibration: the source picture is the input. -->
+                                <StackPanel Style="{StaticResource CalibrationGroup}">
+                                    <TextBlock Text="源图片" Style="{StaticResource PanelHeading}" />
+                                    <Grid Margin="0,0,0,10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox Text="{Binding State.DvdImagePath, UpdateSourceTrigger=PropertyChanged}" />
+                                        <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Width="76"
+                                                Content="浏览…" Command="{Binding BrowseDvdImageCommand}" />
+                                    </Grid>
+                                    <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,18"
+                                               Text="与盘片制作页同步，非特殊需要无需在本页重复设置。" />
+    
+                                    <TextBlock Text="生成几何 · CW" Style="{StaticResource PanelHeading}" />
+                                    <WrapPanel>
+                                        <StackPanel Width="122" Margin="0,0,12,12">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="总扇区数" />
+                                            <TextBox Text="{Binding State.DvdTotalSectors, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Width="122" Margin="0,0,0,12">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="内半径 (mm)" />
+                                            <TextBox Text="{Binding State.DvdInnerRadius, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Width="122" Margin="0,0,0,12">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="外半径 (mm)" />
+                                            <TextBox Text="{Binding State.DvdOuterRadius, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                    </WrapPanel>
+    
+                                    <TextBlock Text="实测几何" Style="{StaticResource SubHeading}" />
+                                    <WrapPanel>
+                                        <StackPanel Width="122" Margin="0,0,12,12">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="内半径 (mm)" />
+                                            <TextBox Text="{Binding State.DvdActualInnerRadius, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Width="122" Margin="0,0,0,12">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="外半径 (mm)" />
+                                            <TextBox Text="{Binding State.DvdActualOuterRadius, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Width="122" Margin="0,0,12,12">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="导出尺寸 (px)" />
+                                            <TextBox Text="{Binding State.DvdPreviewSize, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Width="122" Margin="0,0,0,12">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="每扇区采样" />
+                                            <TextBox Text="{Binding State.DvdSamplesPerSector, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                    </WrapPanel>
+                                    <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,12"
+                                               Text="生成几何决定图片铺在盘面的位置，实测几何决定读取位置；两者不同时图形将按实测数据解析。" />
+                                </StackPanel>
+                            </StackPanel>
+    
                         </StackPanel>
-
-                        <!-- DVD parameter group -->
-                        <StackPanel>
-                            <StackPanel.Style>
-                                <Style TargetType="StackPanel">
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsDvdSelected}" Value="False">
-                                            <Setter Property="Visibility" Value="Collapsed" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </StackPanel.Style>
-                            <TextBlock Text="生成 ISO" Style="{StaticResource PanelHeading}" />
-                            <Grid Margin="0,0,0,10">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBox Text="{Binding State.DvdIsoPath, UpdateSourceTrigger=PropertyChanged}" />
-                                <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Width="76"
-                                        Content="浏览…" Command="{Binding BrowseDvdIsoCommand}" />
-                            </Grid>
-                            <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,18"
-                                       Text="可直接粘贴或浏览已生成的 ISO；旁边的 .json 提供绘制范围与生成参数。" />
-
-                            <TextBlock Text="盘片几何 · 标定 · CW" Style="{StaticResource PanelHeading}" />
-                            <WrapPanel>
-                                <StackPanel Width="122" Margin="0,0,12,12">
-                                    <TextBlock Style="{StaticResource FieldLabel}" Text="总扇区数" />
-                                    <TextBox Text="{Binding State.DvdTotalSectors, UpdateSourceTrigger=PropertyChanged}" />
-                                </StackPanel>
-                                <StackPanel Width="122" Margin="0,0,0,12">
-                                    <TextBlock Style="{StaticResource FieldLabel}" Text="内半径 (mm)" />
-                                    <TextBox Text="{Binding State.DvdInnerRadius, UpdateSourceTrigger=PropertyChanged}" />
-                                </StackPanel>
-                                <StackPanel Width="122" Margin="0,0,0,12">
-                                    <TextBlock Style="{StaticResource FieldLabel}" Text="外半径 (mm)" />
-                                    <TextBox Text="{Binding State.DvdOuterRadius, UpdateSourceTrigger=PropertyChanged}" />
-                                </StackPanel>
-                            </WrapPanel>
-                            <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,18"
-                                       Text="调整总扇区数与半径，使模拟图与实盘扫描一致；校准值会同步到制作页，用于下一次生成。" />
-                        </StackPanel>
-
-                    </StackPanel>
-                    </ScrollViewer>
-                    <Border Grid.Row="1" Background="{StaticResource Surface2Brush}"
-                            BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0"
-                            CornerRadius="0,0,16,16">
-                        <Button Style="{StaticResource SecondaryButton}" Height="38" Padding="14,0"
-                                Content="刷新预览" Command="{Binding RefreshCommand}" Margin="18,12" />
-                    </Border>
-                </Grid>
-            </Border>
+                        </ScrollViewer>
+                        <Border Grid.Row="1" Background="{StaticResource Surface2Brush}"
+                                BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0"
+                                CornerRadius="0,0,16,16">
+                            <Button Style="{StaticResource SecondaryButton}" Height="38" Padding="14,0"
+                                    Content="刷新预览" Command="{Binding RefreshCommand}" Margin="18,12" />
+                        </Border>
+                    </Grid>
+                </Border>
+            </Grid>
 
             <Border Grid.Column="2" Style="{StaticResource CardStyle}" Padding="0">
                 <Grid>
@@ -202,13 +345,23 @@
                                Margin="16,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
 
                     <!-- Title-bar actions. The eye reveals the read-back precision panel, the download
-                         glyph exports the current preview next to the generated artifact. The panel is an
-                         in-card overlay rather than a Popup so it shares one hover region with its glyph
-                         (no timers, no second window), and the two glyphs sit in their own cells so
-                         hovering the download never opens the panel. -->
+                         glyph exports the current preview next to its input. The panel is an in-card
+                         overlay rather than a Popup so it shares one hover region with its glyph (no
+                         timers, no second window), and the two glyphs sit in their own cells so hovering
+                         the download never opens the panel. The calibration panel carries its own size
+                         and sampling fields, so the eye is read-back only. -->
                     <StackPanel Grid.Row="0" Grid.RowSpan="3" Orientation="Horizontal"
                                 HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,6,16,0">
                         <Grid x:Name="PrecisionHost" VerticalAlignment="Top" Background="Transparent">
+                            <Grid.Style>
+                                <Style TargetType="Grid">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsCalibrationPreview}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Grid.Style>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
@@ -240,8 +393,6 @@
                                 </Border.Effect>
                                 <StackPanel>
                                     <TextBlock Text="预览精度" Style="{StaticResource PanelHeading}" />
-                                    <TextBlock Style="{StaticResource HintText}"
-                                               Text="尺寸与每扇区采样决定读回模拟的像素密度；修改后自动刷新。" />
                                     <!-- CD preview output -->
                                     <StackPanel>
                                         <StackPanel.Style>
@@ -253,7 +404,7 @@
                                                 </Style.Triggers>
                                             </Style>
                                         </StackPanel.Style>
-                                        <TextBlock Style="{StaticResource PreviewFieldLabel}" Text="导出尺寸 (px)" />
+                                        <TextBlock Style="{StaticResource PreviewFieldLabel}" Text="尺寸 (px)" />
                                         <TextBox Text="{Binding State.CdPreviewSize, UpdateSourceTrigger=PropertyChanged}" />
                                         <TextBlock Style="{StaticResource PreviewFieldLabel}" Text="每扇区采样" />
                                         <TextBox Text="{Binding State.CdSamplesPerSector, UpdateSourceTrigger=PropertyChanged}" />
@@ -269,7 +420,7 @@
                                                 </Style.Triggers>
                                             </Style>
                                         </StackPanel.Style>
-                                        <TextBlock Style="{StaticResource PreviewFieldLabel}" Text="导出尺寸 (px)" />
+                                        <TextBlock Style="{StaticResource PreviewFieldLabel}" Text="尺寸 (px)" />
                                         <TextBox Text="{Binding State.DvdPreviewSize, UpdateSourceTrigger=PropertyChanged}" />
                                         <TextBlock Style="{StaticResource PreviewFieldLabel}" Text="每扇区采样" />
                                         <TextBox Text="{Binding State.DvdSamplesPerSector, UpdateSourceTrigger=PropertyChanged}" />
@@ -277,13 +428,13 @@
                                 </StackPanel>
                             </Border>
                         </Grid>
-                        <!-- No flyout here: a press writes the current preview next to the artifact. -->
+                        <!-- No flyout here: a press writes the current preview next to its input. -->
                         <Button x:Name="DownloadButton" Style="{StaticResource GhostButton}" Width="32" Height="32"
                                 Padding="0" Focusable="False" Margin="6,0,0,0" VerticalAlignment="Top"
                                 Command="{Binding DownloadPreviewCommand}"
                                 AutomationProperties.Name="导出预览"
                                 ToolTipService.InitialShowDelay="150"
-                                ToolTip="导出当前预览图，保存到生成产物所在文件夹">
+                                ToolTip="导出当前预览图到输入来源所在文件夹">
                             <iconPacks:PackIconLucide Kind="Download" Width="18" Height="18" />
                         </Button>
                     </StackPanel>

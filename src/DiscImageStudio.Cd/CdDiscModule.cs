@@ -18,6 +18,14 @@ public sealed class CdDiscModule : IOpticalDiscModule
         new("outer", "Image outer radius", DiscOptionValueType.Decimal, DefaultValue: "57.5", Unit: "mm"),
     ];
 
+    /// <summary>Second parameter set of the geometry preview: the disc the reader follows.
+    /// Only the radii differ; the constants in <see cref="CdDiscParameters"/> cover the rest.</summary>
+    private static readonly IReadOnlyList<DiscOptionDefinition> MeasuredGeometryOptions =
+    [
+        new("actual-r0", "Measured inner radius", DiscOptionValueType.Decimal, DefaultValue: "24.3", Unit: "mm"),
+        new("actual-r1", "Measured outer radius", DiscOptionValueType.Decimal, DefaultValue: "56.6", Unit: "mm"),
+    ];
+
     private static readonly DiscModuleDescriptor ModuleDescriptor = new(
         ModuleId,
         "CD-DA",
@@ -41,12 +49,13 @@ public sealed class CdDiscModule : IOpticalDiscModule
             new DiscCommandDescriptor(
                 "cd-preview-warp",
                 "Preview CD geometry",
-                "Renders the image at the given CD spiral geometry.",
+                "Projects generated geometry onto measured disc geometry.",
                 DiscModuleCapabilities.GeometryPreview,
                 [
                     new("input", "Source image", DiscOptionValueType.InputFile, Required: true),
                     new("output", "Preview PNG", DiscOptionValueType.OutputFile, Required: true),
                     .. GeometryOptions,
+                    .. MeasuredGeometryOptions,
                     new("size", "Preview size", DiscOptionValueType.Integer, DefaultValue: "1600", Unit: "px"),
                     new("samples-per-sector", "Samples per sector", DiscOptionValueType.Integer, DefaultValue: "16"),
                 ]),
@@ -124,10 +133,12 @@ public sealed class CdDiscModule : IOpticalDiscModule
     {
         string output = Path.GetFullPath(options.Require("output"));
         progress?.Report(new DiscJobProgress(ModuleId, "preview", "Rendering CD geometry preview…"));
+        CdDiscParameters generated = ReadParameters(options);
         CdTrackGenerator.PreviewWarp(
             options.Require("input"),
             output,
-            ReadParameters(options),
+            generated,
+            ReadMeasuredParameters(options, generated),
             options.GetInt("size", 1600),
             options.GetInt("samples-per-sector", 16),
             cancellationToken);
@@ -174,6 +185,17 @@ public sealed class CdDiscModule : IOpticalDiscModule
             startAngleDegrees * Math.PI / 180.0,
             options.GetDouble("outer", CdDiscParameters.StandardImageOuterRadiusMm));
     }
+
+    /// <summary>Measured set of the geometry preview: the program it reads is the generated
+    /// one, so only the radii differ.</summary>
+    private static CdDiscParameters ReadMeasuredParameters(
+        CdCommandOptions options,
+        CdDiscParameters generated)
+        => generated with
+        {
+            InnerRadiusMm = options.GetDouble("actual-r0", 24.3),
+            OuterRadiusMm = options.GetDouble("actual-r1", 56.6),
+        };
 
     private sealed class CdCommandOptions
     {

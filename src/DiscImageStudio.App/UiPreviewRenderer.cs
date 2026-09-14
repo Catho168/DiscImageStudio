@@ -14,7 +14,9 @@ internal static class UiPreviewRenderer
         int selectedTab = 0,
         string? previewPath = null,
         string? liveInputPath = null,
-        string? liveDisc = null)
+        string? liveDisc = null,
+        string? liveMode = null,
+        string? liveProcessing = null)
     {
         Application application = AppHost.CreateApplication(ShutdownMode.OnExplicitShutdown);
         MainWindow window = new()
@@ -26,7 +28,13 @@ internal static class UiPreviewRenderer
             Top = -10000,
             ShowInTaskbar = false,
         };
-        window.ConfigureSnapshot(selectedTab, previewPath, liveInputPath, liveDisc);
+        window.ConfigureSnapshot(
+            selectedTab,
+            previewPath,
+            liveInputPath,
+            liveDisc,
+            liveMode,
+            liveProcessing);
         window.Show();
         window.UpdateLayout();
         if (!string.IsNullOrWhiteSpace(liveInputPath))

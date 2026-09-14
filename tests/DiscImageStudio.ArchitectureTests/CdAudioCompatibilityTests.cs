@@ -30,6 +30,7 @@ internal static class CdAudioCompatibilityTests
 
             TestCommandOutput(directory, sourcePath, parameters);
             TestReadbackInvertsInterleave(directory, sourcePath);
+            TestWarpProjectsGeneratedOntoMeasured(directory, sourcePath);
         }
         finally
         {
@@ -212,6 +213,85 @@ internal static class CdAudioCompatibilityTests
     }
 
     /// <summary>
+    /// The calibration preview's two parameter sets are one projection: sampling the source at
+    /// the generated geometry and drawing at the measured geometry has to reproduce, pixel for
+    /// pixel, a track generated with the first geometry and read back under the second. Moving
+    /// the measured geometry then moves the drawing, which is what that set is for.
+    /// </summary>
+    private static void TestWarpProjectsGeneratedOntoMeasured(string directory, string sourcePath)
+    {
+        const int size = 900;
+        const int byteStep = CdDiscParameters.BytesPerSector / 16;
+        CdDiscParameters generated = new(
+            InnerRadiusMm: 24.5,
+            OuterRadiusMm: 56.8,
+            Sectors: 8,
+            LinearVelocityMmPerSecond: 1200,
+            ImageOuterRadiusMm: 58);
+        CdDiscParameters measured = generated with { InnerRadiusMm = 24.3, OuterRadiusMm = 56.6 };
+        string trackPath = Path.Combine(directory, "warp-track.raw");
+        CdTrackGenerator.Generate(sourcePath, trackPath, generated, interleave: false);
+
+        string identicalPath = Path.Combine(directory, "warp-identical.png");
+        string measuredPath = Path.Combine(directory, "warp-measured.png");
+        CdTrackGenerator.PreviewWarp(sourcePath, identicalPath, generated, generated, size, 16);
+        CdTrackGenerator.PreviewWarp(sourcePath, measuredPath, generated, measured, size, 16);
+
+        True(
+            Bilevel(ReadPngPixels(identicalPath))
+                .SequenceEqual(Bilevel(Preview(trackPath, generated, size, deinterleave: false, byteStep))),
+            "warp with one geometry matches the read-back of the track it describes");
+        True(
+            Bilevel(ReadPngPixels(measuredPath))
+                .SequenceEqual(Bilevel(Preview(trackPath, measured, size, deinterleave: false, byteStep))),
+            "warp onto measured geometry matches the read-back under that geometry");
+        True(
+            MeanDarkRadius(measuredPath, size) < MeanDarkRadius(identicalPath, size),
+            "a smaller measured geometry pulls the projection inwards");
+    }
+
+    /// <summary>Thresholds a rendered picture to the black/white pattern it encodes: the
+    /// read-back keeps the palette's grey levels (32/224) where the projection writes pure
+    /// black and white, so the pattern is what the two must agree on.</summary>
+    private static byte[] Bilevel(byte[] pixels)
+    {
+        byte[] result = (byte[])pixels.Clone();
+        for (int offset = 0; offset < result.Length; offset += 4)
+        {
+            byte level = result[offset] < 128 ? (byte)0 : (byte)255;
+            result[offset] = level;
+            result[offset + 1] = level;
+            result[offset + 2] = level;
+        }
+
+        return result;
+    }
+
+    private static double MeanDarkRadius(string pngPath, int size)
+    {
+        byte[] pixels = ReadPngPixels(pngPath);
+        double centre = size / 2.0;
+        double sum = 0;
+        int count = 0;
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                if (pixels[((y * size) + x) * 4] >= 128)
+                {
+                    continue;
+                }
+
+                sum += Math.Sqrt(((x - centre) * (x - centre)) + ((y - centre) * (y - centre)));
+                count++;
+            }
+        }
+
+        True(count > 0, "the projection draws at least one dark sample");
+        return sum / count;
+    }
+
+    /// <summary>
     /// Pixels covered by the last two sectors of the track: the delay line's look-ahead is
     /// under one sector, so anything it drops falls inside this footprint.
     /// </summary>
@@ -237,12 +317,13 @@ internal static class CdAudioCompatibilityTests
         string trackPath,
         CdDiscParameters parameters,
         int size,
-        bool deinterleave)
+        bool deinterleave,
+        int byteStep = 1)
     {
         string path = Path.Combine(
             Path.GetDirectoryName(trackPath)!,
-            $"{Path.GetFileNameWithoutExtension(trackPath)}-{deinterleave}-{size}.png");
-        CdTrackGenerator.PreviewTrack(trackPath, path, parameters, size, 1, deinterleave);
+            $"{Path.GetFileNameWithoutExtension(trackPath)}-{deinterleave}-{size}-{byteStep}.png");
+        CdTrackGenerator.PreviewTrack(trackPath, path, parameters, size, byteStep, deinterleave);
         return ReadPngPixels(path);
     }
 
