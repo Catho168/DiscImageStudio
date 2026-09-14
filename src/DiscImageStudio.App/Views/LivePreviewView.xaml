@@ -145,7 +145,55 @@
                                     </Grid>
                                     <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,18"
                                                Text="与盘片制作页同步，非特殊需要无需在本页重复设置。" />
-    
+
+                                    <!-- Image processing and disc preset mirror the production page:
+                                         the projection consumes the same prepared picture and the same
+                                         generation geometry, so both have to be editable here too. -->
+                                    <TextBlock Text="图片处理" Style="{StaticResource PanelHeading}" />
+                                    <ComboBox SelectedIndex="{Binding State.CdImageProcessingModeIndex}" Margin="0,0,0,10">
+                                        <ComboBoxItem Content="原图直接映射" />
+                                        <ComboBoxItem Content="环形复制（自动份数）" />
+                                    </ComboBox>
+                                    <controls:RevealPanel IsExpanded="{Binding State.IsCdRingMode}"
+                                                         IsEnabled="{Binding State.IsCdRingMode}" Margin="0,0,0,8">
+                                        <StackPanel Margin="0,0,0,14">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="内圈安全边界 (mm)" />
+                                            <TextBox Text="{Binding State.CdRingInnerMargin, UpdateSourceTrigger=PropertyChanged}"
+                                                     Margin="0,0,0,10" />
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="外圈安全边界 (mm)" />
+                                            <TextBox Text="{Binding State.CdRingOuterMargin, UpdateSourceTrigger=PropertyChanged}"
+                                                     Margin="0,0,0,10" />
+                                            <TextBlock Style="{StaticResource HintText}"
+                                                       Text="图片会复制多份并朝外环形排列；空间不足时自动等比缩小，保证不变形、不裁切、不重叠。" />
+                                        </StackPanel>
+                                    </controls:RevealPanel>
+
+                                    <TextBlock Text="盘片预设" Style="{StaticResource PanelHeading}" />
+                                    <ComboBox ItemsSource="{Binding State.CdPresets}"
+                                              SelectedItem="{Binding State.SelectedCdPreset}"
+                                              Margin="0,0,0,8">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                    <TextBlock Text="{Binding State.CdPresetHint}" Style="{StaticResource HintText}"
+                                               Margin="0,0,0,10" />
+                                    <!-- Same 12px gutter and full-width right edge as the field rows
+                                         above: fixed widths left the pair short of the column. -->
+                                    <Grid Margin="0,0,0,18">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="12" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Button Style="{StaticResource BrowseButton}" Margin="0"
+                                                Content="打开 JSON" Command="{Binding OpenPresetsJsonCommand}" />
+                                        <Button Grid.Column="2" Style="{StaticResource BrowseButton}" Margin="0"
+                                                Content="重新加载" Command="{Binding ReloadPresetsCommand}" />
+                                    </Grid>
+
                                     <TextBlock Text="生成几何" Style="{StaticResource PanelHeading}" />
                                     <WrapPanel>
                                         <StackPanel Width="122" Margin="0,0,12,12">
@@ -235,7 +283,51 @@
                                     </Grid>
                                     <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,18"
                                                Text="与盘片制作页同步，非特殊需要无需在本页重复设置。" />
-    
+
+                                    <!-- Same two production-page controls as the CD panel above. -->
+                                    <TextBlock Text="图片处理" Style="{StaticResource PanelHeading}" />
+                                    <ComboBox SelectedIndex="{Binding State.DvdImageProcessingModeIndex}" Margin="0,0,0,10">
+                                        <ComboBoxItem Content="原图直接映射" />
+                                        <ComboBoxItem Content="环形复制（自动份数）" />
+                                    </ComboBox>
+                                    <controls:RevealPanel IsExpanded="{Binding State.IsDvdRingMode}"
+                                                         IsEnabled="{Binding State.IsDvdRingMode}" Margin="0,0,0,8">
+                                        <StackPanel Margin="0,0,0,14">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="内圈安全边界 (mm)" />
+                                            <TextBox Text="{Binding State.DvdRingInnerMargin, UpdateSourceTrigger=PropertyChanged}"
+                                                     Margin="0,0,0,10" />
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="外圈安全边界 (mm)" />
+                                            <TextBox Text="{Binding State.DvdRingOuterMargin, UpdateSourceTrigger=PropertyChanged}"
+                                                     Margin="0,0,0,10" />
+                                            <TextBlock Style="{StaticResource HintText}"
+                                                       Text="图片会复制多份并朝外环形排列；空间不足时自动等比缩小，保证不变形、不裁切、不重叠。" />
+                                        </StackPanel>
+                                    </controls:RevealPanel>
+
+                                    <TextBlock Text="盘片预设" Style="{StaticResource PanelHeading}" />
+                                    <ComboBox ItemsSource="{Binding State.DvdPresets}"
+                                              SelectedItem="{Binding State.SelectedDvdPreset}"
+                                              Margin="0,0,0,8">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                    <TextBlock Text="{Binding State.DvdPresetHint}" Style="{StaticResource HintText}"
+                                               Margin="0,0,0,10" />
+                                    <Grid Margin="0,0,0,18">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="12" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Button Style="{StaticResource BrowseButton}" Margin="0"
+                                                Content="打开 JSON" Command="{Binding OpenPresetsJsonCommand}" />
+                                        <Button Grid.Column="2" Style="{StaticResource BrowseButton}" Margin="0"
+                                                Content="重新加载" Command="{Binding ReloadPresetsCommand}" />
+                                    </Grid>
+
                                     <TextBlock Text="生成几何 · CW" Style="{StaticResource PanelHeading}" />
                                     <WrapPanel>
                                         <StackPanel Width="122" Margin="0,0,12,12">

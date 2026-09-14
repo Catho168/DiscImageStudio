@@ -43,6 +43,7 @@ public partial class ShellViewModel : ObservableObject
         About = new AboutViewModel();
         OpenOutputCommand = new RelayCommand(OpenOutput, () => OpenOutputEnabled);
         OpenPresetsJsonCommand = new RelayCommand(OpenPresetsJson);
+        ReloadPresetsCommand = new RelayCommand(ReloadPresets);
         BrowseCdImageCommand = new RelayCommand(() => BrowseCdImage(), () => !IsBusy);
         BrowseDvdImageCommand = new RelayCommand(() => BrowseDvdImage(), () => !IsBusy);
         BrowseCdTrackCommand = new RelayCommand(() => BrowseCdTrack(), () => !IsBusy);
@@ -92,6 +93,10 @@ public partial class ShellViewModel : ObservableObject
 
     /// <summary>Opens the editable disc-preset JSON; shared by the start page and the DVD page.</summary>
     public RelayCommand OpenPresetsJsonCommand { get; }
+
+    /// <summary>Re-reads the preset catalog preserving the current selection; shared by every
+    /// page that offers the preset selector.</summary>
+    public RelayCommand ReloadPresetsCommand { get; }
 
     public RelayCommand BrowseCdImageCommand { get; }
 
@@ -291,6 +296,27 @@ public partial class ShellViewModel : ObservableObject
             ShowToast(
                 "打开失败",
                 $"无法打开预设 JSON。\n\n{exception.Message}\n\n文件位置：\n{State.DiscPresetJsonPath}",
+                ToastKind.Error);
+        }
+    }
+
+    /// <summary>Re-reads the preset JSON. A malformed file leaves the current catalog in
+    /// place, so the page keeps working with what it already had.</summary>
+    private void ReloadPresets()
+    {
+        try
+        {
+            (int cdCount, int dvdCount) = State.ReloadPresets();
+            ShowToast(
+                "预设已更新",
+                $"预设已重新加载：{cdCount} 个 CD、{dvdCount} 个 DVD。\n\n文件位置：\n{State.DiscPresetJsonPath}",
+                ToastKind.Success);
+        }
+        catch (Exception exception)
+        {
+            ShowToast(
+                "重新加载失败",
+                $"JSON 中有无法使用的内容，当前有效预设未改变。\n\n{exception.Message}\n\n文件位置：\n{State.DiscPresetJsonPath}",
                 ToastKind.Error);
         }
     }

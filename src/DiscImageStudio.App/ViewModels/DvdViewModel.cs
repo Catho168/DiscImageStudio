@@ -20,7 +20,6 @@ public partial class DvdViewModel : ObservableObject
         BrowseOutputCommand = new RelayCommand(BrowseOutput, () => !_shell.IsBusy);
         BrowseDataCommand = new RelayCommand(BrowseData, () => !_shell.IsBusy);
         GenerateCommand = new AsyncRelayCommand(GenerateAsync, () => !_shell.IsBusy);
-        ReloadPresetsCommand = new RelayCommand(ReloadPresets);
         _shell.BusyChanged += NotifyCommands;
     }
 
@@ -31,12 +30,12 @@ public partial class DvdViewModel : ObservableObject
 
     public RelayCommand BrowseDataCommand { get; }
 
-    /// <summary>Shared with the start page: opens the editable preset catalog.</summary>
+    /// <summary>Shared with the start page, the CD page and the live preview page.</summary>
     public RelayCommand OpenPresetsJsonCommand => _shell.OpenPresetsJsonCommand;
 
     public IAsyncRelayCommand GenerateCommand { get; }
 
-    public RelayCommand ReloadPresetsCommand { get; }
+    public RelayCommand ReloadPresetsCommand => _shell.ReloadPresetsCommand;
 
     private void NotifyCommands()
     {
@@ -135,25 +134,6 @@ public partial class DvdViewModel : ObservableObject
             options,
             "dvd",
             appendLog: _shell.AppendLog);
-    }
-
-    private void ReloadPresets()
-    {
-        try
-        {
-            (int cdCount, int dvdCount) = _state.ReloadPresets();
-            _shell.ShowToast(
-                "预设已更新",
-                $"预设已重新加载：{cdCount} 个 CD、{dvdCount} 个 DVD。\n\n文件位置：\n{_state.DiscPresetJsonPath}",
-                ToastKind.Success);
-        }
-        catch (Exception exception)
-        {
-            _shell.ShowToast(
-                "重新加载失败",
-                $"JSON 中有无法使用的内容，当前有效预设未改变。\n\n{exception.Message}\n\n文件位置：\n{_state.DiscPresetJsonPath}",
-                ToastKind.Error);
-        }
     }
 
     private static string RequirePath(string raw, string message)

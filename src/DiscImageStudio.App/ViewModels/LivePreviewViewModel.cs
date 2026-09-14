@@ -113,6 +113,13 @@ public partial class LivePreviewViewModel : ObservableObject
 
     public RelayCommand BrowseDvdIsoCommand => _shell.BrowseDvdIsoCommand;
 
+    /// <summary>Shared with the disc-production pages: the preset catalog actions. The
+    /// calibration panels edit the same generation geometry a preset writes, so the catalog
+    /// has to be reachable without leaving the page.</summary>
+    public RelayCommand OpenPresetsJsonCommand => _shell.OpenPresetsJsonCommand;
+
+    public RelayCommand ReloadPresetsCommand => _shell.ReloadPresetsCommand;
+
     /// <summary>
     /// Switching to another artifact adopts the geometry it was generated with, so an imported
     /// track or ISO starts from its own parameters instead of whatever was fitted before.

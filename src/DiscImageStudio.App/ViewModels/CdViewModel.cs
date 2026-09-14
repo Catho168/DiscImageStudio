@@ -29,6 +29,11 @@ public partial class CdViewModel : ObservableObject
     /// <summary>Shared with the live preview page: picks the image and prefills paths.</summary>
     public RelayCommand BrowseImageCommand => _shell.BrowseCdImageCommand;
 
+    /// <summary>Shared with the start page, the DVD page and the live preview page.</summary>
+    public RelayCommand OpenPresetsJsonCommand => _shell.OpenPresetsJsonCommand;
+
+    public RelayCommand ReloadPresetsCommand => _shell.ReloadPresetsCommand;
+
     public IAsyncRelayCommand GenerateCommand { get; }
 
     private void NotifyCommands()
