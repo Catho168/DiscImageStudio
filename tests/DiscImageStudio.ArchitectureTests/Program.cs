@@ -184,6 +184,10 @@ static void TestDiscPresets()
 
     CdDiscPresetDefinition cd80 = builtIn.CdPresets.Single(value => value.Id == "cd-80");
     Equal(359_849L, cd80.Sectors, "80-minute CD preset sectors");
+    Equal(
+        1_200.0,
+        cd80.LinearVelocityMmPerSecond,
+        "CD preset keeps the ECMA-130 linear velocity field");
     CdDiscPresetDefinition ritek = builtIn.CdPresets.Single(
         value => value.Id == "ritek-medical-aqua");
     Equal(359_845L, ritek.Sectors, "RITEK medical aqua preset sectors");
@@ -197,6 +201,10 @@ static void TestDiscPresets()
     DvdDiscPresetDefinition dvd120 = builtIn.DvdPresets.Single(
         value => value.Id == "dvd-5-120mm");
     Equal(2_295_104U, dvd120.TotalSectors, "120 mm DVD preset sectors");
+    Equal(
+        133.33,
+        dvd120.ChannelBitLengthNm,
+        "DVD preset keeps the standard channel-bit length field");
     DvdDiscPresetDefinition verbatimDvd = builtIn.DvdPresets.Single(
         value => value.Id == "verbatim-dvd-r-azo-43533");
     Equal(2_297_888U, verbatimDvd.TotalSectors, "Verbatim DVD-R AZO 43533 sectors");
@@ -233,6 +241,10 @@ static void TestDiscPresetJson()
         True(
             !File.ReadAllText(path).Contains("imageOuterRadiusMm", StringComparison.Ordinal),
             "preset JSON excludes image layout parameters");
+        True(
+            File.ReadAllText(path).Contains("linearVelocityMmPerSecond", StringComparison.Ordinal)
+            && File.ReadAllText(path).Contains("channelBitLengthNm", StringComparison.Ordinal),
+            "user preset JSON keeps the fixed speed and channel-bit fields");
 
         DiscPresetJsonDocument merged = DiscPresetJsonStore.Merge(builtIn, created);
         Equal(5, merged.CdPresets.Count, "merged CD preset count");
@@ -297,7 +309,7 @@ static void TestDiscPresetJson()
             """
             {
               // 用户可以为实测盘片留下说明。
-              "schemaVersion": 3,
+              "schemaVersion": 2,
               "cdPresets": [],
               "dvdPresets": [],
               "disabledCdPresetIds": [],
@@ -311,16 +323,115 @@ static void TestDiscPresetJson()
             path,
             """
             {
+              "schemaVersion": 2,
+              "cdPresets": [
+                {
+                  "id": "legacy-shape",
+                  "displayName": "旧结构",
+                  "description": "带保留字段的旧版本文件。",
+                  "sectors": 350000,
+                  "innerRadiusMm": 24.5,
+                  "outerRadiusMm": 57.0,
+                  "linearVelocityMmPerSecond": 1400
+                }
+              ],
+              "dvdPresets": [
+                {
+                  "id": "legacy-dvd",
+                  "displayName": "旧 DVD 结构",
+                  "description": "带保留字段的旧版本文件。",
+                  "totalSectors": 2295104,
+                  "innerRadiusMm": 24.0,
+                  "outerRadiusMm": 58.0,
+                  "channelBitLengthNm": 133.33
+                }
+              ]
+            }
+            """);
+        DiscPresetJsonDocument legacy = DiscPresetJsonStore.Load(path);
+        Equal(
+            1_400.0,
+            legacy.CdPresets[0].LinearVelocityMmPerSecond,
+            "legacy user preset keeps its stored linear velocity");
+        DiscPresetJsonStore.Save(path, legacy);
+        Equal(
+            1_400.0,
+            DiscPresetJsonStore.Load(path).CdPresets[0].LinearVelocityMmPerSecond,
+            "stored linear velocity survives a save round trip");
+
+        File.WriteAllText(
+            path,
+            """
+            {
               "schemaVersion": 3,
+              "cdPresets": [
+                {
+                  "id": "interim-shape",
+                  "displayName": "临时结构",
+                  "description": "临时版本删掉了保留字段。",
+                  "sectors": 350000,
+                  "innerRadiusMm": 24.5,
+                  "outerRadiusMm": 57.0
+                }
+              ],
+              "dvdPresets": [
+                {
+                  "id": "interim-dvd",
+                  "displayName": "临时 DVD 结构",
+                  "description": "临时版本删掉了保留字段。",
+                  "totalSectors": 2295104,
+                  "innerRadiusMm": 24.0,
+                  "outerRadiusMm": 58.0
+                }
+              ]
+            }
+            """);
+        DiscPresetJsonDocument interim = DiscPresetJsonStore.Load(path);
+        Equal(
+            1_200.0,
+            interim.CdPresets[0].LinearVelocityMmPerSecond,
+            "interim schema without the field falls back to the CD standard");
+        Equal(
+            133.33,
+            interim.DvdPresets[0].ChannelBitLengthNm,
+            "interim schema without the field falls back to the DVD standard");
+
+        File.WriteAllText(
+            path,
+            """
+            {
+              "schemaVersion": 2,
+              "cdPresets": [
+                {
+                  "id": "bad-velocity",
+                  "displayName": "非法线速度",
+                  "description": "线速度必须是大于 0 的有限数值。",
+                  "sectors": 350000,
+                  "innerRadiusMm": 24.5,
+                  "outerRadiusMm": 57.0,
+                  "linearVelocityMmPerSecond": 0
+                }
+              ],
+              "dvdPresets": []
+            }
+            """);
+        Throws<InvalidDataException>(
+            () => DiscPresetJsonStore.Load(path),
+            "retained linear velocity is still validated");
+
+        File.WriteAllText(
+            path,
+            """
+            {
+              "schemaVersion": 2,
               "cdPresets": [
                 {
                   "id": "old-shape",
                   "displayName": "旧结构",
-                  "description": "包含已移除的速度与图片字段。",
+                  "description": "包含已移除的图片字段。",
                   "sectors": 350000,
                   "innerRadiusMm": 24.5,
                   "outerRadiusMm": 57.0,
-                  "linearVelocityMmPerSecond": 1200,
                   "imageOuterRadiusMm": 58.0
                 }
               ],
@@ -338,7 +449,7 @@ static void TestDiscPresetJson()
             () => DiscPresetJsonStore.Load(path),
             "pre-layered schema rejection");
 
-        File.WriteAllText(path, "{ \"schemaVersion\": 3, \"cdPresets\": [ }");
+        File.WriteAllText(path, "{ \"schemaVersion\": 2, \"cdPresets\": [ }");
         Throws<InvalidDataException>(
             () => DiscPresetJsonStore.Load(path),
             "malformed preset JSON rejection");

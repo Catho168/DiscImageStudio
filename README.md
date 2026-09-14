@@ -42,15 +42,15 @@ Disc Image Studio 可将一张图片转换成符合 CD、DVD、蓝光（暂不�
 
 ### 光盘数据生成
 
-- **CD-DA 支持**：推荐导出带格式头的 WAV 音轨及配套 CUE，兼容 cdrecord 与 ImgBurn；保留旧 RAW 音轨、延迟交织、固定 1200 mm/s 扫描速度（ECMA-130 范围下限）、CLV 几何与轨道预览。详见 [CD 刻录兼容说明](docs/CD_AUDIO_COMPATIBILITY.md)。
-- **DVD 支持**：固定的快速纹理（dispersion）算法、快速输出、顺时针（CW）螺旋，支持 ISO 纯绘图盘与"内圈文件、外圈绘图"的混合数据盘。
-- **盘片预设**：内置 JSON + 用户层 JSON 分层配置，首次启动生成可编辑的自定义预设，同 ID 用户项可覆盖内置参数，内置修正随应用自动更新；预设只含容量与生成几何，详见[预设维护说明](docs/DISC_PRESETS.md)。
-- **实时预览**：输入开关有两种模式，默认“输入原图”（标定预览）用源图片与生成/实测两套几何做投影，只读图片不读产物，性能较高；“输入镜像”（读回模拟）读取生成产物（CD 音轨 / DVD ISO），按实测几何还原镜像里真实写下的图案。两种模式共用一套盘片几何参数与导出动作，详见 [DVD 引擎说明](docs/DVD_ENGINE.md) 与 [CD 刻录兼容说明](docs/CD_AUDIO_COMPATIBILITY.md)。
+- **CD-DA 支持**：可导出带格式头的 WAV 音轨及配套 CUE，兼容 cdrecord, ImgBurn等刻录软件；也允许导出 RAW 音轨。详见 [CD 刻录兼容说明](docs/CD_AUDIO_COMPATIBILITY.md)。
+- **DVD 支持**：支持导出 ISO 纯绘图盘与"内圈文件、外圈绘图"的混合数据盘镜像。
+- **盘片预设**：内置 JSON + 用户层 JSON 分层配置。详见[预设维护说明](docs/DISC_PRESETS.md)。
+- **实时预览**：分两种模式，默认“输入原图”（标定预览）用源图片与生成/实测两套几何做投影，只读图片不读产物，性能较高；“输入镜像”（读回模拟）读取生成产物（CD 音轨 / DVD ISO），按实测几何还原镜像里真实写下的图案。详见 [DVD 引擎说明](docs/DVD_ENGINE.md) 与 [CD 刻录兼容说明](docs/CD_AUDIO_COMPATIBILITY.md)。
 
 ### 刻录
 
 - **镜像文件输出**：您可以导出完整 ISO / RAW 文件并使用合适的刻录软件手动刻录。
-- **即时流式刻录（实验性）**：CD、纯绘图 DVD 与混合 DVD 边生成边刻录，使用 64 MiB 有界内存缓冲（开刻前预填充 32 MiB），不保存完整镜像；混合模式先计算 ISO9660/Joliet 布局，再严格按 LBA 顺序输出。
+- **即时流式刻录（实验性）**：CD、纯绘图 DVD 与混合 DVD 边生成边刻录，使用 64 MiB 有界内存缓冲（开刻前预填充 32 MiB），不保存完整镜像；
 - **拒绝非空白介质！**
 
 ### 应用形态
@@ -59,7 +59,7 @@ Disc Image Studio 可将一张图片转换成符合 CD、DVD、蓝光（暂不�
 - 启动后选定光盘类型后可直接新建或打开源图片，也可以按盘片预设快速创建，并回访最近生成的任务。
 - 模块化：CD 与 DVD 通过 `IOpticalDiscModule` 接入；蓝光暂未实现。
 
-## 系统要求
+## 系统与设备要求
 
 - Windows 10 2004（2004/20H1，19041）及以上，或 Windows 11。
 - 构建：.NET 9 SDK（`global.json` 锁定 9.0.x）；自行构建的非自包含 GUI 需要 .NET 9 Windows 桌面运行时。Release EXE 已包含运行时，无需另行安装 .NET。
@@ -67,7 +67,7 @@ Disc Image Studio 可将一张图片转换成符合 CD、DVD、蓝光（暂不�
 
 ## 下载与发布
 
-已公开的正式版与预发布版见 [GitHub Releases](https://github.com/JiaFeiMiao-K-Cat/DiscImageStudio/releases)。Windows x64 单文件程序命名为 `DiscImageStudio-v<版本>-win-x64.exe`，下载后直接运行；Release 说明中提供 SHA-256 校验值。预发布版用于测试，请留意版本说明。
+已公开的正式版与预发布版见 [GitHub Releases](https://github.com/JiaFeiMiao-K-Cat/DiscImageStudio/releases)。
 
 版本规则、GitHub Actions 自动生成 EXE、Release 草稿检查与 MSIX 打包方式见[发布指南](docs/RELEASING.md)。
 
@@ -135,7 +135,7 @@ docs/                        架构、引擎、预设、发布等文档
 ## 刻录与介质安全须知
 
 - Disc Image Studio 不安装驱动或服务；“即时刻录”功能使用了 Windows 自带的 IMAPI2，拒绝非空白介质。
-- “即时刻录”功能已有部分实盘反馈，对不同设备、介质与刻录入口的验证覆盖仍有限，属于实验性功能，请只使用可报废的测试介质。刻录中断、断电或生成速度不足仍可能使盘片报废。
+- “即时刻录”功能已有部分实盘反馈，对不同设备、介质与刻录入口的验证覆盖仍有限，属于实验性功能，请只使用可报废的测试介质。刻录中断、断电或生成速度不足仍可能使盘片报废！
 - 实际可见效果取决于盘片、刻录机、固件与写入策略。
 - DVD 混合文件夹会在开始刻录前扫描目录并固定布局；期间源文件大小改变会安全终止任务，但已开始写入的盘片仍可能报废。
 

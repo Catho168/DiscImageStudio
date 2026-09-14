@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- 删除 CD 的线速度、起始角、图片外半径与 DVD 的 Channel bit、起始角参数：分别固定为 1200 mm/s、0°、57.5 mm 与 133.33 nm、0°，界面与预设 JSON（升级到 schema 3，不再包含 `linearVelocityMmPerSecond`、`channelBitLengthNm`）均不再暴露；旧版用户预设文件会被拒绝并回退内置预设。
+- 固定 CD 的线速度、起始角、图片外半径与 DVD 的 Channel bit、起始角：分别固定为 1200 mm/s、0°、57.5 mm 与 133.33 nm、0°，界面不再提供这五个参数的表单，生成时一律采用上述标准值。盘片预设 JSON 仍为 `schemaVersion: 2`，`linearVelocityMmPerSecond` 与 `channelBitLengthNm` 作为保留字段继续读写与校验，旧版用户预设文件可以原样加载。
 - 实时预览页重构为读回模拟闭环：输入改为生成产物（CD 为 WAV/RAW 音轨、DVD 为 ISO 镜像，生成完成后自动填入路径），只保留一套盘片几何参数用于标定实测盘面，校准值与生成页共享、可直接用于重新生成；CD 复用 `cd-preview-track` 渲染音轨，DVD 引擎新增 `simulate` 命令（读取 ISO payload，经扰码分类黑/白码字后按实测半径投影）。
 - 实时预览页新增输入开关，两种输入模式并存：默认“输入原图”回到旧的“源图片 + 两套参数”流程——生成几何决定图片铺在盘面的位置，实测几何决定读取位置，CD 走恢复两套参数的 `cd-preview-warp`（`--actual-r0/--actual-r1`），DVD 走 `calibrate`；切到“输入镜像”则按上面的闭环渲染生成产物。标定预览只读取源图片，不扫描整条音轨或整个 ISO，因此参数试错明显更快，代价是画面是源图的投影而非实际写入字节的读回。两种模式共用同一套防抖与取消管线、同一组盘片几何参数（制作页）与导出动作。
 - `cd-generate` 在音轨旁写出 `<track>.json`（`format: cd-da-track-v1`，含 r0/r1/扇区数/线速度/起始角/图片外半径/是否交织）；实时预览在切换音轨或 ISO 时把 sidecar 中的几何与交织开关载入标定参数，导入其他来源的产物也能按正确模型读回。

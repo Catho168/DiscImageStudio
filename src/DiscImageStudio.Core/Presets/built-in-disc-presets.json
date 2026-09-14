@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 2,
   "fallbackLanguage": "zh-CN",
   "cdPresets": [
     {
@@ -9,6 +9,7 @@
       "sectors": 359849,
       "innerRadiusMm": 24.5,
       "outerRadiusMm": 56.8,
+      "linearVelocityMmPerSecond": 1200,
       "displayNameResourceKey": "DiscPreset_Cd80_DisplayName",
       "descriptionResourceKey": "DiscPreset_Cd80_Description"
     },
@@ -19,6 +20,7 @@
       "sectors": 359845,
       "innerRadiusMm": 24.911275,
       "outerRadiusMm": 57.931155,
+      "linearVelocityMmPerSecond": 1200,
       "displayNameResourceKey": "DiscPreset_RitekMedicalAqua_DisplayName",
       "descriptionResourceKey": "DiscPreset_RitekMedicalAqua_Description"
     },
@@ -29,6 +31,7 @@
       "sectors": 359848,
       "innerRadiusMm": 24.837775,
       "outerRadiusMm": 58.020875,
+      "linearVelocityMmPerSecond": 1200,
       "displayNameResourceKey": "DiscPreset_VerbatimAzo43438_DisplayName",
       "descriptionResourceKey": "DiscPreset_VerbatimAzo43438_Description"
     },
@@ -39,6 +42,7 @@
       "sectors": 333000,
       "innerRadiusMm": 24.5,
       "outerRadiusMm": 56.8,
+      "linearVelocityMmPerSecond": 1200,
       "displayNameResourceKey": "DiscPreset_Cd74_DisplayName",
       "descriptionResourceKey": "DiscPreset_Cd74_Description"
     }
@@ -51,6 +55,7 @@
       "totalSectors": 2295104,
       "innerRadiusMm": 24.0,
       "outerRadiusMm": 58.0,
+      "channelBitLengthNm": 133.33,
       "displayNameResourceKey": "DiscPreset_Dvd120Mm_DisplayName",
       "descriptionResourceKey": "DiscPreset_Dvd120Mm_Description"
     },
@@ -61,6 +66,7 @@
       "totalSectors": 2297888,
       "innerRadiusMm": 23.9968875,
       "outerRadiusMm": 57.9779875,
+      "channelBitLengthNm": 133.33,
       "displayNameResourceKey": "DiscPreset_VerbatimDvdAzo43533_DisplayName",
       "descriptionResourceKey": "DiscPreset_VerbatimDvdAzo43533_Description"
     },
@@ -71,6 +77,7 @@
       "totalSectors": 714544,
       "innerRadiusMm": 24.0,
       "outerRadiusMm": 38.0,
+      "channelBitLengthNm": 133.33,
       "displayNameResourceKey": "DiscPreset_Dvd80Mm_DisplayName",
       "descriptionResourceKey": "DiscPreset_Dvd80Mm_Description"
     }
