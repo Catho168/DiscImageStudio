@@ -12,9 +12,12 @@
                 <TextBlock Style="{StaticResource PageSubtitle}" Margin="0,8,0,0"
                            Text="仅供开发与调试使用。" />
             </StackPanel>
-            <Button Style="{StaticResource SecondaryButton}" Height="36" Padding="14,0"
-                    Content="清空显示" Command="{Binding ClearDisplayCommand}"
-                    HorizontalAlignment="Right" VerticalAlignment="Bottom" />
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                <Button Style="{StaticResource SecondaryButton}" Height="36" Padding="14,0" Margin="0,0,10,0"
+                        Content="打开输出位置" Command="{Binding OpenOutputCommand}" />
+                <Button Style="{StaticResource SecondaryButton}" Height="36" Padding="14,0"
+                        Content="清空显示" Command="{Binding ClearDisplayCommand}" />
+            </StackPanel>
         </Grid>
         <Border Grid.Row="1" Style="{StaticResource CardStyle}" Padding="0">
             <TextBox x:Name="LogTextBox" Style="{StaticResource BareTextBox}" IsReadOnly="True" AcceptsReturn="True"

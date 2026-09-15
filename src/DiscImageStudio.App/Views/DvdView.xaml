@@ -21,7 +21,7 @@
                     <TextBlock Style="{StaticResource FieldLabel}" Text="图片处理模式" />
                     <ComboBox SelectedIndex="{Binding State.DvdImageProcessingModeIndex}" Margin="0,0,0,12">
                         <ComboBoxItem Content="原图直接映射" />
-                        <ComboBoxItem Content="环形复制（自动份数）" />
+                        <ComboBoxItem Content="环形复制" />
                     </ComboBox>
                     <controls:RevealPanel IsExpanded="{Binding State.IsDvdRingMode}"
                                          IsEnabled="{Binding State.IsDvdRingMode}" Margin="0,0,0,4">
@@ -36,7 +36,7 @@
                             </StackPanel>
                             <TextBlock Width="360" Style="{StaticResource HintText}" VerticalAlignment="Center"
                                        Margin="0,0,0,10"
-                                       Text="图片会复制多份并朝外环形排列；空间不足时自动等比缩小，保证不变形、不裁切、不重叠。" />
+                                       Text="图片会复制多份并朝外环形排列。" />
                         </WrapPanel>
                     </controls:RevealPanel>
                     <TextBlock Style="{StaticResource FieldLabel}" Text="输出 ISO" />
@@ -95,59 +95,18 @@
                             <TextBox Text="{Binding State.DvdOuterRadius, UpdateSourceTrigger=PropertyChanged}" />
                         </StackPanel>
                         <StackPanel Width="190" Margin="0,0,16,14">
-                            <TextBlock Style="{StaticResource FieldLabel}" Text="Channel bit (nm)" />
-                            <TextBox Text="{Binding State.DvdChannelBit, UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
-                        <StackPanel Width="190" Margin="0,0,16,14">
-                            <TextBlock Style="{StaticResource FieldLabel}" Text="起始角 (°)" />
-                            <TextBox Text="{Binding State.DvdStartAngle, UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
-                        <StackPanel Width="190" Margin="0,0,16,14">
                             <TextBlock Style="{StaticResource FieldLabel}" Text="卷标" />
                             <TextBox Text="{Binding State.DvdVolumeLabel, UpdateSourceTrigger=PropertyChanged}" />
                         </StackPanel>
                     </WrapPanel>
-                </StackPanel>
-            </controls:SectionCard>
-
-            <controls:SectionCard Header="校准预览" IconKind="Eye" Margin="0,0,0,24">
-                <StackPanel>
-                    <WrapPanel>
-                        <StackPanel Width="190" Margin="0,0,16,14">
-                            <TextBlock Style="{StaticResource FieldLabel}" Text="实测内半径 (mm)" />
-                            <TextBox Text="{Binding State.DvdActualInnerRadius, UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
-                        <StackPanel Width="190" Margin="0,0,16,14">
-                            <TextBlock Style="{StaticResource FieldLabel}" Text="实测外半径 (mm)" />
-                            <TextBox Text="{Binding State.DvdActualOuterRadius, UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
-                        <StackPanel Width="190" Margin="0,0,16,14">
-                            <TextBlock Style="{StaticResource FieldLabel}" Text="预览尺寸" />
-                            <TextBox Text="{Binding State.DvdPreviewSize, UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
-                        <StackPanel Width="190" Margin="0,0,16,14">
-                            <TextBlock Style="{StaticResource FieldLabel}" Text="每扇区采样" />
-                            <TextBox Text="{Binding State.DvdSamplesPerSector, UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
-                    </WrapPanel>
-                    <TextBlock Style="{StaticResource FieldLabel}" Text="预览 PNG" />
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBox Text="{Binding State.DvdPreviewPath, UpdateSourceTrigger=PropertyChanged}" />
-                        <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Content="选择…"
-                                Command="{Binding BrowsePreviewCommand}" />
-                    </Grid>
+                    <TextBlock Style="{StaticResource HintText}"
+                               Text="Channel bit 固定为 133.33 nm，起始角为 0°。" />
                 </StackPanel>
             </controls:SectionCard>
 
             <StackPanel Orientation="Horizontal">
                 <Button Style="{StaticResource PrimaryButton}" Content="生成 DVD ISO"
-                        Command="{Binding GenerateCommand}" Margin="0,0,12,0" />
-                <Button Style="{StaticResource SecondaryButton}" Content="生成校准预览"
-                        Command="{Binding PreviewCommand}" />
+                        Command="{Binding GenerateCommand}" />
             </StackPanel>
         </StackPanel>
     </ScrollViewer>

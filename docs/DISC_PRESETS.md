@@ -36,13 +36,29 @@
 }
 ```
 
-DVD 的 `totalSectors` 必须大于 0 且是 16 的倍数，以满足 ECC Block 和流式刻录布局要求。
+DVD 的 `totalSectors` 必须大于 0 且是 16 的倍数，以满足 ECC Block 和流式刻录布局要求。`channelBitLengthNm` 见下节，属于保留字段。
 
 ## 添加 CD 预设
 
-在 `cdPresets` 数组中复制一个现有对象。CD 预设只包含容量、生成内外半径和生成时使用的 `linearVelocityMmPerSecond`。
+在 `cdPresets` 数组中复制一个现有对象，修改 `id`、名称、扇区数和内外半径。例如：
 
-图片映射画布、实测半径、实测线速度和起始角属于图片布局或校准设置，不属于盘片预设；选择或修改预设不会覆盖这些独立设置。
+```json
+{
+  "id": "cd-74",
+  "displayName": "CD-R/RW 74 分钟（650 MB）",
+  "description": "适合标称 74 分钟的 120 mm 空白 CD。",
+  "sectors": 333000,
+  "innerRadiusMm": 24.5,
+  "outerRadiusMm": 56.8,
+  "linearVelocityMmPerSecond": 1200
+}
+```
+
+## 固定参数与保留字段
+
+扫描速度、起始角、图片外半径与 DVD channel bit 长度是方案固定的物理量，界面不提供对应表单，程序生成时一律采用 1200 mm/s（ECMA-130）、0°、57.5 mm 与 133.33 nm。
+
+它们在 JSON 中仍作为字段保留，原因是在旧版的配置文件中这几个参数是必要的，因此需要保证旧版本写出的用户文件可以直接使用。这两个值不参与生成计算。
 
 ## i18n 兼容字段
 
@@ -50,9 +66,9 @@ DVD 的 `totalSectors` 必须大于 0 且是 16 的倍数，以满足 ECC Block 
 
 ## 编辑规则
 
-- 保留顶层的 `"schemaVersion": 2`、`cdPresets`、`dvdPresets`、`disabledCdPresetIds` 和 `disabledDvdPresetIds`。
+- 保留顶层的 `"schemaVersion": 2`、`cdPresets`、`dvdPresets`、`disabledCdPresetIds` 和 `disabledDvdPresetIds`。程序也接受临时版本的 `"schemaVersion": 3`，缺少保留字段时按上面的标准值补齐。
 - 每组预设中的 `id` 必须唯一；`__manual__` 是界面“未保存的自定义参数”状态的保留 ID，不能写进 JSON。
-- 除上述可选 i18n 字段外，只能填写模板中列出的生成参数；其他字段会被拒绝，避免把图片布局或校准参数混入盘片预设。
-- 半径、线速度和 channel bit 必须是大于 0 的有限数值，生成外半径必须大于生成内半径。
+- 只能填写模板中列出的生成参数；其他字段会被拒绝，避免把图片布局或校准参数混入盘片预设。
+- 半径、`linearVelocityMmPerSecond` 和 `channelBitLengthNm` 必须是大于 0 的有限数值，生成外半径必须大于生成内半径。
 - 文件允许 `//` 或 `/* ... */` 注释以及数组末尾的逗号。
 - 如果格式或参数无效，程序会指出问题并继续保留上一次成功加载的预设，不会自动覆盖用户文件。

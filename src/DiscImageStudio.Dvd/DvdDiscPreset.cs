@@ -7,7 +7,6 @@ public sealed record DvdDiscPreset(
     uint TotalSectors,
     double InnerRadiusMm,
     double OuterRadiusMm,
-    double ChannelBitLengthNm,
     string? DisplayNameResourceKey = null,
     string? DescriptionResourceKey = null,
     bool IsCustom = false)
@@ -19,6 +18,5 @@ public sealed record DvdDiscPreset(
         2_295_104,
         24.0,
         58.0,
-        133.33,
         IsCustom: true);
 }

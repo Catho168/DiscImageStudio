@@ -18,11 +18,8 @@ public partial class DvdViewModel : ObservableObject
         _shell = shell;
         _state = state;
         BrowseOutputCommand = new RelayCommand(BrowseOutput, () => !_shell.IsBusy);
-        BrowsePreviewCommand = new RelayCommand(BrowsePreview, () => !_shell.IsBusy);
         BrowseDataCommand = new RelayCommand(BrowseData, () => !_shell.IsBusy);
         GenerateCommand = new AsyncRelayCommand(GenerateAsync, () => !_shell.IsBusy);
-        PreviewCommand = new AsyncRelayCommand(PreviewAsync, () => !_shell.IsBusy);
-        ReloadPresetsCommand = new RelayCommand(ReloadPresets);
         _shell.BusyChanged += NotifyCommands;
     }
 
@@ -31,26 +28,20 @@ public partial class DvdViewModel : ObservableObject
     /// <summary>Shared with the live preview page: picks the image and prefills paths.</summary>
     public RelayCommand BrowseImageCommand => _shell.BrowseDvdImageCommand;
 
-    public RelayCommand BrowsePreviewCommand { get; }
-
     public RelayCommand BrowseDataCommand { get; }
 
-    /// <summary>Shared with the start page: opens the editable preset catalog.</summary>
+    /// <summary>Shared with the start page, the CD page and the live preview page.</summary>
     public RelayCommand OpenPresetsJsonCommand => _shell.OpenPresetsJsonCommand;
 
     public IAsyncRelayCommand GenerateCommand { get; }
 
-    public IAsyncRelayCommand PreviewCommand { get; }
-
-    public RelayCommand ReloadPresetsCommand { get; }
+    public RelayCommand ReloadPresetsCommand => _shell.ReloadPresetsCommand;
 
     private void NotifyCommands()
     {
         BrowseOutputCommand.NotifyCanExecuteChanged();
-        BrowsePreviewCommand.NotifyCanExecuteChanged();
         BrowseDataCommand.NotifyCanExecuteChanged();
         GenerateCommand.NotifyCanExecuteChanged();
-        PreviewCommand.NotifyCanExecuteChanged();
     }
 
     private void BrowseOutput()
@@ -59,15 +50,6 @@ public partial class DvdViewModel : ObservableObject
         if (picked is not null)
         {
             _state.DvdOutputPath = picked;
-        }
-    }
-
-    private void BrowsePreview()
-    {
-        string? picked = _shell.Dialogs?.PickSave("PNG 图片|*.png", ".png", "dvd-preview.png");
-        if (picked is not null)
-        {
-            _state.DvdPreviewPath = picked;
         }
     }
 
@@ -97,8 +79,6 @@ public partial class DvdViewModel : ObservableObject
                 "--total-sectors", _state.DvdTotalSectors.Trim(),
                 "--inner-radius-mm", _state.DvdInnerRadius.Trim(),
                 "--outer-radius-mm", _state.DvdOuterRadius.Trim(),
-                "--channel-bit-nm", _state.DvdChannelBit.Trim(),
-                "--start-angle-deg", _state.DvdStartAngle.Trim(),
                 "--spiral-direction", "cw",
                 "--image-threshold", "128",
                 "--alpha-threshold", "1",
@@ -124,46 +104,8 @@ public partial class DvdViewModel : ObservableObject
                 output,
                 RecentJobEntry.DvdFamily,
                 _state.DvdImagePath);
-        }
-        catch (Exception exception)
-        {
-            _shell.ShowValidationError(exception);
-        }
-    }
-
-    private async Task PreviewAsync()
-    {
-        try
-        {
-            string image = RequirePath(_state.DvdImagePath, "请选择 DVD 源图片。");
-            string output = RequirePath(_state.DvdPreviewPath, "请选择校准预览输出位置。");
-            int processingSize = Math.Clamp(
-                ParameterParser.ParsePositiveInt(_state.DvdPreviewSize, "预览尺寸"),
-                512,
-                4096);
-            using RingImagePreparation.PreparedImage preparedImage = PrepareDvdImage(
-                image,
-                Math.Max(RingImageQuality.SavedPreviewSize, processingSize));
-            string[] arguments =
-            [
-                "calibrate",
-                "--image", preparedImage.Path,
-                "--output", output,
-                "--total-sectors", _state.DvdTotalSectors.Trim(),
-                "--fill-sectors", _state.DvdTotalSectors.Trim(),
-                "--generated-inner-radius-mm", _state.DvdInnerRadius.Trim(),
-                "--generated-outer-radius-mm", _state.DvdOuterRadius.Trim(),
-                "--actual-inner-radius-mm", _state.DvdActualInnerRadius.Trim(),
-                "--actual-outer-radius-mm", _state.DvdActualOuterRadius.Trim(),
-                "--channel-bit-nm", _state.DvdChannelBit.Trim(),
-                "--start-angle-deg", _state.DvdStartAngle.Trim(),
-                "--spiral-direction", "cw",
-                "--image-threshold", "128",
-                "--alpha-threshold", "1",
-                "--preview-size", _state.DvdPreviewSize.Trim(),
-                "--samples-per-sector", _state.DvdSamplesPerSector.Trim(),
-            ];
-            await _shell.RunDiscJobAsync("正在生成 DVD 校准预览…", arguments, output);
+            // The generated ISO is the live preview page's calibration input.
+            _state.DvdIsoPath = output;
         }
         catch (Exception exception)
         {
@@ -192,25 +134,6 @@ public partial class DvdViewModel : ObservableObject
             options,
             "dvd",
             appendLog: _shell.AppendLog);
-    }
-
-    private void ReloadPresets()
-    {
-        try
-        {
-            (int cdCount, int dvdCount) = _state.ReloadPresets();
-            _shell.ShowToast(
-                "预设已更新",
-                $"预设已重新加载：{cdCount} 个 CD、{dvdCount} 个 DVD。\n\n文件位置：\n{_state.DiscPresetJsonPath}",
-                ToastKind.Success);
-        }
-        catch (Exception exception)
-        {
-            _shell.ShowToast(
-                "重新加载失败",
-                $"JSON 中有无法使用的内容，当前有效预设未改变。\n\n{exception.Message}\n\n文件位置：\n{_state.DiscPresetJsonPath}",
-                ToastKind.Error);
-        }
     }
 
     private static string RequirePath(string raw, string message)

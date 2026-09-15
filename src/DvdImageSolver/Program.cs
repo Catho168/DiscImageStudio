@@ -23,6 +23,7 @@ internal static class Program
                 "solve" => Solve(CliArguments.Parse(args.AsSpan(1))),
                 "encode" => Encode(CliArguments.Parse(args.AsSpan(1))),
                 "calibrate" => Calibrate(CliArguments.Parse(args.AsSpan(1))),
+                "simulate" => Simulate(CliArguments.Parse(args.AsSpan(1))),
                 "selftest" => RunSelfTests(),
                 _ => throw new ArgumentException($"Unknown command '{args[0]}'."),
             };
@@ -313,6 +314,91 @@ internal static class Program
             + $"actual pitch={summary.ActualTrackPitchMicrometres:F4} um, output={outputPath}");
         return 0;
     }
+
+    private static int Simulate(CliArguments arguments)
+    {
+        string isoPath = arguments.Require("iso");
+        string outputPath = arguments.Require("output");
+        (uint sidecarStartLba, uint sidecarFillSectors, uint sidecarTotalSectors) =
+            ReadSolveSummary(isoPath + ".json");
+        long isoSectors = new FileInfo(isoPath).Length / DvdEccBlockEncoder.PayloadBytesPerSector;
+        uint totalSectors;
+        if (arguments.Has("total-sectors") || arguments.Has("total-blocks"))
+        {
+            totalSectors = ReadTotalSectors(arguments);
+        }
+        else if (sidecarTotalSectors != 0)
+        {
+            totalSectors = sidecarTotalSectors;
+        }
+        else
+        {
+            totalSectors = checked((uint)isoSectors);
+        }
+
+        uint startLba = arguments.GetUInt("lba", sidecarStartLba);
+        uint fillSectors;
+        if (arguments.Has("fill-sectors"))
+        {
+            fillSectors = arguments.GetUInt("fill-sectors", 0);
+        }
+        else if (sidecarFillSectors != 0)
+        {
+            fillSectors = sidecarFillSectors;
+        }
+        else
+        {
+            fillSectors = checked((uint)Math.Min(isoSectors, totalSectors) - startLba);
+        }
+
+        IsoReadbackOptions options = new(
+            totalSectors,
+            startLba,
+            fillSectors,
+            arguments.GetUInt("psn-offset", 0x30000),
+            RequireDouble(arguments, "inner-radius-mm"),
+            RequireDouble(arguments, "outer-radius-mm"),
+            arguments.GetDouble("channel-bit-nm", 133.33),
+            ReadClockwise(arguments),
+            arguments.GetInt("preview-size", 1024),
+            arguments.GetInt("samples-per-sector", 16));
+        IsoReadbackSummary summary = IsoReadbackRenderer.Render(isoPath, outputPath, options);
+        WriteJson(outputPath + ".json", summary);
+        Console.WriteLine(
+            $"readback: {summary.PreviewSize}x{summary.PreviewSize}, "
+            + $"classified={summary.ClassifiedSamples}/{summary.TotalSamples}, "
+            + $"pitch={summary.TrackPitchMicrometres:F4} um, output={outputPath}");
+        return 0;
+    }
+
+    /// <summary>Reads the solve metadata sidecar so a generated ISO defaults to the
+    /// drawing range and disc size it was produced with; missing fields fall back to 0.</summary>
+    private static (uint StartLba, uint FillSectors, uint TotalSectors) ReadSolveSummary(
+        string sidecarPath)
+    {
+        if (!File.Exists(sidecarPath))
+        {
+            return (0, 0, 0);
+        }
+
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(sidecarPath));
+            return (
+                GetUIntProperty(document.RootElement, "startLba"),
+                GetUIntProperty(document.RootElement, "fillSectors"),
+                GetUIntProperty(document.RootElement, "totalSectors"));
+        }
+        catch (JsonException)
+        {
+            return (0, 0, 0);
+        }
+    }
+
+    private static uint GetUIntProperty(JsonElement element, string name)
+        => element.TryGetProperty(name, out JsonElement value) && value.TryGetUInt32(out uint result)
+            ? result
+            : 0u;
 
     private static int SolveMultipleBlocks(CliArguments arguments, uint fillSectors)
     {
@@ -1242,6 +1328,9 @@ internal static class Program
             Render a radius-calibration preview:
               DvdImageSolver calibrate --image IMAGE.png --output PREVIEW.png [options]
 
+            Simulate the read-back of a generated ISO:
+              DvdImageSolver simulate --iso IMAGE.iso --output PREVIEW.png [options]
+
             Common options:
               --lba N                   Initial LBA only; following 15 sectors are consecutive (default 0)
               --psn-offset N            Decimal or 0x-prefixed PSN offset (default 0x30000)
@@ -1324,6 +1413,22 @@ internal static class Program
               --samples-per-sector 1..4096 Forward geometry samples per sector (default 16)
               --lba N                   First visible sector (default 0)
               --fill-sectors N          Visible sector count (default: remainder of disc)
+
+            Simulation options (source is the generated ISO, not an image):
+              --iso FILE                Generated ISO image (required)
+              --inner-radius-mm N       Measured inner radius of the burned spiral
+              --outer-radius-mm N       Measured outer radius of the burned spiral
+              --total-sectors N         Disc sector count; defaults to the solve sidecar
+                                        JSON (IMAGE.iso.json) or the ISO file size
+              --psn-offset N            Decimal or 0x-prefixed PSN offset (default 0x30000)
+              --lba N                   First visible sector; defaults to the sidecar
+                                        drawing start (0 when absent)
+              --fill-sectors N          Visible sector count; defaults to the sidecar
+                                        drawing length (remainder of the ISO when absent)
+              --channel-bit-nm N        Default 133.33
+              --spiral-direction ccw|cw Default cw
+              --preview-size 64..8192   Square PNG size (default 1024)
+              --samples-per-sector 1..2048 Payload bytes sampled per sector (default 16)
 
             """);
     }

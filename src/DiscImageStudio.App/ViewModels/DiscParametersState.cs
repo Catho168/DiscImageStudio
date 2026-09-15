@@ -30,43 +30,50 @@ public partial class DiscParametersState : ObservableObject
 
     private bool _isApplyingDiscPreset;
 
-    // CD page / live preview shared fields
+    // CD page / live preview shared fields. Linear velocity, start angle and the image
+    // outer radius are physical constants of the scheme (1200 mm/s, 0°, 57.5 mm) and are
+    // deliberately not parameters. The live preview reads back the generated track, so
+    // CdTrackPath points at the burn artifact while CdImagePath stays generation-only.
     [ObservableProperty] private string _cdImagePath = string.Empty;
-    [ObservableProperty] private string _cdOutputPath = string.Empty;
-    [ObservableProperty] private string _cdPreviewPath = string.Empty;
+    [ObservableProperty] private string _cdTrackPath = string.Empty;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsCdWaveOutput))]
+    private string _cdOutputPath = string.Empty;
+    [ObservableProperty] private bool _cdWriteCue = true;
     [ObservableProperty] private string _cdRingInnerMargin = "2.0";
     [ObservableProperty] private string _cdRingOuterMargin = "2.0";
     [ObservableProperty] private string _cdInnerRadius = "24.5";
     [ObservableProperty] private string _cdOuterRadius = "56.8";
     [ObservableProperty] private string _cdSectors = "359849";
-    [ObservableProperty] private string _cdVelocity = "1200";
-    [ObservableProperty] private string _cdStartAngle = "0";
-    [ObservableProperty] private string _cdImageOuterRadius = "57.5";
-    [ObservableProperty] private string _cdActualInnerRadius = "24.3";
-    [ObservableProperty] private string _cdActualOuterRadius = "56.6";
-    [ObservableProperty] private string _cdActualVelocity = "1200";
-    [ObservableProperty] private string _cdActualStartAngle = "0";
     [ObservableProperty] private string _cdPreviewSize = "1600";
     [ObservableProperty] private string _cdSamplesPerSector = "16";
     [ObservableProperty] private bool _cdInterleave = true;
 
-    // DVD page / live preview shared fields
+    // Second parameter set of the live preview page's calibration mode: the disc the reader
+    // follows, as opposed to the generated geometry above. It is preview-only and never
+    // feeds a generation job, so it is not a preset field either.
+    [ObservableProperty] private string _cdActualInnerRadius = "24.3";
+    [ObservableProperty] private string _cdActualOuterRadius = "56.6";
+
+    // DVD page / live preview shared fields. Channel-bit length (133.33 nm) and start
+    // angle (0°) are fixed physical constants, same as the CD constants above. The live
+    // preview reads back the generated ISO through DvdIsoPath.
     [ObservableProperty] private string _dvdImagePath = string.Empty;
+    [ObservableProperty] private string _dvdIsoPath = string.Empty;
     [ObservableProperty] private string _dvdOutputPath = string.Empty;
-    [ObservableProperty] private string _dvdPreviewPath = string.Empty;
     [ObservableProperty] private string _dvdDataDirectory = string.Empty;
     [ObservableProperty] private string _dvdRingInnerMargin = "2.0";
     [ObservableProperty] private string _dvdRingOuterMargin = "2.0";
     [ObservableProperty] private string _dvdTotalSectors = "2295104";
     [ObservableProperty] private string _dvdInnerRadius = "24.0";
     [ObservableProperty] private string _dvdOuterRadius = "58.0";
-    [ObservableProperty] private string _dvdChannelBit = "133.33";
-    [ObservableProperty] private string _dvdStartAngle = "0";
     [ObservableProperty] private string _dvdVolumeLabel = DefaultDvdVolumeLabel;
-    [ObservableProperty] private string _dvdActualInnerRadius = "24.0";
-    [ObservableProperty] private string _dvdActualOuterRadius = "58.0";
     [ObservableProperty] private string _dvdPreviewSize = "1600";
     [ObservableProperty] private string _dvdSamplesPerSector = "16";
+
+    /// <summary>Second parameter set of the DVD calibration preview, same role as the CD one.</summary>
+    [ObservableProperty] private string _dvdActualInnerRadius = "24.0";
+    [ObservableProperty] private string _dvdActualOuterRadius = "58.0";
 
     [ObservableProperty] private string _cdPresetHint = string.Empty;
     [ObservableProperty] private string _dvdPresetHint = string.Empty;
@@ -74,6 +81,11 @@ public partial class DiscParametersState : ObservableObject
     [ObservableProperty] private DvdDiscPreset _selectedDvdPreset = DvdDiscPreset.Manual;
 
     public bool IsCdRingMode => CdImageProcessingModeIndex == 1;
+
+    /// <summary>A CUE sheet only accompanies PCM WAV tracks, so the CD page offers its
+    /// toggle only while the chosen output is a .wav file.</summary>
+    public bool IsCdWaveOutput => Path.GetExtension(CdOutputPath.Trim())
+        .Equals(".wav", StringComparison.OrdinalIgnoreCase);
 
     public bool IsDvdRingMode => DvdImageProcessingModeIndex == 1;
 
@@ -165,7 +177,6 @@ public partial class DiscParametersState : ObservableObject
                 value.Sectors,
                 value.InnerRadiusMm,
                 value.OuterRadiusMm,
-                value.LinearVelocityMmPerSecond,
                 value.DisplayNameResourceKey,
                 value.DescriptionResourceKey))
             .ToList();
@@ -179,7 +190,6 @@ public partial class DiscParametersState : ObservableObject
                 value.TotalSectors,
                 value.InnerRadiusMm,
                 value.OuterRadiusMm,
-                value.ChannelBitLengthNm,
                 value.DisplayNameResourceKey,
                 value.DescriptionResourceKey))
             .ToList();
@@ -210,15 +220,11 @@ public partial class DiscParametersState : ObservableObject
 
     partial void OnCdOuterRadiusChanged(string value) => OnCdParameterEdited(presetField: true);
 
-    partial void OnCdVelocityChanged(string value) => OnCdParameterEdited(presetField: true);
-
     partial void OnDvdTotalSectorsChanged(string value) => OnDvdParameterEdited(presetField: true);
 
     partial void OnDvdInnerRadiusChanged(string value) => OnDvdParameterEdited(presetField: true);
 
     partial void OnDvdOuterRadiusChanged(string value) => OnDvdParameterEdited(presetField: true);
-
-    partial void OnDvdChannelBitChanged(string value) => OnDvdParameterEdited(presetField: true);
 
     /// <summary>Writing through the selector applies the preset, mirroring SelectionChanged.</summary>
     partial void OnSelectedCdPresetChanged(CdDiscPreset value)
@@ -270,7 +276,6 @@ public partial class DiscParametersState : ObservableObject
                 CdSectors = preset.Sectors.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 CdInnerRadius = FormatPresetNumber(preset.InnerRadiusMm);
                 CdOuterRadius = FormatPresetNumber(preset.OuterRadiusMm);
-                CdVelocity = FormatPresetNumber(preset.LinearVelocityMmPerSecond);
             }
         }
         finally
@@ -292,7 +297,6 @@ public partial class DiscParametersState : ObservableObject
                 DvdTotalSectors = preset.TotalSectors.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 DvdInnerRadius = FormatPresetNumber(preset.InnerRadiusMm);
                 DvdOuterRadius = FormatPresetNumber(preset.OuterRadiusMm);
-                DvdChannelBit = FormatPresetNumber(preset.ChannelBitLengthNm);
             }
         }
         finally

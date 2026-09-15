@@ -149,6 +149,15 @@ if (-not (Test-Path -LiteralPath $cuePath -PathType Leaf) -or (Get-Item -Literal
     throw "WAV generation did not produce a CUE sheet: $cuePath"
 }
 
+# The CUE sheet is opt-out: --cue false must still write the WAV and leave no .cue behind.
+$noCuePath = Join-Path $smokeDirectory 'no cue.wav'
+Invoke-PublishedCheck 'cd-wav-no-cue' @(
+    'cd-generate', '--input', $inputImage, '--output', $noCuePath, '--sectors', '2', '--cue', 'false')
+Assert-FileLength $noCuePath 4748
+if (Test-Path -LiteralPath ([IO.Path]::ChangeExtension($noCuePath, '.cue'))) {
+    throw "cd-generate --cue false still produced a CUE sheet for $noCuePath"
+}
+
 $snapshotPath = Join-Path $smokeDirectory 'ui snapshot.png'
 Invoke-PublishedCheck 'ui-snapshot' @('ui-snapshot', '--output', $snapshotPath)
 if (-not (Test-Path -LiteralPath $snapshotPath -PathType Leaf) -or (Get-Item -LiteralPath $snapshotPath).Length -eq 0) {

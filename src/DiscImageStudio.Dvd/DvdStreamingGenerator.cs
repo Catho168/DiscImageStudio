@@ -9,13 +9,16 @@ public sealed record DvdStreamingOptions(
     uint TotalSectors,
     double InnerRadiusMm,
     double OuterRadiusMm,
-    double ChannelBitLengthNm,
-    double StartAngleDegrees,
+    double ChannelBitLengthNm = 133.33,
+    double StartAngleDegrees = 0,
     byte LuminanceThreshold = 128,
     byte AlphaThreshold = 1,
     int RandomSeed = 1,
     int FastParallelism = 0)
 {
+    /// <summary>Physical channel-bit length of the DVD scheme; the UI no longer exposes it.</summary>
+    public const double StandardChannelBitLengthNm = 133.33;
+
     public long ContentLength => checked(
         (long)TotalSectors * DvdEccBlockEncoder.PayloadBytesPerSector);
 

@@ -11,7 +11,10 @@ public sealed record CdDiscPresetDefinition(
     long Sectors,
     double InnerRadiusMm,
     double OuterRadiusMm,
-    double LinearVelocityMmPerSecond,
+    // Retained so a user file keeps every field it was written with. The CD engine scans at
+    // the ECMA-130 standard speed regardless of this value and the pages no longer expose a
+    // form for it, so the field is carried, validated and written back unchanged.
+    double LinearVelocityMmPerSecond = 1_200,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     string? DisplayNameResourceKey = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -24,7 +27,9 @@ public sealed record DvdDiscPresetDefinition(
     uint TotalSectors,
     double InnerRadiusMm,
     double OuterRadiusMm,
-    double ChannelBitLengthNm,
+    // Same role as the CD linear velocity above: retained for file compatibility, fixed at
+    // the DVD standard channel-bit length while generating.
+    double ChannelBitLengthNm = 133.33,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     string? DisplayNameResourceKey = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -44,6 +49,12 @@ public sealed record DiscPresetJsonDocument(
 public static class DiscPresetJsonStore
 {
     public const int CurrentSchemaVersion = 2;
+
+    /// <summary>Schema 3 was written by a build that dropped <c>linearVelocityMmPerSecond</c>
+    /// and <c>channelBitLengthNm</c> from the preset shape. Those files stay readable so a
+    /// version bump cannot strand presets a user already saved.</summary>
+    private const int InterimSchemaVersion = 3;
+
     public const string FileName = "disc-presets.json";
 
     private const string BuiltInResourceName =
@@ -195,10 +206,13 @@ public static class DiscPresetJsonStore
     public static void Validate(DiscPresetJsonDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);
-        if (document.SchemaVersion != CurrentSchemaVersion)
+        if (document.SchemaVersion != CurrentSchemaVersion
+            && document.SchemaVersion != InterimSchemaVersion)
         {
             throw new InvalidDataException(
-                $"不支持 schemaVersion={document.SchemaVersion}；当前只支持 {CurrentSchemaVersion}。请删除旧文件，让程序重新生成分层配置模板。");
+                $"不支持 schemaVersion={document.SchemaVersion}；当前支持 "
+                + $"{CurrentSchemaVersion} 与 {InterimSchemaVersion}。请把顶层 schemaVersion 改为受支持的值，"
+                + "或删除该文件让程序重新生成分层配置模板。");
         }
 
         if (document.CdPresets is null)

@@ -38,9 +38,9 @@ internal static class UnifiedCommandRunner
                     tabIndex,
                     FindOption(snapshotArguments, "preview"),
                     FindOption(snapshotArguments, "live-input"),
-                    FindOption(snapshotArguments, "live-angle"),
                     FindOption(snapshotArguments, "live-disc"),
-                    FindOption(snapshotArguments, "live-ring"));
+                    FindOption(snapshotArguments, "live-mode"),
+                    FindOption(snapshotArguments, "live-processing"));
             }
 
             if (command == "burn-devices")

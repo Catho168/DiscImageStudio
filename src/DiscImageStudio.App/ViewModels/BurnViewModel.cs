@@ -375,14 +375,12 @@ public partial class BurnViewModel : ObservableObject
             _burnCancellation = new CancellationTokenSource();
             BurnProgressValue = 0;
             BurnStatusText = "正在准备流式刻录…";
-            _shell.StatusText = "正在流式刻录…";
             _shell.AppendLog(
                 $"\n[{DateTime.Now:HH:mm:ss}] 开始流式刻录：{contentDescription}；"
                 + $"设备={device.DisplayName}；请求速度={selectedWriteSpeed.DisplayName}。\n");
             Progress<OpticalBurnProgress> progress = new(value =>
             {
                 BurnStatusText = value.Message;
-                _shell.StatusText = value.Message;
                 BurnProgressValue = Math.Clamp(value.Fraction * 100.0, 0.0, 100.0);
             });
             OpticalBurnResult result = await _opticalDiscBurner.BurnAsync(
@@ -391,7 +389,6 @@ public partial class BurnViewModel : ObservableObject
                 _burnCancellation.Token);
             BurnProgressValue = 100;
             BurnStatusText = "刻录完成，可以取出光盘。";
-            _shell.StatusText = "流式刻录完成";
             _shell.AppendLog(
                 $"[{DateTime.Now:HH:mm:ss}] 流式刻录完成：{result.BytesWritten} 字节，"
                 + $"耗时 {result.Elapsed.TotalSeconds:F1} 秒"
@@ -404,14 +401,12 @@ public partial class BurnViewModel : ObservableObject
         catch (OperationCanceledException)
         {
             BurnStatusText = "已请求取消；光驱可能仍需一段时间才能停止。";
-            _shell.StatusText = "刻录已取消";
             _shell.AppendLog(
                 $"[{DateTime.Now:HH:mm:ss}] 已取消流式刻录；当前盘片可能无法继续使用。\n");
         }
         catch (Exception exception)
         {
             BurnStatusText = "刻录未完成，请查看错误信息。";
-            _shell.StatusText = "流式刻录未完成";
             _shell.AppendLog($"[{DateTime.Now:HH:mm:ss}] 流式刻录失败：{exception.Message}\n");
             _shell.ShowToast(
                 "流式刻录未完成",
@@ -443,14 +438,10 @@ public partial class BurnViewModel : ObservableObject
 
     private CdDiscParameters ReadCdGeneratedParameters()
     {
-        double startAngleDegrees = ParameterParser.ParseDouble(_state.CdStartAngle, "CD 起始角");
         CdDiscParameters parameters = new(
             ParameterParser.ParsePositiveDouble(_state.CdInnerRadius, "CD 内半径"),
             ParameterParser.ParsePositiveDouble(_state.CdOuterRadius, "CD 外半径"),
-            ParameterParser.ParsePositiveLong(_state.CdSectors, "CD 扇区数"),
-            ParameterParser.ParsePositiveDouble(_state.CdVelocity, "CD 线速度"),
-            startAngleDegrees * Math.PI / 180.0,
-            ParameterParser.ParsePositiveDouble(_state.CdImageOuterRadius, "CD 图片外半径"));
+            ParameterParser.ParsePositiveLong(_state.CdSectors, "CD 扇区数"));
         parameters.Validate();
         return parameters;
     }
@@ -461,9 +452,7 @@ public partial class BurnViewModel : ObservableObject
         DvdStreamingOptions options = new(
             checked((uint)totalSectors),
             ParameterParser.ParsePositiveDouble(_state.DvdInnerRadius, "DVD 内半径"),
-            ParameterParser.ParsePositiveDouble(_state.DvdOuterRadius, "DVD 外半径"),
-            ParameterParser.ParsePositiveDouble(_state.DvdChannelBit, "DVD Channel bit"),
-            ParameterParser.ParseDouble(_state.DvdStartAngle, "DVD 起始角"));
+            ParameterParser.ParsePositiveDouble(_state.DvdOuterRadius, "DVD 外半径"));
         options.Validate();
         return options;
     }
@@ -477,9 +466,8 @@ public partial class BurnViewModel : ObservableObject
 
         double generatedInner = ParameterParser.ParsePositiveDouble(_state.CdInnerRadius, "CD 内半径");
         double generatedOuter = ParameterParser.ParsePositiveDouble(_state.CdOuterRadius, "CD 外半径");
-        double canvasOuter = ParameterParser.ParsePositiveDouble(_state.CdImageOuterRadius, "图片外半径");
         RingImageLayoutOptions options = ParameterParser.CreateRingLayoutOptions(
-            canvasOuter,
+            CdDiscParameters.StandardImageOuterRadiusMm,
             generatedInner,
             generatedOuter,
             _state.CdRingInnerMargin,

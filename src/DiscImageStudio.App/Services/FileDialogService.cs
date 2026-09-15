@@ -25,6 +25,17 @@ internal sealed class FileDialogService
         return dialog.ShowDialog(_ownerProvider()) == true ? dialog.FileName : null;
     }
 
+    internal string? PickOpen(string title, string filter)
+    {
+        OpenFileDialog dialog = new()
+        {
+            Title = title,
+            Filter = filter,
+            CheckFileExists = true,
+        };
+        return dialog.ShowDialog(_ownerProvider()) == true ? dialog.FileName : null;
+    }
+
     internal string? PickSave(string filter, string extension, string fileName)
     {
         SaveFileDialog dialog = new()

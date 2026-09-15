@@ -46,6 +46,15 @@ public sealed class DvdDiscModule : IOpticalDiscModule
                     new("output", "Preview PNG", DiscOptionValueType.OutputFile, Required: true),
                 ]),
             new DiscCommandDescriptor(
+                "simulate",
+                "Simulate DVD read-back",
+                "Renders a generated ISO's payload sectors under measured disc radii.",
+                DiscModuleCapabilities.EncodedOutputPreview,
+                [
+                    new("iso", "Generated ISO image", DiscOptionValueType.InputFile, Required: true),
+                    new("output", "Preview PNG", DiscOptionValueType.OutputFile, Required: true),
+                ]),
+            new DiscCommandDescriptor(
                 "selftest",
                 "Run DVD engine self-tests",
                 "Runs the DVD engine's deterministic regression suite.",
@@ -111,6 +120,7 @@ public sealed class DvdDiscModule : IOpticalDiscModule
                 ("spiral-direction", "cw"),
             ],
             "calibrate" => [("spiral-direction", "cw")],
+            "simulate" => [("spiral-direction", "cw")],
             _ => [],
         };
         if (fixedOptions.Length == 0)

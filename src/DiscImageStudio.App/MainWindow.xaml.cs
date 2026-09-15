@@ -72,8 +72,8 @@ public partial class MainWindow : Window
     }
 
     // When maximized, a borderless WindowChrome window extends past the work area by the
-    // system resize border on each side; padding the root back keeps the 56px status bar
-    // and the title bar fully on screen.
+    // system resize border on each side; padding the root back keeps the title bar fully
+    // on screen.
     private void UpdateMaximizedMargin()
     {
         RootGrid.Margin = WindowState == WindowState.Maximized
@@ -85,24 +85,13 @@ public partial class MainWindow : Window
 
     internal bool IsLivePreviewReady => _shell.LivePreview.IsLivePreviewReady;
 
-    internal void SetLivePreviewAngleForSnapshot(string angle)
-    {
-        if (_shell.LivePreview.IsDvdSelected)
-        {
-            _shell.State.DvdStartAngle = angle;
-        }
-        else
-        {
-            _shell.State.CdActualStartAngle = angle;
-        }
-    }
-
     internal void ConfigureSnapshot(
         int selectedTab,
         string? previewPath,
         string? liveInputPath = null,
         string? liveDisc = null,
-        string? liveRing = null)
+        string? liveMode = null,
+        string? liveProcessing = null)
     {
         if (selectedTab < 0 || selectedTab >= ShellViewModel.PageCount)
         {
@@ -121,19 +110,38 @@ public partial class MainWindow : Window
         if (!string.IsNullOrWhiteSpace(liveInputPath))
         {
             bool dvd = string.Equals(liveDisc, "dvd", StringComparison.OrdinalIgnoreCase);
-            bool ring = string.Equals(liveRing, "true", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(liveRing, "1", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(liveRing, "yes", StringComparison.OrdinalIgnoreCase);
+            // Omitting --live-mode keeps the page default (source picture); scripts probe the
+            // other mode by naming it.
+            bool calibration = liveMode is null
+                || string.Equals(liveMode, "calibrate", StringComparison.OrdinalIgnoreCase);
+            bool ring = string.Equals(liveProcessing, "ring", StringComparison.OrdinalIgnoreCase);
             _shell.LivePreview.SetDiscType(dvd, clearResult: false);
-            if (dvd)
+            _shell.LivePreview.SetPreviewMode(calibration, clearResult: false);
+            if (ring)
             {
-                _shell.State.DvdImageProcessingModeIndex = ring ? 1 : 0;
-                _shell.State.DvdImagePath = Path.GetFullPath(liveInputPath);
+                _shell.State.CdImageProcessingModeIndex = 1;
+                _shell.State.DvdImageProcessingModeIndex = 1;
+            }
+
+            string fullInput = Path.GetFullPath(liveInputPath);
+            if (calibration)
+            {
+                if (dvd)
+                {
+                    _shell.State.DvdImagePath = fullInput;
+                }
+                else
+                {
+                    _shell.State.CdImagePath = fullInput;
+                }
+            }
+            else if (dvd)
+            {
+                _shell.State.DvdIsoPath = fullInput;
             }
             else
             {
-                _shell.State.CdImageProcessingModeIndex = ring ? 1 : 0;
-                _shell.State.CdImagePath = Path.GetFullPath(liveInputPath);
+                _shell.State.CdTrackPath = fullInput;
             }
 
             _shell.SelectPage(ShellViewModel.PreviewTabIndex);
