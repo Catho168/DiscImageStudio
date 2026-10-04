@@ -100,7 +100,22 @@
                         </StackPanel>
                     </WrapPanel>
                     <TextBlock Style="{StaticResource HintText}"
-                               Text="Channel bit 固定为 133.33 nm，起始角为 0°。" />
+                               Text="轨距随归一化半径 x 按三次函数变化；相对系数全为 0 时为等轨距。Channel bit 固定为 133.3 nm，起始角为 0°。" />
+                    <WrapPanel Margin="0,12,0,0">
+                        <StackPanel Width="190" Margin="0,0,16,14">
+                            <TextBlock Style="{StaticResource FieldLabel}" Text="相对一次项" />
+                            <TextBox Text="{Binding State.DvdPitchLinear, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Width="190" Margin="0,0,16,14">
+                            <TextBlock Style="{StaticResource FieldLabel}" Text="相对二次项" />
+                            <TextBox Text="{Binding State.DvdPitchQuadratic, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Width="190" Margin="0,0,16,14">
+                            <TextBlock Style="{StaticResource FieldLabel}" Text="相对三次项" />
+                            <TextBox Text="{Binding State.DvdPitchCubic, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </WrapPanel>
+                    <TextBlock Style="{StaticResource HintText}" Text="{Binding State.DvdPitchSummary}" />
                 </StackPanel>
             </controls:SectionCard>
 

@@ -32,6 +32,40 @@ Disc Image Studio 是一个运行在 Windows 的光盘盘面图像生成与刻�
 
 ![](docs/images/case2.jpg)
 
+### DVD 三次轨距校准：实盘前后对比
+
+下面是 Verbatim DVD-R AZO (43533) 的校准图案实拍，拍摄于 2026 年 10 月 4 日。校准前采用恒定轨距，十字线的径向线条出现明显弯曲；使用辅助标定得到的三次轨距参数重新生成并刻录后，线条更接近径向直线。校准后的参数已更新到内置的 **Verbatim DVD-R AZO (43533)（实测）** 预设。
+
+| 校准前 · 恒定轨距 | 校准后 · 三次轨距 |
+| --- | --- |
+| ![校准前的 DVD 实拍：径向十字线明显弯曲](docs/images/verbatim-dvd-calibration-before.jpg) | ![校准后的 DVD 实拍：径向十字线更接近直线](docs/images/verbatim-dvd-calibration-after.jpg) |
+| `P20261004-133519.jpg` · 13:35 | `P20261004-135416.jpg` · 13:54 |
+
+以上保留原始照片，未进行裁切或透视矫正；两次拍摄的角度、光照不同，对比重点是径向线条的形状。
+
+**照片矫正时，请框选盘片实体的最外缘和中心孔边缘，不是绘图区域或刻录区域的内外边缘。** 透明塑料环、刻录区起止线和阴影也不能代替这两条实体边界。程序用盘片规格与中心孔恢复盘心、尺度和透视，再通过绘图曲线标定轨道参数。
+
+<details>
+<summary>查看校准前后的完整参数与标定记录</summary>
+
+| 参数 | 校准前 | 校准后 |
+| --- | ---: | ---: |
+| 内半径（mm） | `23.991455309` | `23.991460627731737` |
+| 外半径（mm） | `57.964901267` | `57.964893657925366` |
+| 总扇区数 | `2297888` | `2297888` |
+| 通道位长（nm） | `133.3` | `133.3` |
+| 相对一次项 `pitchLinear` | `0` | `-3.9256854319227684E-05` |
+| 相对二次项 `pitchQuadratic` | `0` | `6.964795915429256E-05` |
+| 相对三次项 `pitchCubic` | `0` | `-4.670918950137523E-05` |
+
+轨距模型为 `p(x)=p0*(1+c1*x+c2*x²+c3*x³)`，其中 `x=(r-内半径)/(外半径-内半径)`，`c1/c2/c3` 对应上表的三个相对系数。完整三次多项式有四项，轨距尺度 `p0` 由内外半径和总轨道长度自动计算。生成、预览与标定使用同一模型。
+
+原始记录：[校准前参数](docs/examples/dvd-calibration/calibration-81a72aac.calibration.json) · [校准后已验证参数](docs/examples/dvd-calibration/calibration-f2f851f7.calibration.json)。两份记录均保留完整数值精度，可在辅助标定页打开；它们不包含照片描点或拟合过程数据。
+
+操作流程见[辅助标定说明](docs/CALIBRATION.md)，参数定义见 [DVD 引擎说明](docs/DVD_ENGINE.md)。
+
+</details>
+
 ---
 
 ## 概述
@@ -44,8 +78,10 @@ Disc Image Studio 可将一张图片转换成符合 CD、DVD、蓝光（暂不�
 
 - **CD-DA 支持**：可导出带格式头的 WAV 音轨及配套 CUE，兼容 cdrecord, ImgBurn等刻录软件；也允许导出 RAW 音轨。详见 [CD 刻录兼容说明](docs/CD_AUDIO_COMPATIBILITY.md)。
 - **DVD 支持**：支持导出 ISO 纯绘图盘与"内圈文件、外圈绘图"的混合数据盘镜像。
+- **DVD 三次轨距模型**：支持轨距随半径变化，生成、预览和辅助标定共用同一套几何；相对系数全为零时使用恒定轨距。上方实盘对比展示了已验证的 Verbatim DVD 校准效果。
 - **盘片预设**：内置 JSON + 用户层 JSON 分层配置。详见[预设维护说明](docs/DISC_PRESETS.md)。
 - **实时预览**：分两种模式，默认“输入原图”（标定预览）用源图片与生成/实测两套几何做投影，只读图片不读产物，性能较高；“输入镜像”（读回模拟）读取生成产物（CD 音轨 / DVD ISO），按实测几何还原镜像里真实写下的图案。详见 [DVD 引擎说明](docs/DVD_ENGINE.md) 与 [CD 刻录兼容说明](docs/CD_AUDIO_COMPATIBILITY.md)。
+- **辅助标定**：使用 `target_slim.png` 细线同心圆与十字线，先按生成外半径缩放原图，再按内外半径裁切刻录区域，与普通 DVD 图片生成映射一致，支持 CD 音轨 / DVD 镜像及流式刻录。界面分为“照片矫正 → 曲线标定”：拖动实体外缘与中心孔轮廓，确认透视矫正后，在一条清楚的曲线上手动打点、拖动修正，反推参数并对照叠加曲线。实拍点优先，不受预设环带裁剪；青色为实拍输入，橙色为参数预测。不要求涂黑、测量或摆正光盘。照片、边界和曲线点一起保存在记录中。当前使用 schema 6，不接受旧版图案记录，详见[辅助标定说明](docs/CALIBRATION.md)。
 
 ### 刻录
 
@@ -127,6 +163,7 @@ docs/                        架构、引擎、预设、发布等文档
 | [架构说明](docs/ARCHITECTURE.md) | 模块抽象、层间边界与扩展规则 |
 | [DVD_ENGINE.md](docs/DVD_ENGINE.md) | DVD NRZI 图像约束求解器的约定、编码链与自检覆盖 |
 | [DISC_PRESETS.md](docs/DISC_PRESETS.md) | 可编辑盘片预设的分层 JSON 格式与合并规则 |
+| [CALIBRATION.md](docs/CALIBRATION.md) | 照片矫正、曲线标定与 DVD 三次轨距拟合 |
 | [ADDING_BLURAY.md](docs/ADDING_BLURAY.md) | 在不改动 CD/DVD 的前提下接入蓝光模块的步骤 |
 | [VALIDATION.md](docs/VALIDATION.md) | 各轮构建、回归与实盘测试的本地验证记录 |
 | [RELEASING.md](docs/RELEASING.md) | GitHub Release、MSIX 打包、签名测试与商店提交流程 |

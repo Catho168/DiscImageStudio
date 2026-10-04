@@ -1,0 +1,43 @@
+{
+  "target": {
+    "schemaVersion": 6,
+    "id": "81a72aac916444068d9493d02d59c2c0",
+    "parameters": {
+      "kind": "Dvd",
+      "innerRadiusMm": 23.991455309,
+      "outerRadiusMm": 57.964901267,
+      "sectors": 2297888,
+      "linearDensity": 133.3,
+      "pitchLinear": 0,
+      "pitchQuadratic": 0,
+      "pitchCubic": 0
+    },
+    "options": {
+      "largeCellMm": 8.414475779071209,
+      "mediumCellMm": 4.207237889535604,
+      "smallCellMm": 2.103618944767802,
+      "sectorGapMm": 1
+    },
+    "cells": []
+  },
+  "observations": [],
+  "fitOptions": {
+    "searchCenter": {
+      "kind": "Dvd",
+      "innerRadiusMm": 23.991455309,
+      "outerRadiusMm": 57.964901267,
+      "sectors": 2297888,
+      "linearDensity": 133.3,
+      "pitchLinear": 0,
+      "pitchQuadratic": 0,
+      "pitchCubic": 0
+    },
+    "radiusRangeMm": 0.02,
+    "huberDeltaMm": 0.8,
+    "maxCandidates": 8,
+    "fitDvdPitch": true,
+    "pitchCoefficientRange": 0.05
+  },
+  "cdInterleave": true,
+  "photo": null
+}

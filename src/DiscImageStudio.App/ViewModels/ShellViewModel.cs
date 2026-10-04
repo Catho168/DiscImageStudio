@@ -18,7 +18,8 @@ public partial class ShellViewModel : ObservableObject
     public const int PreviewTabIndex = 4;
     public const int LogTabIndex = 5;
     public const int AboutTabIndex = 6;
-    public const int PageCount = 7;
+    public const int CalibrationTabIndex = 7;
+    public const int PageCount = 8;
 
     private readonly Dispatcher _dispatcher;
     private readonly StringBuilder _log = new();
@@ -36,6 +37,7 @@ public partial class ShellViewModel : ObservableObject
         State.SelectDefaultPresets();
         LivePreview = new LivePreviewViewModel(_dispatcher, this, State);
         Home = new HomeViewModel(this, State, new RecentJobStore());
+        Calibration = new CalibrationViewModel(this, State);
         Burn = new BurnViewModel(this, State);
         Dvd = new DvdViewModel(this, State);
         Cd = new CdViewModel(this, State);
@@ -57,6 +59,8 @@ public partial class ShellViewModel : ObservableObject
     public HomeViewModel Home { get; }
 
     public BurnViewModel Burn { get; }
+
+    public CalibrationViewModel Calibration { get; }
 
     public DvdViewModel Dvd { get; }
 
@@ -137,6 +141,10 @@ public partial class ShellViewModel : ObservableObject
     public void NavigateTo(int pageIndex)
     {
         SelectPage(pageIndex);
+        if (pageIndex == CalibrationTabIndex)
+        {
+            Calibration.EnsureTarget();
+        }
         if (pageIndex == PreviewTabIndex)
         {
             LivePreview.Schedule();
@@ -166,6 +174,13 @@ public partial class ShellViewModel : ObservableObject
     {
         _log.Append(text);
         LogAppended?.Invoke(text);
+    }
+
+    internal void RegisterOutput(string path)
+    {
+        _lastOutputPath = Path.GetFullPath(path);
+        OpenOutputEnabled = true;
+        OpenOutputCommand.NotifyCanExecuteChanged();
     }
 
     public void ClearLog()

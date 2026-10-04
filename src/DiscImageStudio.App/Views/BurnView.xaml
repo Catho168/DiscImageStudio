@@ -11,11 +11,15 @@
                                    Hint="流式刻录使用小型内存缓冲区边生成数据、边写入光盘，不必在磁盘保存完整 ISO 或 RAW 文件。" />
             </StackPanel>
 
-            <controls:SectionCard Header="刻录参数" IconKind="Flame" Margin="0,0,0,24">
+            <controls:SectionCard Header="刻录参数" IconKind="Flame" Margin="0,0,0,24"
+                                  IsEnabled="{Binding IsSetupEnabled}">
                 <StackPanel>
                     <controls:SegmentedControl IsSecondSelected="{Binding IsDvdBurn}"
                                                 Width="248" Margin="0,0,0,14"
                                                 HorizontalAlignment="Left" />
+                    <CheckBox Content="使用辅助标定图案" IsChecked="{Binding UseCalibrationPattern}"
+                              Margin="0,0,0,14"
+                              ToolTip="使用标定页面中已创建的图案和参数；开始前会保存标定记录。" />
                     <Border Background="{StaticResource Surface2Brush}" BorderBrush="{StaticResource DividerBrush}"
                             BorderThickness="1" CornerRadius="12" Padding="14">
                         <StackPanel>
@@ -33,7 +37,8 @@
                 </StackPanel>
             </controls:SectionCard>
 
-            <controls:SectionCard Header="刻录选项" IconKind="Info" Margin="0,0,0,24">
+            <controls:SectionCard Header="刻录选项" IconKind="Info" Margin="0,0,0,24"
+                                  IsEnabled="{Binding IsSetupEnabled}">
                 <StackPanel>
                     <TextBlock Style="{StaticResource FieldLabel}" Text="刻录机" />
                     <Grid Margin="0,0,0,12">
@@ -79,7 +84,8 @@
                     <TextBlock Style="{StaticResource BodyText}" Foreground="#E5C783" LineHeight="22"
                                Text="流式刻录仅支持空白介质！刻录开始后，中断、断电或生成速度不足都可能导致盘片报废！" />
                     <CheckBox Content="我确认已放入正确的空白盘"
-                              IsChecked="{Binding ConfirmChecked}" Margin="0,14,0,0" />
+                              IsChecked="{Binding ConfirmChecked}" Margin="0,14,0,0"
+                              IsEnabled="{Binding IsSetupEnabled}" />
                 </StackPanel>
             </Border>
 

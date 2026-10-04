@@ -115,6 +115,121 @@ public static class CdTrackGenerator
         parameters.Validate();
         string sourceFullPath = Path.GetFullPath(imagePath);
         RasterImage source = RasterImage.Load(sourceFullPath);
+        return GenerateSamplesToStream(
+            globalByte => Sample(source, parameters, globalByte),
+            sourceFullPath,
+            output,
+            parameters,
+            interleave,
+            progress,
+            cancellationToken,
+            outputDescription,
+            audioByteOrder);
+    }
+
+    /// <summary>
+    /// Generates a calibration track directly from an analytic grayscale pattern.
+    /// Coordinates are millimetres from the disc centre, with x right and y down.
+    /// </summary>
+    public static CdGenerationSummary GeneratePattern(
+        Func<double, double, byte> sampleGray,
+        string outputPath,
+        CdDiscParameters parameters,
+        bool interleave,
+        Action<CdProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(sampleGray);
+        parameters.Validate();
+        string outputFullPath = Path.GetFullPath(outputPath);
+        string extension = Path.GetExtension(outputFullPath);
+        bool wave = extension.Equals(".wav", StringComparison.OrdinalIgnoreCase);
+        if (!wave && !extension.Equals(".raw", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("CD output must be .wav (PCM audio + CUE) or .raw (big-endian cdrecord audio).", nameof(outputPath));
+        }
+
+        if (wave)
+        {
+            CdWaveFile.ValidateLength(parameters.TotalBytes);
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        EnsureParentDirectory(outputFullPath);
+        using FileStream file = new(
+            outputFullPath,
+            FileMode.Create,
+            FileAccess.Write,
+            FileShare.None,
+            bufferSize: 1024 * 1024,
+            FileOptions.SequentialScan);
+        if (wave)
+        {
+            CdWaveFile.WriteHeader(file, parameters.TotalBytes);
+        }
+
+        CdGenerationSummary summary = GeneratePatternToStream(
+            sampleGray,
+            file,
+            parameters,
+            interleave,
+            progress,
+            cancellationToken,
+            outputFullPath,
+            wave ? CdAudioByteOrder.LittleEndian : CdAudioByteOrder.BigEndian);
+        return wave ? summary with { CueSheetPath = CdWaveFile.WriteCue(outputFullPath) } : summary;
+    }
+
+    /// <summary>
+    /// Writes the same audio sectors as <see cref="GeneratePattern"/> without a file header.
+    /// The callback receives disc coordinates in millimetres, with x right and y down.
+    /// </summary>
+    public static CdGenerationSummary GeneratePatternToStream(
+        Func<double, double, byte> sampleGray,
+        Stream output,
+        CdDiscParameters parameters,
+        bool interleave,
+        Action<CdProgress>? progress = null,
+        CancellationToken cancellationToken = default,
+        string outputDescription = "direct-burn-stream",
+        CdAudioByteOrder audioByteOrder = CdAudioByteOrder.BigEndian)
+    {
+        ArgumentNullException.ThrowIfNull(sampleGray);
+        ArgumentNullException.ThrowIfNull(output);
+        if (!output.CanWrite)
+        {
+            throw new ArgumentException("CD output stream must be writable.", nameof(output));
+        }
+
+        CdAudioSamples.Validate(audioByteOrder);
+        parameters.Validate();
+        return GenerateSamplesToStream(
+            globalByte =>
+            {
+                (double radius, double theta) = parameters.PolarFromByte(globalByte);
+                return sampleGray(radius * Math.Cos(theta), radius * Math.Sin(theta));
+            },
+            "calibration",
+            output,
+            parameters,
+            interleave,
+            progress,
+            cancellationToken,
+            outputDescription,
+            audioByteOrder);
+    }
+
+    private static CdGenerationSummary GenerateSamplesToStream(
+        Func<long, byte> sampleGray,
+        string summarySource,
+        Stream output,
+        CdDiscParameters parameters,
+        bool interleave,
+        Action<CdProgress>? progress,
+        CancellationToken cancellationToken,
+        string outputDescription,
+        CdAudioByteOrder audioByteOrder)
+    {
         long totalBytes = parameters.TotalBytes;
         CddaInterleaver? cddaInterleaver = interleave ? new CddaInterleaver(audioByteOrder) : null;
         byte[]? plainSector = interleave ? null : new byte[CdDiscParameters.BytesPerSector];
@@ -124,12 +239,12 @@ public static class CdTrackGenerator
 
         for (long globalByte = 0; globalByte < totalBytes; globalByte++)
         {
-            if ((globalByte & 0xFFFFF) == 0)
+            if ((globalByte & 0xFFF) == 0)
             {
                 cancellationToken.ThrowIfCancellationRequested();
             }
 
-            byte gray = Sample(source, parameters, globalByte);
+            byte gray = sampleGray(globalByte);
             byte value = gray < 128 ? BlackPaletteValue : WhitePaletteValue;
             if (cddaInterleaver is null)
             {
@@ -153,12 +268,13 @@ public static class CdTrackGenerator
             }
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         cddaInterleaver?.Flush(output);
         output.Flush();
         stopwatch.Stop();
         progress?.Invoke(new CdProgress(totalBytes, totalBytes, stopwatch.Elapsed));
         return new CdGenerationSummary(
-            sourceFullPath,
+            summarySource,
             outputDescription,
             parameters.Sectors,
             totalBytes,

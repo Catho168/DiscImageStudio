@@ -11,7 +11,10 @@ public sealed record ImageMappingOptions(
     bool Clockwise,
     byte LuminanceThreshold,
     byte AlphaThreshold,
-    int SampleEveryChannelBits = 1);
+    int SampleEveryChannelBits = 1,
+    double PitchLinear = 0,
+    double PitchQuadratic = 0,
+    double PitchCubic = 0);
 
 public sealed record ImageMappingSummary(
     string? SourceImage,
@@ -32,7 +35,15 @@ public sealed record ImageMappingSummary(
     double BlockStartRadiusMm,
     double BlockEndRadiusMm,
     double BlockStartTrackTurns,
-    double BlockEndTrackTurns);
+    double BlockEndTrackTurns,
+    double PitchLinear = 0,
+    double PitchQuadratic = 0,
+    double PitchCubic = 0)
+{
+    public double PitchLinearMicrometres => TrackPitchMicrometres * PitchLinear;
+    public double PitchQuadraticMicrometres => TrackPitchMicrometres * PitchQuadratic;
+    public double PitchCubicMicrometres => TrackPitchMicrometres * PitchCubic;
+}
 
 internal static class ImageTargetMapper
 {
@@ -62,7 +73,10 @@ internal static class ImageTargetMapper
         ArchimedeanSpiral spiral = ArchimedeanSpiral.Create(
             options.InnerRadiusMm,
             options.OuterRadiusMm,
-            trackLengthMm);
+            trackLengthMm,
+            options.PitchLinear,
+            options.PitchQuadratic,
+            options.PitchCubic);
 
         double startAngleRadians = options.StartAngleDegrees * Math.PI / 180.0;
         double direction = options.Clockwise ? -1.0 : 1.0;
@@ -73,7 +87,7 @@ internal static class ImageTargetMapper
         {
             double arcLengthMm = (firstGlobalBit + relativeChannelBit) * bitLengthMm;
             double radiusMm = spiral.RadiusAtArcLength(arcLengthMm);
-            double trackAngle = (radiusMm - options.InnerRadiusMm) / spiral.RadialGrowthPerRadianMm;
+            double trackAngle = spiral.AngleAtRadius(radiusMm);
             double polarAngle = startAngleRadians + (direction * trackAngle);
             return image.SampleDisc(
                 radiusMm * Math.Cos(polarAngle),
@@ -128,8 +142,11 @@ internal static class ImageTargetMapper
             spiral.TotalAngleRadians / (2 * Math.PI),
             blockStartRadius,
             blockEndRadius,
-            (blockStartRadius - options.InnerRadiusMm) / spiral.TrackPitchMm,
-            (blockEndRadius - options.InnerRadiusMm) / spiral.TrackPitchMm);
+            spiral.AngleAtRadius(blockStartRadius) / (2 * Math.PI),
+            spiral.AngleAtRadius(blockEndRadius) / (2 * Math.PI),
+            options.PitchLinear,
+            options.PitchQuadratic,
+            options.PitchCubic);
         return ImageConstraint.Create(targets, summary, channelWordTargets);
     }
 

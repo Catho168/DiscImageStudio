@@ -9,7 +9,10 @@ public sealed record DvdDiscPreset(
     double OuterRadiusMm,
     string? DisplayNameResourceKey = null,
     string? DescriptionResourceKey = null,
-    bool IsCustom = false)
+    bool IsCustom = false,
+    double PitchLinear = 0,
+    double PitchQuadratic = 0,
+    double PitchCubic = 0)
 {
     public static DvdDiscPreset Manual { get; } = new(
         "__manual__",

@@ -21,7 +21,10 @@ public sealed record IsoReadbackOptions(
     double ChannelBitLengthNm,
     bool Clockwise,
     int PreviewSize,
-    int SamplesPerSector);
+    int SamplesPerSector,
+    double PitchLinear = 0,
+    double PitchQuadratic = 0,
+    double PitchCubic = 0);
 
 public sealed record IsoReadbackSummary(
     string SourceIso,
@@ -40,7 +43,15 @@ public sealed record IsoReadbackSummary(
     int SamplesPerSector,
     long TotalSamples,
     long ClassifiedSamples,
-    string MappingMode);
+    string MappingMode,
+    double PitchLinear = 0,
+    double PitchQuadratic = 0,
+    double PitchCubic = 0)
+{
+    public double PitchLinearMicrometres => TrackPitchMicrometres * PitchLinear;
+    public double PitchQuadraticMicrometres => TrackPitchMicrometres * PitchQuadratic;
+    public double PitchCubicMicrometres => TrackPitchMicrometres * PitchCubic;
+}
 
 internal static class IsoReadbackRenderer
 {
@@ -72,7 +83,10 @@ internal static class IsoReadbackRenderer
         ArchimedeanSpiral spiral = ArchimedeanSpiral.Create(
             options.InnerRadiusMm,
             options.OuterRadiusMm,
-            trackLengthMm);
+            trackLengthMm,
+            options.PitchLinear,
+            options.PitchQuadratic,
+            options.PitchCubic);
 
         int size = options.PreviewSize;
         int stride = checked(size * 4);
@@ -154,9 +168,7 @@ internal static class IsoReadbackRenderer
                             + DvdEccBlockEncoder.PayloadDirectChannelOffset(payloadIndex)
                             + CodeWordCenterOffset;
                         double arcLengthMm = globalBit * bitLengthMm;
-                        double radiusMm = spiral.RadiusAtArcLengthFast(arcLengthMm);
-                        double trackAngle = (radiusMm - options.InnerRadiusMm)
-                            / spiral.RadialGrowthPerRadianMm;
+                        (double radiusMm, double trackAngle) = spiral.AtArcLengthFast(arcLengthMm);
                         double polarAngle = direction * trackAngle;
                         double pixelRadius = centre * radiusMm / options.OuterRadiusMm;
                         int pixelX = (int)Math.Round(centre + (pixelRadius * Math.Cos(polarAngle)));
@@ -208,7 +220,10 @@ internal static class IsoReadbackRenderer
             samplesPerSector,
             totalSamples,
             classifiedSamples,
-            "payload-scramble-classify-splat");
+            "payload-scramble-classify-splat",
+            options.PitchLinear,
+            options.PitchQuadratic,
+            options.PitchCubic);
     }
 
     private static void WritePng(string outputPath, int size, byte[] pixels, int stride)

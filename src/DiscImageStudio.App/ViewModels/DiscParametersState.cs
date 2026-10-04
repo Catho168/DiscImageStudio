@@ -2,6 +2,8 @@ using System.Collections.ObjectModel;
 using System.IO;
 using DiscImageStudio.Cd;
 using DiscImageStudio.Core;
+using DiscImageStudio.Core.Calibration;
+using DiscImageStudio.Services;
 using DiscImageStudio.Dvd;
 using CommunityToolkit.Mvvm.ComponentModel;
 
@@ -55,7 +57,7 @@ public partial class DiscParametersState : ObservableObject
     [ObservableProperty] private string _cdActualInnerRadius = "24.3";
     [ObservableProperty] private string _cdActualOuterRadius = "56.6";
 
-    // DVD page / live preview shared fields. Channel-bit length (133.33 nm) and start
+    // DVD page / live preview shared fields. Channel-bit length (133.3 nm) and start
     // angle (0°) are fixed physical constants, same as the CD constants above. The live
     // preview reads back the generated ISO through DvdIsoPath.
     [ObservableProperty] private string _dvdImagePath = string.Empty;
@@ -64,16 +66,22 @@ public partial class DiscParametersState : ObservableObject
     [ObservableProperty] private string _dvdDataDirectory = string.Empty;
     [ObservableProperty] private string _dvdRingInnerMargin = "2.0";
     [ObservableProperty] private string _dvdRingOuterMargin = "2.0";
-    [ObservableProperty] private string _dvdTotalSectors = "2295104";
-    [ObservableProperty] private string _dvdInnerRadius = "24.0";
-    [ObservableProperty] private string _dvdOuterRadius = "58.0";
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(DvdPitchSummary), nameof(DvdActualPitchSummary))] private string _dvdTotalSectors = "2295104";
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(DvdPitchSummary))] private string _dvdInnerRadius = "24.0";
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(DvdPitchSummary))] private string _dvdOuterRadius = "58.0";
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(DvdPitchSummary))] private string _dvdPitchLinear = "0";
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(DvdPitchSummary))] private string _dvdPitchQuadratic = "0";
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(DvdPitchSummary))] private string _dvdPitchCubic = "0";
     [ObservableProperty] private string _dvdVolumeLabel = DefaultDvdVolumeLabel;
     [ObservableProperty] private string _dvdPreviewSize = "1600";
     [ObservableProperty] private string _dvdSamplesPerSector = "16";
 
     /// <summary>Second parameter set of the DVD calibration preview, same role as the CD one.</summary>
-    [ObservableProperty] private string _dvdActualInnerRadius = "24.0";
-    [ObservableProperty] private string _dvdActualOuterRadius = "58.0";
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(DvdActualPitchSummary))] private string _dvdActualInnerRadius = "24.0";
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(DvdActualPitchSummary))] private string _dvdActualOuterRadius = "58.0";
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(DvdActualPitchSummary))] private string _dvdActualPitchLinear = "0";
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(DvdActualPitchSummary))] private string _dvdActualPitchQuadratic = "0";
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(DvdActualPitchSummary))] private string _dvdActualPitchCubic = "0";
 
     [ObservableProperty] private string _cdPresetHint = string.Empty;
     [ObservableProperty] private string _dvdPresetHint = string.Empty;
@@ -88,6 +96,28 @@ public partial class DiscParametersState : ObservableObject
         .Equals(".wav", StringComparison.OrdinalIgnoreCase);
 
     public bool IsDvdRingMode => DvdImageProcessingModeIndex == 1;
+
+    public string DvdPitchSummary => PitchSummary(actual: false);
+    public string DvdActualPitchSummary => PitchSummary(actual: true);
+
+    private string PitchSummary(bool actual)
+    {
+        try
+        {
+            return DvdPitchDisplay.Format(new(CalibrationDiscKind.Dvd,
+                ParameterParser.ParsePositiveDouble(actual ? DvdActualInnerRadius : DvdInnerRadius, "内半径"),
+                ParameterParser.ParsePositiveDouble(actual ? DvdActualOuterRadius : DvdOuterRadius, "外半径"),
+                ParameterParser.ParsePositiveLong(DvdTotalSectors, "总扇区数"),
+                DvdStreamingOptions.StandardChannelBitLengthNm,
+                ParameterParser.ParseDouble(actual ? DvdActualPitchLinear : DvdPitchLinear, "相对一次项"),
+                ParameterParser.ParseDouble(actual ? DvdActualPitchQuadratic : DvdPitchQuadratic, "相对二次项"),
+                ParameterParser.ParseDouble(actual ? DvdActualPitchCubic : DvdPitchCubic, "相对三次项")));
+        }
+        catch (Exception exception) when (exception is ArgumentException or FormatException or OverflowException)
+        {
+            return "轨距模型无效：请检查半径、扇区数及系数，整个刻录区的轨距必须为正。";
+        }
+    }
 
     public IReadOnlyList<CdDiscPreset> CdPresets => _cdPresets;
 
@@ -191,7 +221,10 @@ public partial class DiscParametersState : ObservableObject
                 value.InnerRadiusMm,
                 value.OuterRadiusMm,
                 value.DisplayNameResourceKey,
-                value.DescriptionResourceKey))
+                value.DescriptionResourceKey,
+                PitchLinear: value.PitchLinear,
+                PitchQuadratic: value.PitchQuadratic,
+                PitchCubic: value.PitchCubic))
             .ToList();
         dvdPresets.Add(DvdDiscPreset.Manual);
         return (cdPresets, dvdPresets);
@@ -225,6 +258,10 @@ public partial class DiscParametersState : ObservableObject
     partial void OnDvdInnerRadiusChanged(string value) => OnDvdParameterEdited(presetField: true);
 
     partial void OnDvdOuterRadiusChanged(string value) => OnDvdParameterEdited(presetField: true);
+
+    partial void OnDvdPitchLinearChanged(string value) => OnDvdParameterEdited(presetField: true);
+    partial void OnDvdPitchQuadraticChanged(string value) => OnDvdParameterEdited(presetField: true);
+    partial void OnDvdPitchCubicChanged(string value) => OnDvdParameterEdited(presetField: true);
 
     /// <summary>Writing through the selector applies the preset, mirroring SelectionChanged.</summary>
     partial void OnSelectedCdPresetChanged(CdDiscPreset value)
@@ -297,6 +334,9 @@ public partial class DiscParametersState : ObservableObject
                 DvdTotalSectors = preset.TotalSectors.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 DvdInnerRadius = FormatPresetNumber(preset.InnerRadiusMm);
                 DvdOuterRadius = FormatPresetNumber(preset.OuterRadiusMm);
+                DvdPitchLinear = FormatPresetNumber(preset.PitchLinear);
+                DvdPitchQuadratic = FormatPresetNumber(preset.PitchQuadratic);
+                DvdPitchCubic = FormatPresetNumber(preset.PitchCubic);
             }
         }
         finally

@@ -29,11 +29,14 @@ public sealed record DvdDiscPresetDefinition(
     double OuterRadiusMm,
     // Same role as the CD linear velocity above: retained for file compatibility, fixed at
     // the DVD standard channel-bit length while generating.
-    double ChannelBitLengthNm = 133.33,
+    double ChannelBitLengthNm = 133.3,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     string? DisplayNameResourceKey = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    string? DescriptionResourceKey = null);
+    string? DescriptionResourceKey = null,
+    double PitchLinear = 0,
+    double PitchQuadratic = 0,
+    double PitchCubic = 0);
 
 public sealed record DiscPresetJsonDocument(
     int SchemaVersion,
@@ -106,7 +109,7 @@ public static class DiscPresetJsonStore
                     2_295_104,
                     24.0,
                     58.0,
-                    133.33),
+                    133.3),
             ],
             DisabledCdPresetIds: [],
             DisabledDvdPresetIds: []);
@@ -306,6 +309,14 @@ public static class DiscPresetJsonStore
 
             ValidateRadiusRange(preset.Id, preset.InnerRadiusMm, preset.OuterRadiusMm);
             ValidatePositiveFinite(preset.Id, "channelBitLengthNm", preset.ChannelBitLengthNm);
+            try
+            {
+                DvdTrackGeometry.ValidatePitchCoefficients(preset.PitchLinear, preset.PitchQuadratic, preset.PitchCubic);
+            }
+            catch (ArgumentException exception)
+            {
+                throw new InvalidDataException($"预设 '{preset.Id}' 的轨距系数无效：{exception.Message}", exception);
+            }
         }
     }
 

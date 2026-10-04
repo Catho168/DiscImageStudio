@@ -47,6 +47,7 @@
                             <controls:SideNavItem x:Name="NavCd" LabelText="CD" Indent="22" LabelFontSize="15" />
                         </controls:SideNavGroup>
                         <controls:SideNavItem x:Name="NavPreview" LabelText="实时预览" IconKind="Eye" />
+                        <controls:SideNavItem x:Name="NavCalibration" LabelText="辅助标定" IconKind="Target" />
                         <controls:SideNavItem x:Name="NavBurn" LabelText="即时刻录" IconKind="Flame" />
                     </StackPanel>
                     <StackPanel x:Name="BottomNavPanel" Grid.Row="1" VerticalAlignment="Bottom">

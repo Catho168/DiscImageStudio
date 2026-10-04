@@ -300,12 +300,18 @@ internal static class Program
             RequireDouble(arguments, "generated-outer-radius-mm"),
             RequireDouble(arguments, "actual-inner-radius-mm"),
             RequireDouble(arguments, "actual-outer-radius-mm"),
-            arguments.GetDouble("channel-bit-nm", 133.33),
+            arguments.GetDouble("channel-bit-nm", 133.3),
             ReadClockwise(arguments),
             checked((byte)threshold),
             checked((byte)alphaThreshold),
             arguments.GetInt("preview-size", 1024),
-            arguments.GetInt("samples-per-sector", 16));
+            arguments.GetInt("samples-per-sector", 16),
+            ReadGeneratedPitch(arguments, "linear"),
+            ReadGeneratedPitch(arguments, "quadratic"),
+            ReadGeneratedPitch(arguments, "cubic"),
+            arguments.GetDouble("actual-pitch-linear", 0),
+            arguments.GetDouble("actual-pitch-quadratic", 0),
+            arguments.GetDouble("actual-pitch-cubic", 0));
         CalibrationPreviewSummary summary = CalibrationPreviewRenderer.Render(imagePath, outputPath, options);
         WriteJson(outputPath + ".json", summary);
         Console.WriteLine(
@@ -358,10 +364,13 @@ internal static class Program
             arguments.GetUInt("psn-offset", 0x30000),
             RequireDouble(arguments, "inner-radius-mm"),
             RequireDouble(arguments, "outer-radius-mm"),
-            arguments.GetDouble("channel-bit-nm", 133.33),
+            arguments.GetDouble("channel-bit-nm", 133.3),
             ReadClockwise(arguments),
             arguments.GetInt("preview-size", 1024),
-            arguments.GetInt("samples-per-sector", 16));
+            arguments.GetInt("samples-per-sector", 16),
+            arguments.GetDouble("pitch-linear", 0),
+            arguments.GetDouble("pitch-quadratic", 0),
+            arguments.GetDouble("pitch-cubic", 0));
         IsoReadbackSummary summary = IsoReadbackRenderer.Render(isoPath, outputPath, options);
         WriteJson(outputPath + ".json", summary);
         Console.WriteLine(
@@ -709,6 +718,7 @@ internal static class Program
                         / result.TotalControlledGrayScoreMaximum,
             elapsedSeconds = result.Elapsed.TotalSeconds,
             imageMapping,
+            pitchPolynomial = DescribePitchPolynomial(imageMapping),
             iso = new
             {
                 mode = hybridIso?.Mode ?? "raw-sector-image",
@@ -814,6 +824,7 @@ internal static class Program
             normalizedScore = 0.0,
             elapsedSeconds = result.Elapsed.TotalSeconds,
             imageMapping,
+            pitchPolynomial = DescribePitchPolynomial(imageMapping),
             iso = new
             {
                 mode = hybridIso?.Mode ?? "raw-sector-image",
@@ -895,12 +906,41 @@ internal static class Program
             ReadTotalSectors(arguments),
             arguments.GetDouble("inner-radius-mm", 24.0),
             arguments.GetDouble("outer-radius-mm", 58.0),
-            arguments.GetDouble("channel-bit-nm", 133.33),
+            arguments.GetDouble("channel-bit-nm", 133.3),
             arguments.GetDouble("start-angle-deg", 0.0),
             ReadClockwise(arguments),
             checked((byte)threshold),
             checked((byte)alphaThreshold),
-            arguments.GetInt("constraint-step", defaultConstraintStep));
+            arguments.GetInt("constraint-step", defaultConstraintStep),
+            arguments.GetDouble("pitch-linear", 0),
+            arguments.GetDouble("pitch-quadratic", 0),
+            arguments.GetDouble("pitch-cubic", 0));
+    }
+
+    private static double ReadGeneratedPitch(CliArguments arguments, string order)
+    {
+        string plain = $"pitch-{order}";
+        string generated = $"generated-pitch-{order}";
+        if (arguments.Has(plain) && arguments.Has(generated))
+            throw new ArgumentException($"Use only one of --{plain} and --{generated}.");
+        return arguments.GetDouble(arguments.Has(generated) ? generated : plain, 0);
+    }
+
+    private static object DescribePitchPolynomial(ImageMappingOptions options)
+    {
+        double length = options.TotalSectors * (double)DvdEccBlockEncoder.ChannelBitsPerSector
+            * options.ChannelBitLengthNm * 1e-6;
+        double scale = DiscImageStudio.Core.DvdTrackGeometry.Create(options.InnerRadiusMm,
+            options.OuterRadiusMm, length, options.PitchLinear, options.PitchQuadratic, options.PitchCubic).TrackPitchMm * 1000;
+        return new
+        {
+            variable = "x=(radiusMm-innerRadiusMm)/(outerRadiusMm-innerRadiusMm)",
+            unit = "micrometres",
+            constant = scale,
+            linear = scale * options.PitchLinear,
+            quadratic = scale * options.PitchQuadratic,
+            cubic = scale * options.PitchCubic,
+        };
     }
 
     private static uint ReadTotalSectors(CliArguments arguments)
@@ -1344,7 +1384,12 @@ internal static class Program
               --total-blocks N          Alias for --total-sectors
               --inner-radius-mm N       Track start radius (default 24.0)
               --outer-radius-mm N       Track end radius (default 58.0)
-              --channel-bit-nm N        Physical channel-bit length (default 133.33)
+              --pitch-linear N          Linear radial pitch coefficient (default 0)
+              --pitch-quadratic N       Quadratic radial pitch coefficient (default 0)
+              --pitch-cubic N           Cubic radial pitch coefficient (default 0)
+                                        pitch(r)=p0*(1+a1*x+a2*x^2+a3*x^3),
+                                        x=(r-inner)/(outer-inner); p0 follows total track length
+              --channel-bit-nm N        Physical channel-bit length (default 133.3)
               --start-angle-deg N       Track start angle (default 0)
               --spiral-direction ccw|cw Polar direction (default cw)
               --image-threshold 0..255  Below threshold is pit/black (default 128)
@@ -1405,7 +1450,14 @@ internal static class Program
               --generated-outer-radius-mm N
               --actual-inner-radius-mm N
               --actual-outer-radius-mm N
-              --channel-bit-nm N        Default 133.33
+              --pitch-linear N          Generated linear pitch coefficient (default 0)
+              --pitch-quadratic N       Generated quadratic pitch coefficient (default 0)
+              --pitch-cubic N           Generated cubic pitch coefficient (default 0)
+                                        --generated-pitch-* aliases are also accepted
+              --actual-pitch-linear N   Actual linear pitch coefficient (default 0)
+              --actual-pitch-quadratic N Actual quadratic pitch coefficient (default 0)
+              --actual-pitch-cubic N    Actual cubic pitch coefficient (default 0)
+              --channel-bit-nm N        Default 133.3
               --spiral-direction ccw|cw Default cw; no rotation-offset calibration
               --image-threshold 0..255  Default 128
               --alpha-threshold 1..255  Default 1
@@ -1418,6 +1470,9 @@ internal static class Program
               --iso FILE                Generated ISO image (required)
               --inner-radius-mm N       Measured inner radius of the burned spiral
               --outer-radius-mm N       Measured outer radius of the burned spiral
+              --pitch-linear N          Measured linear pitch coefficient (default 0)
+              --pitch-quadratic N       Measured quadratic pitch coefficient (default 0)
+              --pitch-cubic N           Measured cubic pitch coefficient (default 0)
               --total-sectors N         Disc sector count; defaults to the solve sidecar
                                         JSON (IMAGE.iso.json) or the ISO file size
               --psn-offset N            Decimal or 0x-prefixed PSN offset (default 0x30000)
@@ -1425,7 +1480,7 @@ internal static class Program
                                         drawing start (0 when absent)
               --fill-sectors N          Visible sector count; defaults to the sidecar
                                         drawing length (remainder of the ISO when absent)
-              --channel-bit-nm N        Default 133.33
+              --channel-bit-nm N        Default 133.3
               --spiral-direction ccw|cw Default cw
               --preview-size 64..8192   Square PNG size (default 1024)
               --samples-per-sector 1..2048 Payload bytes sampled per sector (default 16)

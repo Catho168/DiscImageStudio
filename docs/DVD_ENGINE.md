@@ -72,7 +72,7 @@ dotnet run --project src/DvdImageSolver --configuration Release -- solve `
   --psn-offset 0x30000 `
   --inner-radius-mm 24 `
   --outer-radius-mm 58 `
-  --channel-bit-nm 133.33 `
+  --channel-bit-nm 133.3 `
   --start-angle-deg 0 `
   --spiral-direction ccw `
   --image-threshold 128 `
@@ -82,7 +82,25 @@ dotnet run --project src/DvdImageSolver --configuration Release -- solve `
   --channel-output channel.bin
 ```
 
-其中 `--total-sectors` 是盘片报告的 2048-byte 数据块总数；也可以写成别名 `--total-blocks`。它和每扇区 38688 channel bits、`--channel-bit-nm` 一起确定总轨道长度。程序再根据内外半径反解阿基米德螺旋线的螺距。
+其中 `--total-sectors` 是盘片报告的 2048-byte 数据块总数；也可以写成别名 `--total-blocks`。它和每扇区 38688 channel bits、`--channel-bit-nm` 一起确定总轨道长度。程序再根据内外半径和轨距曲线反解轨距尺度。
+
+### 随半径变化的三次轨距
+
+DVD 生成、流式输出、图片预览、ISO 回读和辅助标定共用 `DvdTrackGeometry`。设归一化半径 `x=(r-ri)/(ro-ri)`，局部轨距为：
+
+```text
+p(x) = a0 + a1*x + a2*x² + a3*x³                 [mm]
+     = p0 * (1 + c1*x + c2*x² + c3*x³)
+dr/dθ = p(x)/(2π)
+```
+
+完整三次多项式有四个系数。输入的 `--pitch-linear`、`--pitch-quadratic`、`--pitch-cubic` 是三个无量纲相对系数 `c1,c2,c3`；常数项 `a0=p0` 根据固定的总轨道长度自动求解，另外三项为 `ai=p0*ci`。因此四项满足容量和内外半径的长度约束，而不是四项全部独立。界面以 μm 展示完整四项，系数的变量是 `x`，不是以 mm 为单位的绝对半径。
+
+轨长使用 `L=∫sqrt(1+(2πr/p(r))²)dr`，角度使用 `θ(r)=∫2π/p(r)dr`；变化轨距不能再用恒定螺距的 `(r-ri)/b` 计算角度。程序验证整个生成环带内轨距严格为正，包括多项式内部极值。三项均为零时使用原恒定轨距模型，旧参数和预设省略这些字段时默认零。
+
+例如在原 `solve` 命令后增加 `--pitch-linear 0.02 --pitch-quadratic -0.03 --pitch-cubic 0.015`。这只是参数格式示例，不是任何盘片的实测值。`calibrate` 使用相同选项指定生成曲线，另以 `--actual-pitch-linear`、`--actual-pitch-quadratic`、`--actual-pitch-cubic` 指定实际曲线；也接受 `--generated-pitch-*` 别名。`simulate` 的 `--pitch-*` 指实际盘片曲线。
+
+镜像和预览的 JSON 记录相对系数及轨距基值，标定会话保存相对系数、内外半径、扇区数及位长，能够重建完整四项。照片整体转角仍是独立拟合量。
 
 坐标和采样约定：
 
@@ -191,7 +209,7 @@ ISO payload P = Q XOR sector scrambler byte
   --psn-offset 0x30000 `
   --inner-radius-mm 24 `
   --outer-radius-mm 58 `
-  --channel-bit-nm 133.33 `
+  --channel-bit-nm 133.3 `
   --algorithm dispersion `
   --fast-output true `
   --fast-parallelism 0 `
@@ -259,7 +277,7 @@ dotnet run --project src/DvdImageSolver --configuration Release -- solve `
   --psn-offset 0x30000 `
   --inner-radius-mm 24 `
   --outer-radius-mm 58 `
-  --channel-bit-nm 133.33 `
+  --channel-bit-nm 133.3 `
   --constraint-step 16 `
   --algorithm state-control `
   --bridge-bytes 2 `
@@ -323,7 +341,7 @@ dotnet run --project src/DvdImageSolver --configuration Release -- calibrate `
   --generated-outer-radius-mm 58 `
   --actual-inner-radius-mm 24.2 `
   --actual-outer-radius-mm 57.8 `
-  --channel-bit-nm 133.33 `
+  --channel-bit-nm 133.3 `
   --spiral-direction ccw `
   --image-threshold 128 `
   --alpha-threshold 1 `

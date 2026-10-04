@@ -17,7 +17,13 @@ public sealed record CalibrationPreviewOptions(
     byte LuminanceThreshold,
     byte AlphaThreshold,
     int PreviewSize,
-    int SamplesPerSector);
+    int SamplesPerSector,
+    double GeneratedPitchLinear = 0,
+    double GeneratedPitchQuadratic = 0,
+    double GeneratedPitchCubic = 0,
+    double ActualPitchLinear = 0,
+    double ActualPitchQuadratic = 0,
+    double ActualPitchCubic = 0);
 
 public sealed record CalibrationPreviewSummary(
     string SourceImage,
@@ -42,7 +48,21 @@ public sealed record CalibrationPreviewSummary(
     byte LuminanceThreshold,
     byte AlphaThreshold,
     int SamplesPerSector,
-    string MappingMode);
+    string MappingMode,
+    double GeneratedPitchLinear = 0,
+    double GeneratedPitchQuadratic = 0,
+    double GeneratedPitchCubic = 0,
+    double ActualPitchLinear = 0,
+    double ActualPitchQuadratic = 0,
+    double ActualPitchCubic = 0)
+{
+    public double GeneratedPitchLinearMicrometres => GeneratedTrackPitchMicrometres * GeneratedPitchLinear;
+    public double GeneratedPitchQuadraticMicrometres => GeneratedTrackPitchMicrometres * GeneratedPitchQuadratic;
+    public double GeneratedPitchCubicMicrometres => GeneratedTrackPitchMicrometres * GeneratedPitchCubic;
+    public double ActualPitchLinearMicrometres => ActualTrackPitchMicrometres * ActualPitchLinear;
+    public double ActualPitchQuadraticMicrometres => ActualTrackPitchMicrometres * ActualPitchQuadratic;
+    public double ActualPitchCubicMicrometres => ActualTrackPitchMicrometres * ActualPitchCubic;
+}
 
 internal static class CalibrationPreviewRenderer
 {
@@ -62,11 +82,17 @@ internal static class CalibrationPreviewRenderer
         ArchimedeanSpiral generated = ArchimedeanSpiral.Create(
             options.GeneratedInnerRadiusMm,
             options.GeneratedOuterRadiusMm,
-            trackLengthMm);
+            trackLengthMm,
+            options.GeneratedPitchLinear,
+            options.GeneratedPitchQuadratic,
+            options.GeneratedPitchCubic);
         ArchimedeanSpiral actual = ArchimedeanSpiral.Create(
             options.ActualInnerRadiusMm,
             options.ActualOuterRadiusMm,
-            trackLengthMm);
+            trackLengthMm,
+            options.ActualPitchLinear,
+            options.ActualPitchQuadratic,
+            options.ActualPitchCubic);
 
         int size = options.PreviewSize;
         int stride = checked(size * 4);
@@ -105,9 +131,7 @@ internal static class CalibrationPreviewRenderer
                 double globalChannelBit = firstGlobalChannelBit
                     + ((sampleIndex + 0.5) * channelBitsPerSample);
                 double arcLengthMm = globalChannelBit * options.ChannelBitLengthNm * 1e-6;
-                double generatedRadiusMm = generated.RadiusAtArcLengthFast(arcLengthMm);
-                double generatedTrackAngle = (generatedRadiusMm - generated.InnerRadiusMm)
-                    / generated.RadialGrowthPerRadianMm;
+                (double generatedRadiusMm, double generatedTrackAngle) = generated.AtArcLengthFast(arcLengthMm);
                 double generatedPolarAngle = direction * generatedTrackAngle;
                 PixelSample sample = source.SampleDisc(
                     generatedRadiusMm * Math.Cos(generatedPolarAngle),
@@ -118,9 +142,7 @@ internal static class CalibrationPreviewRenderer
                     continue;
                 }
 
-                double actualRadiusMm = actual.RadiusAtArcLengthFast(arcLengthMm);
-                double actualTrackAngle = (actualRadiusMm - actual.InnerRadiusMm)
-                    / actual.RadialGrowthPerRadianMm;
+                (double actualRadiusMm, double actualTrackAngle) = actual.AtArcLengthFast(arcLengthMm);
                 double actualPolarAngle = direction * actualTrackAngle;
                 double pixelRadius = centre * actualRadiusMm / actual.OuterRadiusMm;
                 int pixelX = (int)Math.Round(
@@ -194,7 +216,13 @@ internal static class CalibrationPreviewRenderer
             options.LuminanceThreshold,
             options.AlphaThreshold,
             options.SamplesPerSector,
-            "forward-channel-splat-average");
+            "forward-channel-splat-average",
+            options.GeneratedPitchLinear,
+            options.GeneratedPitchQuadratic,
+            options.GeneratedPitchCubic,
+            options.ActualPitchLinear,
+            options.ActualPitchQuadratic,
+            options.ActualPitchCubic);
     }
 
     private static void WritePng(string outputPath, int size, byte[] pixels, int stride)

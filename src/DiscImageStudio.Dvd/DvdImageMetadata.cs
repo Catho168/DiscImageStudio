@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using DiscImageStudio.Core;
 
 namespace DiscImageStudio.Dvd;
 
@@ -12,7 +13,10 @@ namespace DiscImageStudio.Dvd;
 public sealed record DvdImageMetadata(
     uint TotalSectors,
     double InnerRadiusMm,
-    double OuterRadiusMm)
+    double OuterRadiusMm,
+    double PitchLinear = 0,
+    double PitchQuadratic = 0,
+    double PitchCubic = 0)
 {
     /// <summary>Reads the sidecar of an ISO, or null when it is absent or unreadable.</summary>
     public static DvdImageMetadata? TryLoad(string isoPath)
@@ -34,11 +38,16 @@ public sealed record DvdImageMetadata(
             uint totalSectors = GetUInt32(mapping, "totalSectors");
             double innerRadius = GetDouble(mapping, "innerRadiusMm");
             double outerRadius = GetDouble(mapping, "outerRadiusMm");
-            return totalSectors > 0 && innerRadius > 0 && outerRadius > innerRadius
-                ? new DvdImageMetadata(totalSectors, innerRadius, outerRadius)
+            double linear = GetPitchCoefficient(mapping, "pitchLinear");
+            double quadratic = GetPitchCoefficient(mapping, "pitchQuadratic");
+            double cubic = GetPitchCoefficient(mapping, "pitchCubic");
+            DvdTrackGeometry.ValidatePitchCoefficients(linear, quadratic, cubic);
+            return totalSectors > 0 && double.IsFinite(innerRadius) && double.IsFinite(outerRadius)
+                && innerRadius > 0 && outerRadius > innerRadius
+                ? new DvdImageMetadata(totalSectors, innerRadius, outerRadius, linear, quadratic, cubic)
                 : null;
         }
-        catch (Exception exception) when (exception is JsonException or IOException)
+        catch (Exception exception) when (exception is JsonException or IOException or ArgumentException)
         {
             return null;
         }
@@ -53,4 +62,8 @@ public sealed record DvdImageMetadata(
         => element.TryGetProperty(name, out JsonElement value) && value.TryGetDouble(out double result)
             ? result
             : 0;
+
+    private static double GetPitchCoefficient(JsonElement element, string name)
+        => !element.TryGetProperty(name, out JsonElement value) ? 0
+            : value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out double result) ? result : double.NaN;
 }

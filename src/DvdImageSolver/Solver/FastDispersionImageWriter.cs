@@ -111,6 +111,32 @@ public static class FastDispersionImageWriter
         Action<FastDvdStreamProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        ValidateStream(output, options);
+        RasterImage image = RasterImage.Load(imagePath);
+        PayloadImageSampler sampler = new(image, options.ImageMapping);
+        return WriteSampledStream(sampler, output, options, progress, cancellationToken);
+    }
+
+    /// <summary>
+    /// Encodes an opaque analytic pattern without first rasterizing it. The callback
+    /// receives millimetres from the disc centre, with x right and y down, and must
+    /// support concurrent calls when parallel generation is enabled.
+    /// </summary>
+    public static FastDvdStreamSummary WritePatternStream(
+        Func<double, double, byte> sampleGray,
+        Stream output,
+        MultiBlockSolveOptions options,
+        Action<FastDvdStreamProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(sampleGray);
+        ValidateStream(output, options);
+        PayloadImageSampler sampler = new(sampleGray, options.ImageMapping);
+        return WriteSampledStream(sampler, output, options, progress, cancellationToken);
+    }
+
+    private static void ValidateStream(Stream output, MultiBlockSolveOptions options)
+    {
         ArgumentNullException.ThrowIfNull(output);
         if (!output.CanWrite)
         {
@@ -124,9 +150,15 @@ public static class FastDispersionImageWriter
                 "Direct DVD streaming cannot preserve or seek within an existing ISO.",
                 nameof(options));
         }
+    }
 
-        RasterImage image = RasterImage.Load(imagePath);
-        PayloadImageSampler sampler = new(image, options.ImageMapping);
+    private static FastDvdStreamSummary WriteSampledStream(
+        PayloadImageSampler sampler,
+        Stream output,
+        MultiBlockSolveOptions options,
+        Action<FastDvdStreamProgress>? progress,
+        CancellationToken cancellationToken)
+    {
         int totalBlocks = checked((int)(options.FillSectors / DvdEccBlockEncoder.SectorCount));
         int parallelism = options.FastParallelism == 0
             ? Environment.ProcessorCount
@@ -149,7 +181,7 @@ public static class FastDispersionImageWriter
             Parallel.For(0, batchCount, parallelOptions, batchOffset =>
             {
                 int blockIndex = batchStart + batchOffset;
-                generated[batchOffset] = GenerateBlock(blockIndex, sampler, options);
+                generated[batchOffset] = GenerateBlock(blockIndex, sampler, options, cancellationToken);
             });
 
             for (int batchOffset = 0; batchOffset < generated.Length; batchOffset++)
@@ -183,7 +215,8 @@ public static class FastDispersionImageWriter
     private static GeneratedBlock GenerateBlock(
         int blockIndex,
         PayloadImageSampler sampler,
-        MultiBlockSolveOptions options)
+        MultiBlockSolveOptions options,
+        CancellationToken cancellationToken = default)
     {
         uint lba = checked(
             options.StartLba + ((uint)blockIndex * DvdEccBlockEncoder.SectorCount));
@@ -199,6 +232,7 @@ public static class FastDispersionImageWriter
         uint firstPsn = checked(lba + options.PsnOffset);
         for (int sector = 0; sector < DvdEccBlockEncoder.SectorCount; sector++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             int payloadOffset = sector * DvdEccBlockEncoder.PayloadBytesPerSector;
             Span<byte> sectorPayload = payloads.AsSpan(
                 payloadOffset,
@@ -285,7 +319,8 @@ public static class FastDispersionImageWriter
 
     private sealed class PayloadImageSampler
     {
-        private readonly RasterImage _image;
+        private readonly RasterImage? _image;
+        private readonly Func<double, double, byte>? _sampleGray;
         private readonly ImageMappingOptions _options;
         private readonly ArchimedeanSpiral _spiral;
         private readonly double _bitLengthMm;
@@ -293,8 +328,19 @@ public static class FastDispersionImageWriter
         private readonly double _direction;
 
         internal PayloadImageSampler(RasterImage image, ImageMappingOptions options)
+            : this(options)
         {
             _image = image;
+        }
+
+        internal PayloadImageSampler(Func<double, double, byte> sampleGray, ImageMappingOptions options)
+            : this(options)
+        {
+            _sampleGray = sampleGray;
+        }
+
+        private PayloadImageSampler(ImageMappingOptions options)
+        {
             _options = options;
             _bitLengthMm = options.ChannelBitLengthNm * 1e-6;
             double trackLengthMm = options.TotalSectors
@@ -303,7 +349,10 @@ public static class FastDispersionImageWriter
             _spiral = ArchimedeanSpiral.Create(
                 options.InnerRadiusMm,
                 options.OuterRadiusMm,
-                trackLengthMm);
+                trackLengthMm,
+                options.PitchLinear,
+                options.PitchQuadratic,
+                options.PitchCubic);
             _startAngleRadians = options.StartAngleDegrees * Math.PI / 180.0;
             _direction = options.Clockwise ? -1.0 : 1.0;
         }
@@ -311,16 +360,17 @@ public static class FastDispersionImageWriter
         internal PixelSample SampleGlobalChannelBit(ulong globalChannelBit)
         {
             double arcLengthMm = (globalChannelBit + 0.0) * _bitLengthMm;
-            // One Newton correction is sufficient at DVD pitch/radius ratios and avoids
-            // four redundant inverse-spiral iterations for every payload code word.
-            double radiusMm = _spiral.RadiusAtArcLengthFast(arcLengthMm);
-            double trackAngle = (radiusMm - _options.InnerRadiusMm)
-                / _spiral.RadialGrowthPerRadianMm;
+            // The shared geometry keeps the constant-pitch Newton shortcut and
+            // uses its precomputed inverse curve for a varying radial pitch.
+            (double radiusMm, double trackAngle) = _spiral.AtArcLengthFast(arcLengthMm);
             double polarAngle = _startAngleRadians + (_direction * trackAngle);
-            return _image.SampleDisc(
-                radiusMm * Math.Cos(polarAngle),
-                radiusMm * Math.Sin(polarAngle),
-                _options.OuterRadiusMm);
+            double xMm = radiusMm * Math.Cos(polarAngle);
+            double yMm = radiusMm * Math.Sin(polarAngle);
+            // RasterImage.SampleDisc flips mathematical y-up into image y-down.
+            // Apply that same flip for analytic patterns, including the start angle.
+            return _sampleGray is not null
+                ? new PixelSample(_sampleGray(xMm, -yMm), 255)
+                : _image!.SampleDisc(xMm, yMm, _options.OuterRadiusMm);
         }
     }
 }

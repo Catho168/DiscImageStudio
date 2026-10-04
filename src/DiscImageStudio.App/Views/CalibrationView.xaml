@@ -1,0 +1,180 @@
+<UserControl x:Class="DiscImageStudio.Views.CalibrationView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:DiscImageStudio.Controls"
+             SizeChanged="OnViewSizeChanged">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="PhotoStepVisibility" />
+        <Style x:Key="CalibrationButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+            <Setter Property="Margin" Value="0,0,8,8" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="MinWidth" Value="0" />
+        </Style>
+        <Style x:Key="CalibrationHint" TargetType="TextBlock" BasedOn="{StaticResource HintText}">
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+    </UserControl.Resources>
+    <Grid Margin="24,22,24,20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <StackPanel Margin="0,0,0,16">
+            <TextBlock Text="辅助标定" Style="{StaticResource H1Title}" />
+            <TextBlock Text="1  照片矫正   →   2  描一条曲线，反推参数"
+                       Style="{StaticResource PageSubtitle}" Margin="0,6,0,0" TextWrapping="Wrap" />
+        </StackPanel>
+        <ScrollViewer x:Name="WorkScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                      SizeChanged="OnWorkspaceSizeChanged" controls:ScrollMaskBehavior.Enabled="True">
+            <Grid x:Name="WorkArea">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition x:Name="PreviewColumn" Width="*" />
+                    <ColumnDefinition x:Name="GapColumn" Width="16" />
+                    <ColumnDefinition x:Name="SettingsColumn" Width="304" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Border x:Name="PreviewShell" Grid.Column="0" Style="{StaticResource CardStyle}" Padding="0" Height="700">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" MinHeight="120" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <WrapPanel Margin="12,10,12,2">
+                            <Button Content="−" Style="{StaticResource CalibrationButton}" Click="OnZoomOut" ToolTip="缩小" />
+                            <Button Content="＋" Style="{StaticResource CalibrationButton}" Click="OnZoomIn" ToolTip="放大" />
+                            <Button Content="适合窗口" Style="{StaticResource CalibrationButton}" Click="OnResetView" />
+                            <TextBlock Text="{Binding ViewDescription, ElementName=PhotoCanvas}" VerticalAlignment="Center"
+                                       Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,12,8" />
+                            <CheckBox x:Name="TargetPreviewToggle" Content="查看刻录图案" FontSize="12" VerticalAlignment="Center" Margin="0,0,12,8" />
+                            <CheckBox x:Name="PredictionToggle" Content="叠加拟合曲线" IsChecked="True" FontSize="12" VerticalAlignment="Center" Margin="0,0,0,8"
+                                      Visibility="{Binding IsTraceStep, Converter={StaticResource PhotoStepVisibility}}" />
+                        </WrapPanel>
+                        <controls:CalibrationPhotoCanvas x:Name="PhotoCanvas" Grid.Row="1" Margin="1,0"
+                            FallbackImage="{Binding TargetImage}" TargetCanvasRadiusMm="{Binding CanvasOuterRadiusMm}"
+                            IsPhotoStep="{Binding IsPhotoStep}" IsRectificationPreview="{Binding PreviewRectification}"
+                            IsTargetPreview="{Binding IsChecked, ElementName=TargetPreviewToggle}"
+                            CanvasRadiusMm="{Binding PhotoCanvasRadiusMm}"
+                            BoundaryPoints="{Binding PhotoBoundaryPoints}" BoundaryContours="{Binding PhotoBoundaryContours}"
+                            BoundaryEditedCommand="{Binding BoundaryEditedCommand}"
+                            TracePoints="{Binding TracePoints}" TraceEditedCommand="{Binding TraceEditedCommand}"
+                            SelectedTraceArm="0" PredictionContours="{Binding CrossPredictionContours}"
+                            ShowPrediction="{Binding IsChecked, ElementName=PredictionToggle}"
+                            ToolTip="滚轮缩放，右键平移。拖动已有点修正位置；描线时点击添加点，Delete 删除选中点。">
+                            <controls:CalibrationPhotoCanvas.Style>
+                                <Style TargetType="controls:CalibrationPhotoCanvas">
+                                    <Setter Property="Image" Value="{Binding PhotoImage}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsTraceStep}" Value="True">
+                                            <Setter Property="Image" Value="{Binding RectifiedPhoto}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding PreviewRectification}" Value="True">
+                                            <Setter Property="Image" Value="{Binding RectifiedPhoto}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </controls:CalibrationPhotoCanvas.Style>
+                        </controls:CalibrationPhotoCanvas>
+                        <StackPanel Grid.Row="2" Margin="12,9,12,10">
+                            <StackPanel Visibility="{Binding IsPhotoStep, Converter={StaticResource PhotoStepVisibility}}">
+                                <WrapPanel Margin="0,0,0,5">
+                                    <TextBlock Text="蓝：盘片实体外缘　橙：中心孔" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12" VerticalAlignment="Center" Margin="0,0,16,0" />
+                                    <CheckBox Content="查看矫正预览" IsChecked="{Binding PreviewRectification, Mode=TwoWay}" IsEnabled="{Binding IsRectificationReady}" FontSize="12" VerticalAlignment="Center" />
+                                </WrapPanel>
+                                <TextBlock Text="{Binding SelectionDescription, ElementName=PhotoCanvas}" Style="{StaticResource CalibrationHint}" FontSize="11" />
+                            </StackPanel>
+                            <StackPanel Visibility="{Binding IsTraceStep, Converter={StaticResource PhotoStepVisibility}}">
+                                <WrapPanel>
+                                    <Button Content="删除选中点" Click="OnRemoveTracePoint" Style="{StaticResource CalibrationButton}" />
+                                    <Button Content="清空曲线" Command="{Binding ClearTracesCommand}" Style="{StaticResource CalibrationButton}" />
+                                    <TextBlock Text="{Binding TraceSummary}" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12" VerticalAlignment="Center" Margin="0,0,0,8" />
+                                </WrapPanel>
+                                <TextBlock Text="青色点／虚线：实拍输入　橙色实线：参数预测" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="0,0,0,3" />
+                                <TextBlock Text="{Binding SelectionDescription, ElementName=PhotoCanvas}" Style="{StaticResource CalibrationHint}" FontSize="11" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+                <ScrollViewer x:Name="SettingsScroll" Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" MaxHeight="700">
+                    <StackPanel>
+
+                        <controls:SectionCard Header="1  照片矫正" Margin="0,0,0,12" Visibility="{Binding IsPhotoStep, Converter={StaticResource PhotoStepVisibility}}">
+                            <StackPanel>
+                                <TextBlock Text="拍清外缘、中心孔和一条径向曲线。合理打光即可，无需涂黑，朝向不限。" Style="{StaticResource CalibrationHint}" Margin="0,0,0,8" />
+                                <Button Content="导入盘片照片" Command="{Binding ImportPhotoCommand}" Style="{StaticResource PrimaryButton}" Margin="0,0,0,8" />
+                                <DockPanel Margin="0,0,0,8">
+                                    <TextBlock Text="盘片尺寸" VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,0,10,0" />
+                                    <ComboBox ItemsSource="{Binding PhysicalDiscSizeChoices}" SelectedItem="{Binding SelectedPhysicalDiscSize, Mode=TwoWay}" DisplayMemberPath="Label" FontSize="12" />
+                                </DockPanel>
+                                <TextBlock Text="调整引导点：蓝点贴实体外缘，橙点贴中心孔，避开刻录区和透明塑料环。" Style="{StaticResource CalibrationHint}" Margin="0,0,0,8" />
+                                <Button Content="计算矫正" Command="{Binding RectifyPhotoCommand}" Style="{StaticResource CalibrationButton}" HorizontalAlignment="Left" />
+                                <Button Content="确认矫正，开始描线" Command="{Binding ConfirmRectificationCommand}" IsEnabled="{Binding IsRectificationReady}" Style="{StaticResource PrimaryButton}" />
+                                <TextBlock Text="{Binding RectificationSummary}" Style="{StaticResource CalibrationHint}" Margin="0,8,0,0" />
+                                <TextBlock Text="{Binding PhotoStatus}" Style="{StaticResource CalibrationHint}" Margin="0,8,0,0" />
+                            </StackPanel>
+                        </controls:SectionCard>
+                        <controls:SectionCard Header="2  描曲线并反推" Margin="0,0,0,12" Visibility="{Binding IsTraceStep, Converter={StaticResource PhotoStepVisibility}}">
+                            <StackPanel>
+                                <TextBlock Text="沿清楚的曲线由内向外打点。预设内外半径只是生成基准，不裁剪照片点；无需对准圆环或读数。" Style="{StaticResource CalibrationHint}" Margin="0,0,0,8" />
+                                <Button Content="返回修正照片" Command="{Binding BackToPhotoCommand}" Style="{StaticResource CalibrationButton}" HorizontalAlignment="Left" />
+                                <StackPanel Visibility="{Binding IsDvdTarget, Converter={StaticResource PhotoStepVisibility}}">
+                                    <CheckBox IsChecked="{Binding FitDvdPitch, Mode=TwoWay}" Content="拟合 DVD 三次轨距分布" Margin="0,0,0,8" />
+                                    <TextBlock Text="至少 12 个不同半径的点，覆盖刻录环带宽度的 60% 以上；不足时保留原轨距系数，只拟合半径。轨距常数项由总长度自动计算。" Style="{StaticResource CalibrationHint}" Margin="0,0,0,8" />
+                                </StackPanel>
+                                <DockPanel Margin="0,0,0,8">
+                                    <TextBlock Text="搜索范围" VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,0,10,0" />
+                                    <ComboBox ItemsSource="{Binding CoarseSearchRangeChoices}" SelectedItem="{Binding SelectedCoarseSearchRange, Mode=TwoWay}" DisplayMemberPath="Label" FontSize="12" />
+                                </DockPanel>
+                                <WrapPanel>
+                                    <Button Content="反推参数" Command="{Binding SolveCommand}" Style="{StaticResource PrimaryButton}" Height="32" FontSize="12" Padding="12,0" Margin="0,0,8,8" />
+                                    <Button Content="取消计算" Command="{Binding CancelCommand}" Style="{StaticResource CalibrationButton}" />
+                                </WrapPanel>
+                                <ComboBox ItemsSource="{Binding CoarseCandidates}" SelectedItem="{Binding SelectedCoarseCandidate, Mode=TwoWay}" DisplayMemberPath="Label" MaxDropDownHeight="180" FontSize="12" Margin="0,0,0,8" ToolTip="选择候选并查看照片上的预测曲线" />
+                                <TextBlock Text="{Binding FitAssessment}" Style="{StaticResource CalibrationHint}" Margin="0,0,0,8" />
+                                <CheckBox IsChecked="{Binding ContourConfirmed, Mode=TwoWay}" Margin="0,0,0,10">
+                                    <TextBlock Text="已对照整条曲线，形状与绕圈一致" TextWrapping="Wrap" FontSize="12" />
+                                </CheckBox>
+                                <Button Content="应用标定参数" Command="{Binding ApplyParametersCommand}" Style="{StaticResource PrimaryButton}" />
+                                <Expander Header="查看计算详情" IsExpanded="False" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,8,0,0">
+                                    <TextBlock Text="{Binding FitSummary}" Style="{StaticResource CalibrationHint}" Margin="0,8,0,0" />
+                                </Expander>
+                            </StackPanel>
+                        </controls:SectionCard>
+                        <Expander Header="刻录图案、输出与记录" IsExpanded="False" Margin="0,0,0,12" Foreground="{StaticResource TextPrimaryBrush}">
+                            <StackPanel>
+                                <ComboBox ItemsSource="{Binding DiscTypes}" SelectedItem="{Binding SelectedDiscType, Mode=TwoWay}" Margin="0,0,0,10" />
+                                <Button Content="从当前参数建新标靶" Command="{Binding CreateTargetCommand}" Style="{StaticResource PrimaryButton}" Margin="0,0,0,10" />
+                                <WrapPanel>
+                                    <Button Content="生成镜像／音轨" Command="{Binding GenerateImageCommand}" Style="{StaticResource CalibrationButton}" />
+                                    <Button Content="流式刻录" Command="{Binding StreamBurnCommand}" Style="{StaticResource CalibrationButton}" />
+                                </WrapPanel>
+                                <TextBlock Text="{Binding TargetSummary}" Style="{StaticResource CalibrationHint}" />
+
+                                <TextBlock Text="输出位置" Style="{StaticResource FieldLabel}" />
+                                <TextBox Text="{Binding OutputPath, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8" />
+                                <WrapPanel>
+                                    <Button Content="选择位置" Command="{Binding BrowseOutputCommand}" Style="{StaticResource CalibrationButton}" />
+                                    <Button Content="导出图案 PNG" Command="{Binding ExportPngCommand}" Style="{StaticResource CalibrationButton}" />
+                                </WrapPanel>
+                                <WrapPanel>
+                                    <Button Content="保存标定记录" Command="{Binding SaveSessionCommand}" Style="{StaticResource CalibrationButton}" />
+                                    <Button Content="打开标定记录" Command="{Binding OpenSessionCommand}" Style="{StaticResource CalibrationButton}" />
+                                </WrapPanel>
+                            </StackPanel>
+                        </Expander>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </ScrollViewer>
+        <StackPanel Grid.Row="2" Margin="0,10,0,0">
+            <ProgressBar Height="3" IsIndeterminate="True" Visibility="{Binding IsBusy, Converter={StaticResource PhotoStepVisibility}}" Margin="0,0,0,6" />
+            <TextBlock Text="{Binding StatusText}" Style="{StaticResource CalibrationHint}" FontSize="12" />
+        </StackPanel>
+    </Grid>
+</UserControl>

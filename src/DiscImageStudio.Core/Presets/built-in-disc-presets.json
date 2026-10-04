@@ -55,18 +55,21 @@
       "totalSectors": 2295104,
       "innerRadiusMm": 24.0,
       "outerRadiusMm": 58.0,
-      "channelBitLengthNm": 133.33,
+      "channelBitLengthNm": 133.3,
       "displayNameResourceKey": "DiscPreset_Dvd120Mm_DisplayName",
       "descriptionResourceKey": "DiscPreset_Dvd120Mm_Description"
     },
     {
       "id": "verbatim-dvd-r-azo-43533",
       "displayName": "Verbatim DVD-R AZO (43533)（实测）",
-      "description": "Verbatim DVD-R AZO 43533 实测数据区：23.9968875–57.9779875 mm，共 2,297,888 个扇区。",
+      "description": "Verbatim DVD-R AZO 43533 已验证标定参数：23.9914606277–57.9648936579 mm，共 2,297,888 个扇区；采用三次轨距分布。",
       "totalSectors": 2297888,
-      "innerRadiusMm": 23.9968875,
-      "outerRadiusMm": 57.9779875,
-      "channelBitLengthNm": 133.33,
+      "innerRadiusMm": 23.991460627731737,
+      "outerRadiusMm": 57.964893657925366,
+      "channelBitLengthNm": 133.3,
+      "pitchLinear": -3.9256854319227684E-05,
+      "pitchQuadratic": 6.964795915429256E-05,
+      "pitchCubic": -4.670918950137523E-05,
       "displayNameResourceKey": "DiscPreset_VerbatimDvdAzo43533_DisplayName",
       "descriptionResourceKey": "DiscPreset_VerbatimDvdAzo43533_Description"
     },
@@ -77,7 +80,7 @@
       "totalSectors": 714544,
       "innerRadiusMm": 24.0,
       "outerRadiusMm": 38.0,
-      "channelBitLengthNm": 133.33,
+      "channelBitLengthNm": 133.3,
       "displayNameResourceKey": "DiscPreset_Dvd80Mm_DisplayName",
       "descriptionResourceKey": "DiscPreset_Dvd80Mm_Description"
     }

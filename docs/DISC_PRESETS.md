@@ -28,15 +28,22 @@
 {
   "id": "verbatim-dvd-r-azo-43533",
   "displayName": "Verbatim DVD-R AZO (43533)（实测）",
-  "description": "Verbatim DVD-R AZO 43533 实测数据区：23.9968875–57.9779875 mm，共 2,297,888 个扇区。",
+  "description": "Verbatim DVD-R AZO 43533 已验证标定参数：23.9914606277–57.9648936579 mm，共 2,297,888 个扇区；采用三次轨距分布。",
   "totalSectors": 2297888,
-  "innerRadiusMm": 23.9968875,
-  "outerRadiusMm": 57.9779875,
-  "channelBitLengthNm": 133.33
+  "innerRadiusMm": 23.991460627731737,
+  "outerRadiusMm": 57.964893657925366,
+  "channelBitLengthNm": 133.3,
+  "pitchLinear": -3.9256854319227684E-05,
+  "pitchQuadratic": 6.964795915429256E-05,
+  "pitchCubic": -4.670918950137523E-05
 }
 ```
 
 DVD 的 `totalSectors` 必须大于 0 且是 16 的倍数，以满足 ECC Block 和流式刻录布局要求。`channelBitLengthNm` 见下节，属于保留字段。
+
+此 Verbatim DVD 预设来自用户确认已验证的 `calibration-f2f851f7.calibration.json`，保留记录中的完整参数精度。
+
+`pitchLinear`、`pitchQuadratic`、`pitchCubic` 是三次轨距的三个相对形状系数，缺省为 0，兼容旧预设。模型为 `p(x)=p0*(1+pitchLinear*x+pitchQuadratic*x²+pitchCubic*x³)`，`x=(r-innerRadiusMm)/(outerRadiusMm-innerRadiusMm)`。完整多项式有四项；`p0` 根据总轨长自动计算，界面显示四项的实际 μm 数值。整个 `0≤x≤1` 区间内轨距必须严格为正，不能仅检查内外边界。修改任一系数会切换到未保存的自定义状态，重新选择内置等轨距预设会恢复零系数。
 
 ## 添加 CD 预设
 
@@ -56,7 +63,7 @@ DVD 的 `totalSectors` 必须大于 0 且是 16 的倍数，以满足 ECC Block 
 
 ## 固定参数与保留字段
 
-扫描速度、起始角、图片外半径与 DVD channel bit 长度是方案固定的物理量，界面不提供对应表单，程序生成时一律采用 1200 mm/s（ECMA-130）、0°、57.5 mm 与 133.33 nm。
+扫描速度、起始角、图片外半径与 DVD channel bit 长度是方案固定的物理量，界面不提供对应表单，程序生成时一律采用 1200 mm/s（ECMA-130）、0°、57.5 mm 与 133.3 nm。
 
 它们在 JSON 中仍作为字段保留，原因是在旧版的配置文件中这几个参数是必要的，因此需要保证旧版本写出的用户文件可以直接使用。这两个值不参与生成计算。
 

@@ -40,6 +40,18 @@ TestDiscPresets();
 TestDiscPresetJson();
 CdAudioCompatibilityTests.Run();
 CdRawImageByteOrderTests.Run();
+DvdCubicPipelineTests.Run();
+AppCubicTests.Run();
+CalibrationEncoderTests.Run();
+CalibrationCoreTests.Run();
+CalibrationCubicPitchTests.Run();
+CalibrationCrossExtensionTests.Run();
+CalibrationShapeSeedTests.Run();
+CalibrationPhotoTests.Run();
+CalibrationPhotoCanvasTests.Run();
+CalibrationBurnWorkflowTests.Run();
+CalibrationOutputPublisherTests.Run();
+CalibrationPhotoViewModelTests.Run();
 
 Console.WriteLine("architecture-selftest: all checks passed");
 return;
@@ -202,14 +214,14 @@ static void TestDiscPresets()
         value => value.Id == "dvd-5-120mm");
     Equal(2_295_104U, dvd120.TotalSectors, "120 mm DVD preset sectors");
     Equal(
-        133.33,
+        133.3,
         dvd120.ChannelBitLengthNm,
         "DVD preset keeps the standard channel-bit length field");
     DvdDiscPresetDefinition verbatimDvd = builtIn.DvdPresets.Single(
         value => value.Id == "verbatim-dvd-r-azo-43533");
     Equal(2_297_888U, verbatimDvd.TotalSectors, "Verbatim DVD-R AZO 43533 sectors");
-    Equal(23.9968875, verbatimDvd.InnerRadiusMm, "Verbatim DVD-R AZO 43533 inner radius");
-    Equal(57.9779875, verbatimDvd.OuterRadiusMm, "Verbatim DVD-R AZO 43533 outer radius");
+    Equal(23.991460627731737, verbatimDvd.InnerRadiusMm, "Verbatim DVD-R AZO 43533 inner radius");
+    Equal(57.964893657925366, verbatimDvd.OuterRadiusMm, "Verbatim DVD-R AZO 43533 outer radius");
     DvdDiscPresetDefinition dvd80 = builtIn.DvdPresets.Single(
         value => value.Id == "dvd-5-80mm");
     Equal(714_544U, dvd80.TotalSectors, "80 mm DVD preset sectors");
@@ -392,7 +404,7 @@ static void TestDiscPresetJson()
             interim.CdPresets[0].LinearVelocityMmPerSecond,
             "interim schema without the field falls back to the CD standard");
         Equal(
-            133.33,
+            133.3,
             interim.DvdPresets[0].ChannelBitLengthNm,
             "interim schema without the field falls back to the DVD standard");
 

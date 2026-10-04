@@ -40,7 +40,11 @@ internal static class UnifiedCommandRunner
                     FindOption(snapshotArguments, "live-input"),
                     FindOption(snapshotArguments, "live-disc"),
                     FindOption(snapshotArguments, "live-mode"),
-                    FindOption(snapshotArguments, "live-processing"));
+                    FindOption(snapshotArguments, "live-processing"),
+                    int.Parse(FindOption(snapshotArguments, "width") ?? "1366"),
+                    int.Parse(FindOption(snapshotArguments, "height") ?? "768"),
+                    FindOption(snapshotArguments, "calibration-session"),
+                    FindOption(snapshotArguments, "calibration-view"));
             }
 
             if (command == "burn-devices")
@@ -101,7 +105,7 @@ internal static class UnifiedCommandRunner
             """
 
             Developer command:
-              ui-snapshot --output SCREENSHOT.png
+              ui-snapshot --output SCREENSHOT.png [--tab N] [--width 1366] [--height 768]
               burn-devices
               burn-build-info
 

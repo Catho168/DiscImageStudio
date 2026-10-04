@@ -267,6 +267,21 @@
                                             <TextBox Text="{Binding State.DvdOuterRadius, UpdateSourceTrigger=PropertyChanged}" />
                                         </StackPanel>
                                     </WrapPanel>
+                                    <WrapPanel>
+                                        <StackPanel Width="122" Margin="0,0,12,12">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="相对一次项" />
+                                            <TextBox Text="{Binding State.DvdPitchLinear, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Width="122" Margin="0,0,12,12">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="相对二次项" />
+                                            <TextBox Text="{Binding State.DvdPitchQuadratic, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Width="122" Margin="0,0,12,12">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="相对三次项" />
+                                            <TextBox Text="{Binding State.DvdPitchCubic, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                    </WrapPanel>
+                                    <TextBlock Style="{StaticResource HintText}" Text="{Binding State.DvdPitchSummary}" Margin="0,0,0,12" />
                                     <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,18"
                                                Text="校准值将同步到制作页，用于下一次生成。" />
                                 </StackPanel>
@@ -345,6 +360,21 @@
                                             <TextBox Text="{Binding State.DvdOuterRadius, UpdateSourceTrigger=PropertyChanged}" />
                                         </StackPanel>
                                     </WrapPanel>
+                                    <WrapPanel>
+                                        <StackPanel Width="122" Margin="0,0,12,12">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="相对一次项" />
+                                            <TextBox Text="{Binding State.DvdPitchLinear, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Width="122" Margin="0,0,12,12">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="相对二次项" />
+                                            <TextBox Text="{Binding State.DvdPitchQuadratic, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Width="122" Margin="0,0,12,12">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="相对三次项" />
+                                            <TextBox Text="{Binding State.DvdPitchCubic, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                    </WrapPanel>
+                                    <TextBlock Style="{StaticResource HintText}" Text="{Binding State.DvdPitchSummary}" Margin="0,0,0,12" />
     
                                     <TextBlock Text="实测参数" Style="{StaticResource SubHeading}" />
                                     <WrapPanel>
@@ -357,6 +387,18 @@
                                             <TextBox Text="{Binding State.DvdActualOuterRadius, UpdateSourceTrigger=PropertyChanged}" />
                                         </StackPanel>
                                         <StackPanel Width="122" Margin="0,0,12,12">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="相对一次项" />
+                                            <TextBox Text="{Binding State.DvdActualPitchLinear, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Width="122" Margin="0,0,12,12">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="相对二次项" />
+                                            <TextBox Text="{Binding State.DvdActualPitchQuadratic, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Width="122" Margin="0,0,12,12">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="相对三次项" />
+                                            <TextBox Text="{Binding State.DvdActualPitchCubic, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Width="122" Margin="0,0,12,12">
                                             <TextBlock Style="{StaticResource FieldLabel}" Text="导出尺寸 (px)" />
                                             <TextBox Text="{Binding State.DvdPreviewSize, UpdateSourceTrigger=PropertyChanged}" />
                                         </StackPanel>
@@ -367,6 +409,7 @@
                                     </WrapPanel>
                                     <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,12"
                                                Text="生成参数即您在进行镜像文件生成时使用的参数，实测参数则决定了预览的读取模式，即模拟真实情况下的盘片效果。" />
+                                    <TextBlock Style="{StaticResource HintText}" Text="{Binding State.DvdActualPitchSummary}" Margin="0,0,0,12" />
                                 </StackPanel>
                             </StackPanel>
     

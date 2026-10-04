@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using DiscImageStudio.Core;
 using DvdImageSolver;
 using DvdImageSolver.Encoding;
 using DvdImageSolver.Solver;
@@ -9,21 +10,25 @@ public sealed record DvdStreamingOptions(
     uint TotalSectors,
     double InnerRadiusMm,
     double OuterRadiusMm,
-    double ChannelBitLengthNm = 133.33,
+    double ChannelBitLengthNm = 133.3,
     double StartAngleDegrees = 0,
     byte LuminanceThreshold = 128,
     byte AlphaThreshold = 1,
     int RandomSeed = 1,
-    int FastParallelism = 0)
+    int FastParallelism = 0,
+    double PitchLinear = 0,
+    double PitchQuadratic = 0,
+    double PitchCubic = 0)
 {
     /// <summary>Physical channel-bit length of the DVD scheme; the UI no longer exposes it.</summary>
-    public const double StandardChannelBitLengthNm = 133.33;
+    public const double StandardChannelBitLengthNm = 133.3;
 
     public long ContentLength => checked(
         (long)TotalSectors * DvdEccBlockEncoder.PayloadBytesPerSector);
 
     public void Validate()
     {
+        DvdTrackGeometry.ValidatePitchCoefficients(PitchLinear, PitchQuadratic, PitchCubic);
         if (TotalSectors == 0 || TotalSectors % DvdEccBlockEncoder.SectorCount != 0)
         {
             throw new ArgumentOutOfRangeException(
@@ -61,6 +66,12 @@ public sealed record DvdStreamingOptions(
         }
 
         _ = ContentLength;
+        // Resolve the complete curve before a hybrid stream writes its filesystem
+        // prefix. Positive coefficients alone do not guarantee numerical resolution.
+        double trackLengthMm = TotalSectors * (double)DvdEccBlockEncoder.ChannelBitsPerSector
+            * ChannelBitLengthNm * 1e-6;
+        _ = DvdTrackGeometry.Create(InnerRadiusMm, OuterRadiusMm, trackLengthMm,
+            PitchLinear, PitchQuadratic, PitchCubic);
     }
 }
 
@@ -173,6 +184,45 @@ public static class DvdStreamingGenerator
             summary.Elapsed);
     }
 
+    /// <summary>
+    /// Generates calibration payload sectors directly from an analytic grayscale
+    /// pattern. Coordinates are millimetres from the disc centre, x right and y down.
+    /// The callback must support concurrent calls when parallel generation is enabled.
+    /// </summary>
+    public static DvdStreamingSummary GeneratePattern(
+        Func<double, double, byte> sampleGray,
+        Stream output,
+        DvdStreamingOptions options,
+        Action<DvdStreamingProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(sampleGray);
+        ArgumentNullException.ThrowIfNull(output);
+        ArgumentNullException.ThrowIfNull(options);
+        options.Validate();
+        MultiBlockSolveOptions solveOptions = CreateSolveOptions(
+            options,
+            startLba: 0,
+            fillSectors: options.TotalSectors);
+        FastDvdStreamSummary summary = FastDispersionImageWriter.WritePatternStream(
+            sampleGray,
+            output,
+            solveOptions,
+            value => progress?.Invoke(new DvdStreamingProgress(
+                value.BytesWritten,
+                value.TotalBytes,
+                value.CompletedBlocks,
+                value.TotalBlocks,
+                value.Elapsed)),
+            cancellationToken);
+        return new DvdStreamingSummary(
+            "calibration",
+            summary.SectorsWritten,
+            summary.BytesWritten,
+            summary.ControlledWords,
+            summary.Elapsed);
+    }
+
     public static DvdStreamingSummary GenerateHybrid(
         string imagePath,
         Stream output,
@@ -249,7 +299,10 @@ public static class DvdStreamingGenerator
             Clockwise: true,
             options.LuminanceThreshold,
             options.AlphaThreshold,
-            SampleEveryChannelBits: 1);
+            SampleEveryChannelBits: 1,
+            PitchLinear: options.PitchLinear,
+            PitchQuadratic: options.PitchQuadratic,
+            PitchCubic: options.PitchCubic);
         return new MultiBlockSolveOptions(
             startLba,
             fillSectors,

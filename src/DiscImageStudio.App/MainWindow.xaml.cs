@@ -40,6 +40,7 @@ public partial class MainWindow : Window
             new LivePreviewView(_shell.LivePreview),
             new LogView(_shell, _shell.Log),
             new AboutView(_shell.About),
+            new CalibrationView(_shell.Calibration),
         ];
         _navItems =
         [
@@ -50,6 +51,7 @@ public partial class MainWindow : Window
             (NavBurn, ShellViewModel.BurnTabIndex),
             (NavLog, ShellViewModel.LogTabIndex),
             (NavAbout, ShellViewModel.AboutTabIndex),
+            (NavCalibration, ShellViewModel.CalibrationTabIndex),
         ];
         foreach ((SideNavItem item, int pageIndex) in _navItems)
         {
@@ -99,6 +101,10 @@ public partial class MainWindow : Window
         }
 
         _shell.SelectPage(selectedTab);
+        if (selectedTab == ShellViewModel.CalibrationTabIndex)
+        {
+            _shell.Calibration.EnsureTarget();
+        }
         if (!string.IsNullOrWhiteSpace(previewPath))
         {
             string fullPath = Path.GetFullPath(previewPath);
@@ -148,6 +154,38 @@ public partial class MainWindow : Window
         }
     }
 
+    internal async Task LoadCalibrationSnapshotAsync(string path)
+    {
+        _shell.SelectPage(ShellViewModel.CalibrationTabIndex);
+        await _shell.Calibration.LoadSessionFromAsync(path);
+        if (_shell.Calibration.SolveCommand.CanExecute(null))
+            await _shell.Calibration.SolveCommand.ExecuteAsync(null);
+    }
+
+    internal void ConfigureCalibrationSnapshotView(string mode)
+    {
+        if (mode is not ("pattern" or "closeup"))
+            throw new ArgumentException("Calibration snapshot view must be pattern or closeup.");
+        _shell.SelectPage(ShellViewModel.CalibrationTabIndex);
+        var view = (CalibrationView)_pages[ShellViewModel.CalibrationTabIndex];
+        var toggle = (CheckBox)view.FindName("TargetPreviewToggle");
+        toggle.IsChecked = mode == "pattern";
+        UpdateLayout();
+        var canvas = (CalibrationPhotoCanvas)view.FindName("PhotoCanvas");
+        canvas.ResetView();
+        if (mode != "closeup") return;
+        var points = _shell.Calibration.TracePoints;
+        if (points.Count < 2) throw new InvalidOperationException("Closeup needs a loaded calibration trace.");
+        var minimum = new Point(points.Min(p => p.XMm), points.Min(p => p.YMm));
+        var maximum = new Point(points.Max(p => p.XMm), points.Max(p => p.YMm));
+        Point a = canvas.WorldToView(minimum), b = canvas.WorldToView(maximum);
+        double zoom = Math.Min((canvas.ActualWidth - 90) / Math.Max(1, b.X - a.X),
+            (canvas.ActualHeight - 90) / Math.Max(1, b.Y - a.Y));
+        canvas.ZoomBy(Math.Clamp(zoom, 1, 8));
+        Point center = canvas.WorldToView(new Point((minimum.X + maximum.X) / 2, (minimum.Y + maximum.Y) / 2));
+        canvas.PanBy(new Point(canvas.ActualWidth / 2, canvas.ActualHeight / 2) - center);
+    }
+
     // ---- Window lifecycle ----
 
     private void MainWindow_Loaded(object sender, RoutedEventArgs e)
@@ -157,7 +195,10 @@ public partial class MainWindow : Window
     }
 
     private void MainWindow_Closed(object? sender, EventArgs e)
-        => _shell.LivePreview.OnWindowClosed();
+    {
+        _shell.LivePreview.OnWindowClosed();
+        _shell.Calibration.OnWindowClosed();
+    }
 
     private void Shell_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {

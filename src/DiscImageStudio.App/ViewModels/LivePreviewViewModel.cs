@@ -209,7 +209,10 @@ public partial class LivePreviewViewModel : ObservableObject
         string outerRadius = FormatNumber(metadata.OuterRadiusMm);
         if (state.DvdTotalSectors.Trim() == totalSectors
             && state.DvdInnerRadius.Trim() == innerRadius
-            && state.DvdOuterRadius.Trim() == outerRadius)
+            && state.DvdOuterRadius.Trim() == outerRadius
+            && state.DvdPitchLinear.Trim() == FormatNumber(metadata.PitchLinear)
+            && state.DvdPitchQuadratic.Trim() == FormatNumber(metadata.PitchQuadratic)
+            && state.DvdPitchCubic.Trim() == FormatNumber(metadata.PitchCubic))
         {
             return;
         }
@@ -217,9 +220,12 @@ public partial class LivePreviewViewModel : ObservableObject
         state.DvdTotalSectors = totalSectors;
         state.DvdInnerRadius = innerRadius;
         state.DvdOuterRadius = outerRadius;
+        state.DvdPitchLinear = FormatNumber(metadata.PitchLinear);
+        state.DvdPitchQuadratic = FormatNumber(metadata.PitchQuadratic);
+        state.DvdPitchCubic = FormatNumber(metadata.PitchCubic);
         _shell.AppendLog(
             $"[{DateTime.Now:HH:mm:ss}] 已按 {System.IO.Path.GetFileName(isoPath)} 的生成参数载入标定几何："
-            + $"r0={innerRadius} mm, r1={outerRadius} mm, {totalSectors} 总扇区。\n");
+            + $"r0={innerRadius} mm, r1={outerRadius} mm, {totalSectors} 总扇区；{state.DvdPitchSummary}\n");
     }
 
     private static string FormatNumber(double value)
@@ -890,6 +896,9 @@ public partial class LivePreviewViewModel : ObservableObject
                 "--total-sectors", totalSectorsValue.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 "--inner-radius-mm", innerRadius.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
                 "--outer-radius-mm", outerRadius.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+                "--pitch-linear", _state.DvdPitchLinear.Trim(),
+                "--pitch-quadratic", _state.DvdPitchQuadratic.Trim(),
+                "--pitch-cubic", _state.DvdPitchCubic.Trim(),
                 "--spiral-direction", "cw",
                 "--preview-size", outputSize.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 "--samples-per-sector", samplesPerSector.ToString(System.Globalization.CultureInfo.InvariantCulture),
@@ -907,7 +916,7 @@ public partial class LivePreviewViewModel : ObservableObject
     /// <summary>
     /// Calibration variables of the DVD projection. Unlike the read-back path, the command
     /// carries both radii pairs: the solver lays the picture out at the generated radii and
-    /// projects it onto the measured ones. Channel bit (133.33 nm) and start angle (0°) stay
+    /// projects it onto the measured ones. Channel bit (133.3 nm) and start angle (0°) stay
     /// the physical constants of the scheme.
     /// </summary>
     private bool TryBuildDvdCalibrateCommand(
@@ -984,6 +993,12 @@ public partial class LivePreviewViewModel : ObservableObject
                 "--generated-outer-radius-mm", generatedOuter.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
                 "--actual-inner-radius-mm", actualInner.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
                 "--actual-outer-radius-mm", actualOuter.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+                "--pitch-linear", _state.DvdPitchLinear.Trim(),
+                "--pitch-quadratic", _state.DvdPitchQuadratic.Trim(),
+                "--pitch-cubic", _state.DvdPitchCubic.Trim(),
+                "--actual-pitch-linear", _state.DvdActualPitchLinear.Trim(),
+                "--actual-pitch-quadratic", _state.DvdActualPitchQuadratic.Trim(),
+                "--actual-pitch-cubic", _state.DvdActualPitchCubic.Trim(),
                 "--spiral-direction", "cw",
                 "--image-threshold", "128",
                 "--alpha-threshold", "1",
