@@ -334,7 +334,10 @@ internal static class BluRayModuleTests
             Throws<IOException>(() => Run(failedLoader, "bd-generate", Args("--total-sectors", "1024")));
             True(File.ReadAllBytes(output).SequenceEqual(original), "image loading failure preserves output");
             True(File.ReadAllBytes(source).SequenceEqual(original), "generation preserves source");
-            Equal(2, Directory.GetFiles(directory).Length, "picture partial files cleaned");
+            // Source, generated ISO and its recovery sidecar. A failed or cancelled run
+            // must not add further partial artifacts.
+            Equal(3, Directory.GetFiles(directory).Length, "picture partial files cleaned");
+            True(File.Exists(BluRayIsoMetadata.PathFor(output)), "picture sidecar survives the run");
         }
         finally { Directory.Delete(directory, recursive: true); }
     }

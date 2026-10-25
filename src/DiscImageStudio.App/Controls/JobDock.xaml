@@ -39,6 +39,10 @@
                              Value="{Binding JobProgressValue, Mode=OneWay}"
                              Visibility="{Binding JobProgressVisibility}" />
                 <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Style="{StaticResource CompactButton}" Content="取消"
+                            Command="{Binding CancelJobCommand}" Margin="0,0,8,0"
+                            Visibility="{Binding CancelJobVisibility}"
+                            ToolTip="停止正在运行且支持取消的任务。" />
                     <!-- Result and log actions appear with the thing they act on: a project with
                          nothing generated yet shows only the status line. -->
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center"

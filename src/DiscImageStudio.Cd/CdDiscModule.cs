@@ -33,6 +33,7 @@ public sealed class CdDiscModule : IOpticalDiscModule
         new("tone-dither", "Dither strength", DiscOptionValueType.Decimal, DefaultValue: "0", Unit: "0..1"),
         new("tone-levels", "Palette levels", DiscOptionValueType.Integer, DefaultValue: "2", Unit: "2 or 4"),
         new("tone-brightness", "Tone brightness", DiscOptionValueType.Decimal, DefaultValue: "0", Unit: "-64..64"),
+        new("tone-gamma", "sRGB linearization", DiscOptionValueType.Boolean, DefaultValue: "false"),
     ];
 
     private static readonly DiscModuleDescriptor ModuleDescriptor = new(
@@ -204,7 +205,8 @@ public sealed class CdDiscModule : IOpticalDiscModule
         ToneProfile tone = new(
             options.GetDouble("tone-dither", 0.0),
             options.GetInt("tone-levels", ToneProfile.TwoLevels),
-            options.GetDouble("tone-brightness", 0.0));
+            options.GetDouble("tone-brightness", 0.0),
+            options.GetBoolean("tone-gamma", false));
         tone.Validate();
         return tone;
     }

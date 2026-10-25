@@ -44,8 +44,8 @@ public static class UdfImageWriter
         public long FileBytes { get; }
         public uint DataEndLbaExclusive { get; }
         public uint DrawingEndLbaExclusive { get; }
-        internal string VolumeLabel { get; }
-        internal DateTimeOffset Timestamp { get; }
+        public string VolumeLabel { get; }
+        public DateTimeOffset Timestamp { get; }
         internal List<Node> Nodes { get; }
         internal uint ReserveVdsLba => VolumeSectors - 256;
         internal uint PartitionSectors => DataEndLbaExclusive - PartitionLba;

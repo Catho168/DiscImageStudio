@@ -909,7 +909,8 @@ internal static class Program
     {
         if (!arguments.Has("tone-dither")
             && !arguments.Has("tone-levels")
-            && !arguments.Has("tone-brightness"))
+            && !arguments.Has("tone-brightness")
+            && !arguments.Has("tone-gamma"))
         {
             return null;
         }
@@ -917,7 +918,8 @@ internal static class Program
         ToneProfile tone = new(
             arguments.GetDouble("tone-dither", 0),
             arguments.GetInt("tone-levels", ToneProfile.TwoLevels),
-            arguments.GetDouble("tone-brightness", 0));
+            arguments.GetDouble("tone-brightness", 0),
+            arguments.GetBoolean("tone-gamma", false));
         tone.Validate();
         if (!tone.IsDvdCompatible)
         {
@@ -1425,6 +1427,7 @@ internal static class Program
               --tone-dither 0..1        Mix black/white textures per sample; 0 is the hard threshold
               --tone-levels 2           DVD dispersion has two textures; only 2 is accepted
               --tone-brightness N       Shift the tone ramp by -64..64 (default 0)
+              --tone-gamma true|false   Decode sRGB before dithering (default false)
               --alpha-threshold 1..255  Lower alpha is unconstrained (default 1)
               --constraint-output FILE  Save the mapped 619008-symbol target
               --constraint-step N       Constrain every Nth channel bit (single block default 1)

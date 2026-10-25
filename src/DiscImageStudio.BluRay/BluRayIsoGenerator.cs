@@ -34,6 +34,8 @@ public sealed class BluRayIsoPlan
     public uint TotalSectors => Disc.TotalSectors;
     public long ContentLength => Disc.ContentLength;
     public string? DataDirectory => _filesystem?.SourceDirectory is { Length: > 0 } source ? source : null;
+    public string? VolumeLabel => _filesystem?.VolumeLabel;
+    public DateTimeOffset? UdfTimestamp => _filesystem?.Timestamp;
     public int FileCount => _filesystem?.FileCount ?? 0;
     public int DirectoryCount => _filesystem?.DirectoryCount ?? 0;
     public long FileBytes => _filesystem?.FileBytes ?? 0;

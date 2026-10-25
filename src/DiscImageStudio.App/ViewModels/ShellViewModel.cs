@@ -48,6 +48,7 @@ public partial class ShellViewModel : ObservableObject
         Design.CompositeRendered += Design_CompositeRendered;
         Design.DesignEdited += () => MarkProjectDirty();
         OpenOutputCommand = new RelayCommand(OpenOutput, () => OpenOutputEnabled);
+        CancelJobCommand = new RelayCommand(CancelJob, () => IsJobRunning && _jobCancellation is not null);
         PreviewLastOutputCommand = new RelayCommand(PreviewLastOutput, () => CanPreviewLastOutput);
         ToggleJobDockCommand = new RelayCommand(() => IsJobDockExpanded = !IsJobDockExpanded);
         ClearLogCommand = new RelayCommand(ClearLog, () => HasLogContent);
@@ -204,7 +205,16 @@ public partial class ShellViewModel : ObservableObject
     public Visibility JobProgressVisibility =>
         IsJobRunning || JobHasResult ? Visibility.Visible : Visibility.Collapsed;
 
-    partial void OnIsJobRunningChanged(bool value) => OnPropertyChanged(nameof(JobProgressVisibility));
+    partial void OnIsJobRunningChanged(bool value)
+    {
+        OnPropertyChanged(nameof(JobProgressVisibility));
+        OnPropertyChanged(nameof(CancelJobVisibility));
+        CancelJobCommand?.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>The cancel action exists only when the running module accepts a token.</summary>
+    public Visibility CancelJobVisibility =>
+        IsJobRunning && _jobCancellation is not null ? Visibility.Visible : Visibility.Collapsed;
 
     partial void OnJobHasResultChanged(bool value)
     {
@@ -231,6 +241,21 @@ public partial class ShellViewModel : ObservableObject
 
     /// <summary>Reveals the last job's output folder; shared by the job dock.</summary>
     public RelayCommand OpenOutputCommand { get; }
+
+    public RelayCommand CancelJobCommand { get; }
+
+    private CancellationTokenSource? _jobCancellation;
+
+    private void CancelJob()
+    {
+        if (_jobCancellation is not { } cancellation)
+        {
+            return;
+        }
+
+        JobStatusText = "正在取消…";
+        cancellation.Cancel();
+    }
 
     /// <summary>Opens the last disc artifact in the read-back preview workspace.</summary>
     public RelayCommand PreviewLastOutputCommand { get; }
@@ -915,28 +940,54 @@ public partial class ShellViewModel : ObservableObject
         JobProgressValue = 0;
         IsJobProgressIndeterminate = true;
         JobHasResult = false;
+        bool canCancel = UnifiedCommandRunner.SupportsCancellation(arguments[0]);
+        using CancellationTokenSource? cancellation = canCancel ? new CancellationTokenSource() : null;
+        _jobCancellation = cancellation;
+        OnPropertyChanged(nameof(CancelJobVisibility));
+        CancelJobCommand.NotifyCanExecuteChanged();
         SetBusy(true);
 
         LogAppended?.Invoke($"\n[{DateTime.Now:HH:mm:ss}] {status}\n");
-        DispatcherTextWriter writer = new(_dispatcher, AppendLog);
-        TextWriter previousOutput = Console.Out;
-        TextWriter previousError = Console.Error;
-        int exitCode;
+        Progress<DiscJobProgress> progress = new(value =>
+        {
+            IsJobProgressIndeterminate = false;
+            JobProgressValue = Math.Clamp((value.Fraction ?? 0) * 100, 0, 100);
+            JobStatusText = value.Message;
+        });
+        int exitCode = -1;
+        bool canceled = false;
         try
         {
-            Console.SetOut(writer);
-            Console.SetError(writer);
-            exitCode = await StaWorker.RunAsync(() => UnifiedCommandRunner.Run(arguments));
-            writer.Flush();
+            DiscJobResult result = await StaWorker.RunAsync(
+                () => UnifiedCommandRunner.RunJob(arguments, progress, cancellation?.Token ?? default));
+            AppendLog(result.Summary ?? string.Empty);
+            exitCode = result.ExitCode;
+        }
+        catch (OperationCanceledException)
+        {
+            canceled = true;
+        }
+        catch (Exception exception)
+        {
+            AppendLog($"[{DateTime.Now:HH:mm:ss}] 任务异常：{exception.Message}\n");
         }
         finally
         {
-            Console.SetOut(previousOutput);
-            Console.SetError(previousError);
+            _jobCancellation = null;
+            OnPropertyChanged(nameof(CancelJobVisibility));
+            CancelJobCommand.NotifyCanExecuteChanged();
             SetBusy(false);
         }
 
-        if (exitCode == 0)
+        if (canceled)
+        {
+            IsJobProgressIndeterminate = false;
+            JobProgressValue = 0;
+            JobStatusText = "已取消";
+            AppendLog($"[{DateTime.Now:HH:mm:ss}] 任务已取消\n");
+            ShowToast("任务已取消", "未完成的输出文件可能留在磁盘上。", ToastKind.Info);
+        }
+        else if (exitCode == 0)
         {
             _lastOutputPath = Path.GetFullPath(outputPath);
             OpenOutputEnabled = true;

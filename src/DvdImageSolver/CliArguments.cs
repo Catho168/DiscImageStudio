@@ -68,6 +68,9 @@ internal sealed class CliArguments
             ? double.Parse(value, NumberStyles.Float, CultureInfo.InvariantCulture)
             : fallback;
 
+    internal bool GetBoolean(string key, bool fallback)
+        => _values.TryGetValue(key, out string? value) ? bool.Parse(value) : fallback;
+
     internal bool Has(string key) => _values.ContainsKey(key);
 
     private static uint ParseUInt(string value)

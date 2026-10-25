@@ -35,6 +35,8 @@ public partial class ExportViewModel : ObservableObject
                 or nameof(ShellViewModel.CurrentProject))
             {
                 OnPropertyChanged(nameof(IsDvd));
+                OnPropertyChanged(nameof(IsBluRay));
+                OnPropertyChanged(nameof(FamilyLabel));
                 OnPropertyChanged(nameof(GenerateButtonText));
                 UpdateSourceSummary();
             }
@@ -45,15 +47,17 @@ public partial class ExportViewModel : ObservableObject
 
     public bool IsDvd => _shell.CurrentProject?.IsDvd ?? false;
 
+    public bool IsBluRay => _shell.CurrentProject?.IsBluRay ?? false;
+
     /// <summary>False while the design page has no layers; the source row then offers the
     /// jump to where the picture comes from instead of a dead end.</summary>
     public bool HasLayers => _design.Layers.Count > 0;
 
     /// <summary>Family chip in the page header.</summary>
-    public string FamilyLabel => IsDvd ? "DVD" : "CD";
+    public string FamilyLabel => _shell.CurrentProject?.FamilyLabel ?? "CD";
 
     /// <summary>Primary action label: the artifact differs per family (WAV track vs ISO).</summary>
-    public string GenerateButtonText => IsDvd ? "生成镜像" : "生成音轨";
+    public string GenerateButtonText => _shell.CurrentProject?.IsCd == false ? "生成镜像" : "生成音轨";
 
     /// <summary>The source card's jump into the project dialog, where the generation geometry
     /// is edited; every other workspace shows the same affordance for the same reason.</summary>
@@ -80,7 +84,15 @@ public partial class ExportViewModel : ObservableObject
 
     private void BrowseOutput()
     {
-        if (IsDvd)
+        if (IsBluRay)
+        {
+            string? iso = _shell.Dialogs?.PickSave("ISO 镜像|*.iso|所有文件|*.*", ".iso", "bd-image.iso");
+            if (iso is not null)
+            {
+                _state.BdOutputPath = iso;
+            }
+        }
+        else if (IsDvd)
         {
             string? iso = _shell.Dialogs?.PickSave("ISO 镜像|*.iso|所有文件|*.*", ".iso", "dvd-image.iso");
             if (iso is not null)
@@ -100,10 +112,21 @@ public partial class ExportViewModel : ObservableObject
 
     private void BrowseData()
     {
-        string? picked = _shell.Dialogs?.PickFolder("选择要放入 DVD 内圈的文件夹");
-        if (picked is not null)
+        if (IsBluRay)
         {
-            _state.DvdDataDirectory = picked;
+            string? picked = _shell.Dialogs?.PickFolder("选择要放入蓝光内圈的文件夹");
+            if (picked is not null)
+            {
+                _state.BdDataDirectory = picked;
+            }
+
+            return;
+        }
+
+        string? dvdFolder = _shell.Dialogs?.PickFolder("选择要放入 DVD 内圈的文件夹");
+        if (dvdFolder is not null)
+        {
+            _state.DvdDataDirectory = dvdFolder;
         }
     }
 
@@ -129,7 +152,11 @@ public partial class ExportViewModel : ObservableObject
             // The composite renders here at export quality even when the design page has not
             // been visited in this session, so a reopened project can generate immediately.
             string compositePath = await _design.EnsureExportCompositeAsync();
-            if (IsDvd)
+            if (IsBluRay)
+            {
+                await GenerateBluRayAsync(compositePath);
+            }
+            else if (IsDvd)
             {
                 await GenerateDvdAsync(compositePath);
             }
@@ -161,6 +188,7 @@ public partial class ExportViewModel : ObservableObject
             "--tone-dither", tone.DitherStrength.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
             "--tone-levels", tone.Levels.ToString(System.Globalization.CultureInfo.InvariantCulture),
             "--tone-brightness", tone.Brightness.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+            "--tone-gamma", tone.SrgbLinearization.ToString().ToLowerInvariant(),
         ]);
         await _shell.RunDiscJobAsync(
             "正在生成 CD 音轨…",
@@ -191,6 +219,7 @@ public partial class ExportViewModel : ObservableObject
             "--tone-dither", tone.DitherStrength.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
             "--tone-levels", "2",
             "--tone-brightness", tone.Brightness.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+            "--tone-gamma", tone.SrgbLinearization.ToString().ToLowerInvariant(),
             "--algorithm", "dispersion",
             "--iterations-per-block", "1",
             "--fast-output", "true",
@@ -213,6 +242,40 @@ public partial class ExportViewModel : ObservableObject
             output);
         // The generated ISO is the live preview page's read-back input.
         _state.DvdIsoPath = output;
+    }
+
+    private async Task GenerateBluRayAsync(string compositePath)
+    {
+        string output = RequirePath(_state.BdOutputPath, "请选择蓝光 ISO 输出位置。");
+        ToneProfile tone = _state.BluRayTone;
+        List<string> arguments =
+        [
+            "bd-generate",
+            "--input", compositePath,
+            "--output", output,
+            "--total-sectors", _state.BdTotalSectors.Trim(),
+            "--r0", _state.BdInnerRadius.Trim(),
+            "--r1", _state.BdOuterRadius.Trim(),
+            "--invert", _state.BdInvertMapping.ToString().ToLowerInvariant(),
+            "--volume-label", string.IsNullOrWhiteSpace(_state.BdVolumeLabel)
+                ? "BD_IMAGE" : _state.BdVolumeLabel.Trim(),
+            "--tone-dither", tone.DitherStrength.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+            "--tone-levels", "2",
+            "--tone-brightness", tone.Brightness.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+            "--tone-gamma", tone.SrgbLinearization.ToString().ToLowerInvariant(),
+        ];
+        if (!string.IsNullOrWhiteSpace(_state.BdDataDirectory))
+        {
+            arguments.Add("--data-dir");
+            arguments.Add(_state.BdDataDirectory.Trim());
+        }
+
+        await _shell.RunDiscJobAsync(
+            "正在生成蓝光 ISO…",
+            arguments.ToArray(),
+            output);
+        // The generated ISO and its sidecar are the live preview page's read-back input.
+        _state.BdIsoPath = output;
     }
 
     private static string RequirePath(string raw, string message)
