@@ -60,8 +60,7 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
         <controls:PageHeader Grid.Row="0" Title="设计" Badge="{Binding FamilyLabel}"
-                             Workspace="{x:Static vm:Workspace.Design}"
-                             Hint="导入图片后，可在盘面上拖动移动（或选中后用方向键移动）、用角点缩放、用上方圆柄旋转（按住 Shift 吸附直角）；右侧属性面板可输入精确数值。图层列表自上而下即叠放顺序，上层遮盖下层。">
+                             Workspace="{x:Static vm:Workspace.Design}">
             <controls:PageHeader.Actions>
                 <Button Style="{StaticResource CompactButton}" Content="下一步：预览"
                         Command="{Binding NavigateCommand}"
@@ -168,13 +167,13 @@
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,10"
                                         Visibility="{Binding HasSelectionVisibility}">
                                 <Button Style="{StaticResource IconButton}" Command="{Binding MoveSelectedUpCommand}"
-                                        AutomationProperties.Name="上移图层" ToolTip="上移一层（更靠近顶层）">
+                                        AutomationProperties.Name="上移图层" ToolTip="上移一层">
                                     <iconPacks:PackIconLucide Kind="ArrowUp" Width="15" Height="15"
                                                               Foreground="{StaticResource TextSecondaryBrush}" />
                                 </Button>
                                 <Button Style="{StaticResource IconButton}" Margin="6,0,0,0"
                                         Command="{Binding MoveSelectedDownCommand}"
-                                        AutomationProperties.Name="下移图层" ToolTip="下移一层（更靠近底层）">
+                                        AutomationProperties.Name="下移图层" ToolTip="下移一层">
                                     <iconPacks:PackIconLucide Kind="ArrowDown" Width="15" Height="15"
                                                               Foreground="{StaticResource TextSecondaryBrush}" />
                                 </Button>

@@ -3,15 +3,16 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="clr-namespace:DiscImageStudio.Controls"
         Title="关于 Disc Image Studio"
-        Width="720" Height="640" MinWidth="620" MinHeight="520"
+        Width="720" SizeToContent="Height"
+        MaxHeight="720"
         WindowStartupLocation="CenterOwner"
-        WindowStyle="None" ResizeMode="CanResize"
+        WindowStyle="None" ResizeMode="NoResize"
         Background="{StaticResource BackgroundBrush}"
         FontFamily="{StaticResource AppFontFamily}"
         UseLayoutRounding="True" SnapsToDevicePixels="True">
     <WindowChrome.WindowChrome>
         <WindowChrome GlassFrameThickness="0" CaptionHeight="32" CornerRadius="0"
-                      ResizeBorderThickness="7" UseAeroCaptionButtons="False" />
+                      ResizeBorderThickness="0" UseAeroCaptionButtons="False" />
     </WindowChrome.WindowChrome>
 
     <Grid>
@@ -39,7 +40,7 @@
                 <TextBlock Style="{StaticResource BodyText}" Margin="0,24,0,0"
                            Text="Disc Image Studio是帮助您在光盘表面印刷图案的一站式工作台。" />
                 <TextBlock Style="{StaticResource CompactHint}" Margin="0,8,0,0" TextWrapping="Wrap"
-                           Text="本项目以 GNU General Public License v3.0 or later 发布；重新分发二进制时须随附对应源代码并保留第三方声明。" />
+                           Text="本项目以 GNU General Public License v3.0 or later 发布；重新分发须随附对应源代码并保留第三方声明。" />
 
                 <StackPanel Margin="0,20,0,0">
                     <TextBlock Style="{StaticResource FieldLabel}" Text="开源组件" />

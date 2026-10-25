@@ -15,7 +15,7 @@
         </Grid.RowDefinitions>
         <controls:PageHeader Grid.Row="0" Title="辅助标定"
                              Workspace="{x:Static vm:Workspace.Calibration}"
-                             Hint="标定解决的是实测半径与轨距：用一张实拍盘的曲线反推本批盘片的真实几何，再套用到整个工程。" />
+                             Hint="通过 Disc Image Studio 内置的智能算法，您可以利用数张实拍图片轻松确定盘片的真实物理数据" />
         <!-- One scroll surface: in the wide layout the work area is exactly the viewport tall
              (the step column is an accordion that never grows past it), in the narrow layout
              it stacks and the page scrolls as one. -->
@@ -170,7 +170,7 @@
                                 <!-- The target follows the project family (no manual disc-type
                                      switch): the line under the button names the parameters a
                                      new target is built from. -->
-                                <Button Content="从当前参数建新标靶" Command="{Binding CreateTargetCommand}"
+                                <Button Content="从当前参数新建标靶" Command="{Binding CreateTargetCommand}"
                                         Style="{StaticResource CompactPrimaryButton}" HorizontalAlignment="Stretch"
                                         Margin="0,0,0,10" />
                                 <TextBlock Text="{Binding CurrentParametersSummary}" Style="{StaticResource CompactHint}"
@@ -178,13 +178,13 @@
 
                                 <!-- Two delivery paths, named by what the user does next:
                                      burn here, or take a generated file to another burner. -->
-                                <TextBlock Text="前往刻录" Style="{StaticResource FieldLabel}" Margin="0,14,0,6" />
+                                <TextBlock Text="刻录" Style="{StaticResource FieldLabel}" Margin="0,14,0,6" />
                                 <Button Content="前往流式刻录" Command="{Binding StreamBurnCommand}"
                                         Style="{StaticResource CompactButton}" HorizontalAlignment="Left"
-                                        ToolTip="保存标定记录后前往刻录工作区，那里选择设备并确认写入。" />
+                                        ToolTip="前往刻录工作区，选择设备并确认写入。" />
 
                                 <TextBlock Text="外部刻录" Style="{StaticResource FieldLabel}" Margin="0,14,0,6" />
-                                <TextBlock Text="生成镜像或音轨，用其他刻录软件写入。"
+                                <TextBlock Text="生成镜像或音轨，用外部刻录软件写入。"
                                            Style="{StaticResource CompactHint}" Margin="0,0,0,8" />
                                 <controls:PathField Compact="True" Margin="0,0,0,12"
                                                     Text="{Binding OutputPath}" ButtonLabel="选择位置"
@@ -211,7 +211,7 @@
                                            State="{Binding StepTwoState}"
                                            IsExpanded="{Binding StepTwoExpanded, Mode=TwoWay}">
                             <StackPanel>
-                                <TextBlock Text="拍清外缘、实体内缘和一条径向曲线。合理打光即可，无需涂黑；控制点贴实体外缘与内缘，避开刻录区与透明塑料环。"
+                                <TextBlock Text="拍清外缘、内缘和至少一条径向曲线。合理打光，无需涂黑；控制点定位于实体外缘与内缘。"
                                            Style="{StaticResource CompactHint}" Margin="0,0,0,8" />
                                 <Button Content="导入盘片照片" Command="{Binding ImportPhotoCommand}"
                                         Style="{StaticResource CompactPrimaryButton}" Margin="0,0,0,8"
@@ -235,7 +235,7 @@
                                            State="{Binding StepThreeState}"
                                            IsExpanded="{Binding StepThreeExpanded, Mode=TwoWay}">
                             <StackPanel>
-                                <TextBlock Text="沿清楚的曲线由内向外均匀打点，建议 20 点以上。预设内外半径只是生成基准，不裁剪照片点；无需对准圆环或读数。"
+                                <TextBlock Text="沿清楚的曲线由内向外均匀打点，建议 16 点以上。"
                                            Style="{StaticResource CompactHint}" Margin="0,0,0,8" />
                                 <Button Content="返回修正照片" Command="{Binding BackToPhotoCommand}"
                                         Style="{StaticResource CompactButton}" HorizontalAlignment="Stretch" Margin="0,0,0,10" />
@@ -243,7 +243,7 @@
                                     <StackPanel Margin="0,0,0,10">
                                         <CheckBox IsChecked="{Binding FitDvdPitch, Mode=TwoWay}" Content="拟合 DVD 三次轨距分布"
                                                   Style="{StaticResource CompactCheckBox}" Margin="0,0,0,8" />
-                                        <TextBlock Text="至少 12 个不同半径的点，覆盖刻录环带宽度的 60% 以上；不足时保留原轨距系数，只拟合半径。轨距常数项由总长度自动计算。"
+                                        <TextBlock Text="至少 16 个不同半径的点，覆盖刻录环带宽度的 60% 以上。"
                                                    Style="{StaticResource CompactHint}" />
                                     </StackPanel>
                                 </controls:VisibilityGate>
@@ -258,8 +258,6 @@
                                                   ItemsSource="{Binding CoarseSearchRangeChoices}"
                                                   SelectedItem="{Binding SelectedCoarseSearchRange, Mode=TwoWay}"
                                                   DisplayMemberPath="Label" />
-                                        <TextBlock Text="范围只限制半径搜索；自动会在最优靠边时扩大，不会改变曲线模型。"
-                                                   Style="{StaticResource CompactHint}" Margin="0,6,0,0" />
                                     </StackPanel>
                                 </Expander>
                                 <WrapPanel Margin="0,0,0,10">

@@ -11,7 +11,7 @@
         <StackPanel MaxWidth="1120" Margin="{StaticResource PagePadding}">
             <TextBlock Text="Disc Image Studio" Style="{StaticResource H1Title}" />
             <TextBlock Style="{StaticResource PageSubtitle}" Margin="0,8,0,0"
-                       Text="把图层合成到盘面，生成 CD 音轨或 DVD 图像盘并刻录。流程：设计 → 预览 → 导出 → 刻录；标定可实测盘片几何。" />
+                       Text="全能的光盘盘面可见图像生成与刻录工作台" />
 
             <!-- One card for the three ways forward: the open project on the left, starting
                  something else on the right. The project name appears once, on the control that

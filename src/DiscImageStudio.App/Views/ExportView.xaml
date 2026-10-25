@@ -7,7 +7,7 @@
         <StackPanel Margin="{StaticResource PagePadding}">
             <controls:PageHeader Title="导出" Badge="{Binding FamilyLabel}"
                                  Workspace="{x:Static vm:Workspace.Export}"
-                                 Hint="把设计页的合成图写成 CD 音轨、DVD 镜像或蓝光 ISO。要把内容直接写入空白盘片，请前往刻录工作区；几何参数在工程设置中修改。">
+                                 Hint="导出设计页的合成图为可刻录的镜像。相关参数请在“工程设置”中修改">
                 <controls:PageHeader.Actions>
                     <Button Style="{StaticResource CompactButton}" Content="下一步：刻录"
                             Command="{Binding NavigateCommand}"
@@ -57,7 +57,7 @@
                             <TextBlock Style="{StaticResource FieldLabel}" Margin="0,14,0,2"
                                        Text="CD-DA 编码" />
                             <controls:InterleaveToggle IsChecked="{Binding State.CdInterleave}"
-                                                       Hint="生成音轨时按 CD-DA 标准做延迟交织；刻录或读回该音轨时保持相同设置。"
+                                                       Hint="生成音轨时按 CD-DA 标准做延迟交织。不清楚请默认勾选此项。"
                                                        AutomationProperties.Name="启用 CD-DA 延迟交织" />
                             <!-- CUE sheets only make sense next to PCM WAV output, so the option
                                  follows the chosen output format instead of sitting permanently. -->
@@ -96,14 +96,9 @@
                                                 Command="{Binding BrowseDataCommand}" />
                             <TextBlock Style="{StaticResource FieldLabel}" Margin="0,14,0,6" Text="卷标" />
                             <TextBox Text="{Binding State.BdVolumeLabel, UpdateSourceTrigger=PropertyChanged}" MaxLength="32" />
-                            <TextBlock Style="{StaticResource CompactHint}" Margin="0,12,0,0"
-                                       TextWrapping="Wrap"
-                                       Text="单层 BD-R：扇区按 32 对齐，绘图区外的内圈文件由 UDF 2.01 承载。生成 ISO 同目录会写出同名 .json sidecar，预览可据此恢复几何与极性。" />
                         </StackPanel>
                     </controls:VisibilityGate>
 
-                    <TextBlock Style="{StaticResource CompactHint}" Margin="0,14,0,0"
-                               Text="影调（抖动、sRGB 线性化、亮度）与蓝光 3T/6T 极性在设计页右栏的「影调」中调整。" />
                     <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
                         <Button Style="{StaticResource PrimaryButton}" Content="{Binding GenerateButtonText}"
                                 Command="{Binding GenerateCommand}" />

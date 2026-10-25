@@ -10,7 +10,7 @@
         <StackPanel Margin="{StaticResource PagePadding}">
             <controls:PageHeader Title="刻录" Badge="{Binding FamilyLabel}"
                                  Workspace="{x:Static vm:Workspace.Burn}"
-                                 Hint="即时刻录把工程合成图或辅助标定图案直接流写入空白盘片，不经过中间文件；CD、DVD 与 BD-R 同源同质量，仅支持空白介质。" />
+                                 Hint="即时刻录将数据直接流式写入空白盘片，不必单独生成镜像文件再刻录。" />
 
             <!-- Source: what lands on the disc. The switch is the page's own input selector,
                  the same pattern as the preview workspace's 输入原图/输入镜像; the summary

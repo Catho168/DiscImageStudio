@@ -88,33 +88,6 @@
                     Value="{Binding State.ToneDitherStrength, Mode=TwoWay}"
                     AutomationProperties.Name="抖动强度" />
 
-            <controls:VisibilityGate IsOpen="{Binding IsCd}" Margin="0,12,0,0">
-                <StackPanel>
-                    <TextBlock Style="{StaticResource FieldLabel}" Margin="0" Text="灰阶档位" />
-                    <controls:SegmentedControl LabelA="2 级" LabelB="4 级"
-                                               HorizontalAlignment="Stretch"
-                                               IsSecondSelected="{Binding State.IsFourLevelSelected}" />
-                    <TextBlock Style="{StaticResource CompactHint}" Margin="0,4,0,0"
-                               Text="4 级多两档中间色，实盘网点更细；仅 CD。" />
-                </StackPanel>
-            </controls:VisibilityGate>
-
-            <CheckBox Margin="0,12,0,0" Content="sRGB 线性化（伽马）"
-                      IsChecked="{Binding State.ToneSrgbLinearization, Mode=TwoWay}"
-                      AutomationProperties.Name="sRGB 线性化" />
-            <TextBlock Style="{StaticResource CompactHint}" Margin="0,4,0,0"
-                       Text="按 sRGB 传递函数解码源图后再抖动；改变黑白点密度，不改变输出电平。" />
-
-            <controls:VisibilityGate IsOpen="{Binding IsBluRay}" Margin="0,12,0,0">
-                <StackPanel>
-                    <CheckBox Content="反转 3T / 6T 映射"
-                              IsChecked="{Binding State.BdInvertMapping, Mode=TwoWay}"
-                              AutomationProperties.Name="反转 3T / 6T 映射" />
-                    <TextBlock Style="{StaticResource CompactHint}" Margin="0,4,0,0"
-                               Text="交换暗部与亮部对应的 run-length 类别；实盘明暗仍以标定结果为准。" />
-                </StackPanel>
-            </controls:VisibilityGate>
-
             <Grid Margin="0,12,0,0">
                 <TextBlock Style="{StaticResource FieldLabel}" Margin="0" Text="亮度" />
                 <TextBlock Style="{StaticResource RowText}" HorizontalAlignment="Right"
@@ -124,8 +97,35 @@
                     Value="{Binding State.ToneBrightness, Mode=TwoWay}"
                     AutomationProperties.Name="亮度" />
 
+            <controls:VisibilityGate IsOpen="{Binding IsCd}" Margin="0,12,0,0">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource FieldLabel}" Margin="0" Text="灰阶档位" />
+                    <controls:SegmentedControl LabelA="2 级" LabelB="4 级"
+                                               HorizontalAlignment="Stretch"
+                                               IsSecondSelected="{Binding State.IsFourLevelSelected}" />
+                    <TextBlock Style="{StaticResource CompactHint}" Margin="0,4,0,0"
+                               Text="4 级即四种颜色，可呈现出更好的图案细节。" />
+                </StackPanel>
+            </controls:VisibilityGate>
+
+            <CheckBox Margin="0,12,0,0" Content="sRGB 线性化（伽马校准）"
+                      IsChecked="{Binding State.ToneSrgbLinearization, Mode=TwoWay}"
+                      AutomationProperties.Name="sRGB 线性化" />
+            <TextBlock Style="{StaticResource CompactHint}" Margin="0,4,0,0"
+                       Text="可能使盘面上的图案更明显。" />
+
+            <controls:VisibilityGate IsOpen="{Binding IsBluRay}" Margin="0,12,0,0">
+                <StackPanel>
+                    <CheckBox Content="反转 3T / 6T 映射"
+                              IsChecked="{Binding State.BdInvertMapping, Mode=TwoWay}"
+                              AutomationProperties.Name="反转 3T / 6T 映射" />
+                    <TextBlock Style="{StaticResource CompactHint}" Margin="0,4,0,0"
+                               Text="交换暗部与亮部。实盘明暗仍以标定结果为准。" />
+                </StackPanel>
+            </controls:VisibilityGate>
+
             <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                <Button Style="{StaticResource CompactButton}" Content="恢复推荐"
+                <Button Style="{StaticResource CompactButton}" Content="恢复默认"
                         Command="{Binding ResetToneCommand}" />
                 <Button Style="{StaticResource CompactButton}" Content="刷新预览"
                         Command="{Binding RefreshTonePreviewCommand}" Margin="8,0,0,0" />

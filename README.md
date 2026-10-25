@@ -11,6 +11,7 @@ Disc Image Studio 是一个运行在 Windows 的光盘盘面图像生成与刻�
 ![开发语言](https://img.shields.io/badge/Language-C%23-68217A?style=flat-square)
 ![GitHub Repo size](https://img.shields.io/github/repo-size/JiaFeiMiao-K-Cat/DiscImageStudio?style=flat-square&color=3cb371)
 ![贡献欢迎](https://img.shields.io/badge/PRs-Welcome-brightgreen?style=flat-square)
+[![许可证：GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue?style=flat-square)](LICENSE)
 
 </div>
 
@@ -41,7 +42,9 @@ Disc Image Studio 提供了一套智能且精准的辅助标定流程，相较�
 | ![校准前的 DVD 实拍：径向十字线明显弯曲](docs/images/verbatim-dvd-calibration-before.jpg) | ![校准后的 DVD 实拍：径向十字线更接近直线](docs/images/verbatim-dvd-calibration-after.jpg) |
 | `P20261004-133519.jpg` | `P20261004-135416.jpg` |
 
-**照片矫正时，请框选盘片实体的外缘和内缘，不是绘图区域或刻录区域的内外边缘。** 
+以上保留原始照片，未进行裁切或透视矫正；两次拍摄的角度、光照不同，对比重点是径向线条的形状。
+
+**照片矫正时，请框选盘片实体的最外缘和中心孔边缘，不是绘图区域或刻录区域的内外边缘。** 透明塑料环、刻录区起止线和阴影也不能代替这两条实体边界。程序用盘片规格与中心孔恢复盘心、尺度和透视，再通过绘图曲线标定轨道参数。
 
 ---
 
@@ -54,8 +57,12 @@ Disc Image Studio 可将一张图片转换成符合 CD、DVD 与单层 BD-R 光�
 ### 光盘数据生成
 
 - **CD-DA 支持**：可导出带格式头的 WAV 音轨及配套 CUE，兼容 cdrecord, ImgBurn等刻录软件；也允许导出 RAW 音轨。详见 [CD 刻录兼容说明](docs/CD_AUDIO_COMPATIBILITY.md)。
+- **SIMD 与并行供流**：CD 图片采样使用四点 SIMD，像素边界及不支持的硬件回退原算法；DVD 保留四点 SIMD 和恒定轨距缓存优化。BD 图片与内建标定图案采用有界并行生成，3T/6T 阈值及扰码使用整数 SIMD，输出顺序和生成字节保持一致。
 - **DVD 支持**：支持导出 ISO 纯绘图盘与"内圈文件、外圈绘图"的混合数据盘镜像。
-- **蓝光支持**：单层 BD-R 25 GB，按 17PP/ECC 约束把图像映射为 3T/6T run-count 偏向；支持纯绘图与 UDF 2.01 内圈文件，生成时写出可恢复几何与极性的 sidecar。详见 [ADDING_BLURAY.md](docs/ADDING_BLURAY.md)。
+- **蓝光支持**：单层 BD-R 25 GB，支持纯绘图与 UDF 2.01 内圈文件。详见 [ADDING_BLURAY.md](docs/ADDING_BLURAY.md)。
+- **介质灰度方案**：CD 与 DVD 均使用黑白二阶，输入 `0–127 / 128–255` 对应图片亮度 `0 / 255`。CD 使用 `0D / AA`，DVD 扰码域使用 `A5 / 92`。文件生成、流式刻录和预览同步使用该映射；抖动强度、sRGB 伽马与灰阶档位由影调模块控制，见下文。
+- **灰度抖动工具**：独立程序也可将原图处理为 `0/255` 黑白二阶 PNG；支持打开或拖入原图、并排预览及无损 PNG 导出。可勾选"sRGB 伽马校正"，默认关闭，命令行通过 `--gamma none|srgb` 选择。详见[使用与构建说明](tools/FourLevelDither/README.md)。
+- **DVD 三次轨距模型**：支持轨距随半径变化，生成、预览和辅助标定共用同一套几何；相对系数全为零时使用恒定轨距。上方实盘对比展示了已验证的 Verbatim DVD 校准效果。
 - **盘片预设**：内置 JSON + 用户层 JSON 分层配置，覆盖 CD/DVD/BD。详见[预设维护说明](docs/DISC_PRESETS.md)。
 - **辅助标定**：通过 Disc Image Studio 内置的智能算法，您可以利用数张实拍图片轻松确定盘片的真实物理数据。详见[辅助标定说明](docs/CALIBRATION.md)。
 
@@ -67,6 +74,7 @@ Disc Image Studio 可将一张图片转换成符合 CD、DVD 与单层 BD-R 光�
 
 ### 应用形态
 
+- [DVD 灰阶实验工具](tools/DvdGrayProbe/README.md)：制作 `64/E4` 的纯色与抖动混合对比测试镜像，使用显式码字和 43533 校准参数。
 - 双入口：不带参数将打开 GUI；带参数则进入统一命令行。
 - 启动后选定光盘类型后可直接新建或打开源图片，也可以按盘片预设快速创建，并回访最近生成的任务。
 - 模块化：CD、DVD 与蓝光通过 `IOpticalDiscModule` 接入，统一命令目录与任务契约。
@@ -116,7 +124,7 @@ MSIX 打包、测试包签名与发布流程见[发布指南](docs/RELEASING.md)
 | `bd-generate` | 生成完整 BD-R ISO（纯绘图或 UDF 2.01 内圈文件），并写出 `<iso>.json` sidecar |
 | `bd-info` / `bd-probe` / `bd-encode` | 导出 BD 参数、原始负载探针或单个 ECC 簇诊断 |
 
-设计页右栏的「影调」模块可调抖动强度（默认 75%）、sRGB 线性化（伽马）、灰阶档位（CD 2/4 级；DVD/BD 固定 2 级）与亮度，并在模块内实时投影当前合成图；BD 另有 3T/6T 映射极性开关。参数写入工程的 `tone` 节，生成、流式刻录、读回与标定投影共用；旧工程没有该节时保持原来的硬阈值输出。BD 的影调在源图分辨率一次性量化，预览、生成和刻录共用同一张二值栅格。细节见 [CD_AUDIO_COMPATIBILITY.md](docs/CD_AUDIO_COMPATIBILITY.md)、[DVD_ENGINE.md](docs/DVD_ENGINE.md) 与 [ADDING_BLURAY.md](docs/ADDING_BLURAY.md)。
+设计页右栏的「影调」模块可调抖动强度（默认 75%）、sRGB 线性化（伽马）、灰阶档位（CD 2/4 级；DVD/BD 固定 2 级）与亮度，并在模块内实时投影当前合成图；BD 另有 3T/6T 映射极性开关。参数写入工程的 `tone` 节，生成、流式刻录、读回与标定投影共用；BD 的影调在源图分辨率一次性量化，预览、生成和刻录共用同一张二值栅格。细节见 [CD_AUDIO_COMPATIBILITY.md](docs/CD_AUDIO_COMPATIBILITY.md)、[DVD_ENGINE.md](docs/DVD_ENGINE.md) 与 [ADDING_BLURAY.md](docs/ADDING_BLURAY.md)。
 
 完整 DVD 引擎说明见 [DVD_ENGINE.md](docs/DVD_ENGINE.md)。
 
@@ -151,6 +159,19 @@ docs/                        架构、引擎、预设、发布等文档
 | [RELEASING.md](docs/RELEASING.md) | GitHub Release、MSIX 打包、签名测试与商店提交流程 |
 | [CHANGELOG.md](CHANGELOG.md) | 版本变更记录 |
 
+## 参考标准
+
+实现与物理模型主要参考以下介质规范。标准名义参数用于建立初始模型，实际绘图仍需盘片与刻录设备的实测校准。
+
+| 介质 | 标准与版本 | 本项目采用的范围 |
+| --- | --- | --- |
+| CD-R | [ECMA-394，第 1 版，2010 年 12 月](https://ecma-international.org/publications-and-standards/standards/ecma-394/) — *Recordable Compact Disc Systems CD-R Multi-Speed*（[官方 PDF](https://ecma-international.org/wp-content/uploads/ECMA-394_1st_edition_december_2010.pdf)） | CD-R 介质、多速录制及 CD-DA 兼容关系；本项目生成 CD-DA 音轨。 |
+| DVD 公共格式 / DVD-ROM | [ECMA-267，第 3 版，2001 年 4 月](https://ecma-international.org/publications-and-standards/standards/ecma-267/) — *120 mm DVD – Read-only disk*（[官方 PDF](https://ecma-international.org/wp-content/uploads/ECMA-267_3rd_edition_april_2001.pdf)） | DVD 数据帧、ECC、EFMPlus 编码及附录 G 转换表；可记录盘的介质规则另参考 ECMA-359。 |
+| DVD-R | [ECMA-359，第 1 版，2004 年 12 月](https://ecma-international.org/publications-and-standards/standards/ecma-359/) — *80 mm (1,46 Gbytes per side) and 120 mm (4,70 Gbytes per side) DVD Recordable Disk (DVD-R)*（[官方 PDF](https://ecma-international.org/wp-content/uploads/ECMA-359_1st_edition_december_2004.pdf)） | 单层 DVD-R 的几何、扇区、纠错和编码；标准包含单面及双面介质，双面不等于双层。 |
+| BD-R | [ISO/IEC 30190:2021，第 3 版，2021 年 1 月](https://www.iso.org/standard/80770.html) — 120 mm 单层（25.0 GB）及双层（50.0 GB）可记录 BD 的信息交换与存储规范 | 实验模式采用单层 25 GB 的轨道、扇区布局、纠错和编码；目前不支持双层盘。 |
+
+CD 公共编码部分还参考 [ECMA-130，第 2 版（CD-ROM，1996）](https://ecma-international.org/publications-and-standards/standards/ecma-130/)，不将其等同于 CD-DA 的全部规范。具体物理模型复核见 [PHYSICAL_MODEL_AUDIT.md](docs/PHYSICAL_MODEL_AUDIT.md)，蓝光实现范围见 [ADDING_BLURAY.md](docs/ADDING_BLURAY.md)。
+
 ## 刻录与介质安全须知
 
 - Disc Image Studio 不安装驱动或服务；“即时刻录”功能使用了 Windows 自带的 IMAPI2，拒绝非空白介质。
@@ -170,7 +191,11 @@ docs/                        架构、引擎、预设、发布等文档
 
 ## 许可证
 
-本项目以 **GNU General Public License v3.0 or later（GPL-3.0-or-later）** 发布，许可证全文见 [LICENSE](LICENSE)。重新分发修改版或二进制时，须遵守 GPL 对版权声明、许可证、修改说明与对应源代码的要求；第三方组件与字体继续适用其原许可证，详见 [LICENSE-NOTICE.md](LICENSE-NOTICE.md) 与 [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt)。
+项目采用 [GNU GPL v3.0 or later](LICENSE)（`GPL-3.0-or-later`）。CD 交织实现包含从 CDImage 移植并修改的代码，整体分发沿用兼容的 GPL 授权；分发二进制或修改版时须遵守对应源代码等要求。第三方字体与组件遵循各自许可证，详见 [授权说明](LICENSE-NOTICE.md) 和 [第三方声明](THIRD-PARTY-NOTICES.txt)；应用"关于"页也可离线查看完整文本。
+
+## 致谢
+
+感谢 [arduinocelentano 的 CDImage 项目](https://github.com/arduinocelentano/cdimage)，它展示了通过生成 CD 音轨在盘面形成可见图像的方法。本项目的 CD 交织实现由其相关代码移植并继续修改，CD 盘面绘图思路也受其启发。CDImage 原作者及贡献者的工作为本项目提供了重要基础。
 
 ---
 

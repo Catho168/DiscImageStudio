@@ -19,7 +19,7 @@
 
         <controls:PageHeader Grid.Row="0" Title="预览" Badge="{Binding DiscFamilyLabel}"
                              Workspace="{x:Static vm:Workspace.Preview}"
-                             Hint="设计投影按工程参数把源图投到盘面上，快；成品读回读取已生成文件的字节还原，准。盘型跟随工程；生成几何在工程设置中修改。">
+                             Hint="“设计投影”按工程参数将源图投到盘面上，速度快；“成品读回”则读取已生成的镜像文件还原。生成几何参数请在工程设置中修改。">
             <controls:PageHeader.Actions>
                 <Button Style="{StaticResource CompactButton}" Content="下一步：导出"
                         Command="{Binding NavigateCommand}"
@@ -146,7 +146,7 @@
                                                     </controls:VisibilityGate>
                                                 </Grid>
                                                 <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,8"
-                                                           Text="尺寸越大投影越细，刷新越慢。蓝光按每个负载字节的位置采样，没有每扇区采样。" />
+                                                           Text="尺寸越大投影越细，刷新越慢。" />
                                             </StackPanel>
                                         </Expander>
                                     </StackPanel>
@@ -173,13 +173,8 @@
                                         <controls:VisibilityGate IsOpen="{Binding Inspector.IsCd}">
                                             <controls:InterleaveToggle Label="逆交织"
                                                                        IsChecked="{Binding Inspector.State.CdInterleave}"
-                                                                       Hint="若音轨生成时启用了延迟交织，勾选后按相同设置读回；外部音轨按制作时的选择设置。"
+                                                                       Hint="若音轨生成时启用了延迟交织，则应勾选该选项。"
                                                                        Margin="0,12,0,0" />
-                                        </controls:VisibilityGate>
-                                        <controls:VisibilityGate IsOpen="{Binding Inspector.IsBluRay}">
-                                            <TextBlock Style="{StaticResource HintText}" Margin="0,12,0,0"
-                                                       TextWrapping="Wrap"
-                                                       Text="读回显示 AA/44 负载字节类别：黑为 3T、白为 6T、灰为其他字节，不是反射亮度。极性问题请看的设计投影。" />
                                         </controls:VisibilityGate>
                                     </StackPanel>
                                 </controls:VisibilityGate>

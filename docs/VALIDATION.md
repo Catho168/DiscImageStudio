@@ -13,6 +13,7 @@ dotnet restore DiscImageStudio.slnx
 dotnet build DiscImageStudio.slnx --configuration Release --no-restore
 dotnet run --project tests/DiscImageStudio.ArchitectureTests --configuration Release --no-build
 dotnet run --project src/DvdImageSolver --configuration Release --no-build -- selftest
+dotnet run --project src/DiscImageStudio.App --configuration Release --no-build -- selftest
 ./tests/Test-ReleaseTooling.ps1
 ```
 
@@ -39,6 +40,6 @@ dotnet run --project src/DiscImageStudio.App --configuration Release --no-build 
 
 此次代码整理没有执行实盘刻录。自动化测试不证明设备写入策略、实际反射亮度或刻录成功率；蓝光功能仍为实验性。
 
-已经记录的 DVD 三次轨距实拍与参数见 [README 中的前后对比](../README.md#dvd-三次轨距校准实盘前后对比)。物理模型历史审计见 [PHYSICAL_MODEL_AUDIT.md](PHYSICAL_MODEL_AUDIT.md)，其中结论保留其标明的日期与代码基准，不能代替当前源码验证。
+已经记录的 DVD 三次轨距实拍与参数见 [README 中的前后对比](../README.md#辅助标定展示)。物理模型历史审计见 [PHYSICAL_MODEL_AUDIT.md](PHYSICAL_MODEL_AUDIT.md)，其中结论保留其标明的日期与代码基准，不能代替当前源码验证。
 
 后续实盘记录应包含版本或提交、刻录机和固件、盘片型号、预设参数、速度、生成/刻录入口与原始照片，避免把某一设备的结果泛化到所有盘片。
