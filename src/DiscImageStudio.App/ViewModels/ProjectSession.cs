@@ -27,6 +27,7 @@ internal static class ProjectSession
         state.ToneDitherStrength = tone.DitherStrength;
         state.ToneLevels = tone.Levels;
         state.ToneBrightness = tone.Brightness;
+        state.ToneSrgbLinearization = tone.SrgbLinearization;
 
         switch (document.Family)
         {

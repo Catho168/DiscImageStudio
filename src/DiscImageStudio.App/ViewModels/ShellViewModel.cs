@@ -737,6 +737,7 @@ public partial class ShellViewModel : ObservableObject
         nameof(DiscParametersState.ToneDitherStrength),
         nameof(DiscParametersState.ToneLevels),
         nameof(DiscParametersState.ToneBrightness),
+        nameof(DiscParametersState.ToneSrgbLinearization),
     ];
 
     private void State_PropertyChanged(object? sender, PropertyChangedEventArgs e)

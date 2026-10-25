@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using DiscImageStudio.BluRay;
 using DiscImageStudio.Cd;
 using DiscImageStudio.Core;
 using DiscImageStudio.Dvd;
@@ -19,6 +20,7 @@ namespace DiscImageStudio.ViewModels;
 public partial class ToneViewModel : ObservableObject
 {
     private const int TonePreviewSize = 420;
+    private const int TonePreviewBluRaySize = 512;
     private const int TonePreviewSamplesPerSector = 32;
     private const int TonePreviewDvdSamplesPerSector = 8;
 
@@ -51,8 +53,12 @@ public partial class ToneViewModel : ObservableObject
     public DiscParametersState State => _state;
 
     /// <summary>The module mirrors the open project's family: CD shows the 2/4-level switch,
-    /// DVD fixes the palette at two levels.</summary>
+    /// DVD and BD fix the palette at two levels.</summary>
+    public bool IsCd => _design.IsCd;
+
     public bool IsDvd => _design.IsDvd;
+
+    public bool IsBluRay => _design.IsBluRay;
 
     [ObservableProperty]
     private BitmapSource? _tonePreviewImage;
@@ -75,7 +81,9 @@ public partial class ToneViewModel : ObservableObject
         if (e.PropertyName is nameof(ShellViewModel.IsProjectOpen)
             or nameof(ShellViewModel.CurrentProject))
         {
+            OnPropertyChanged(nameof(IsCd));
             OnPropertyChanged(nameof(IsDvd));
+            OnPropertyChanged(nameof(IsBluRay));
             ResetToneCommand.NotifyCanExecuteChanged();
             RefreshTonePreviewCommand.NotifyCanExecuteChanged();
             // The composite path belongs to the previous project until the new design
@@ -91,12 +99,16 @@ public partial class ToneViewModel : ObservableObject
 
     private void Design_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is not nameof(DesignViewModel.IsDvd))
+        if (e.PropertyName is not (nameof(DesignViewModel.IsCd)
+            or nameof(DesignViewModel.IsDvd)
+            or nameof(DesignViewModel.IsBluRay)))
         {
             return;
         }
 
+        OnPropertyChanged(nameof(IsCd));
         OnPropertyChanged(nameof(IsDvd));
+        OnPropertyChanged(nameof(IsBluRay));
         ClearTonePreview();
     }
 
@@ -105,6 +117,11 @@ public partial class ToneViewModel : ObservableObject
         if (e.PropertyName is nameof(DiscParametersState.ToneDitherStrength)
             or nameof(DiscParametersState.ToneLevels)
             or nameof(DiscParametersState.ToneBrightness)
+            or nameof(DiscParametersState.ToneSrgbLinearization)
+            or nameof(DiscParametersState.BdInvertMapping)
+            or nameof(DiscParametersState.BdInnerRadius)
+            or nameof(DiscParametersState.BdOuterRadius)
+            or nameof(DiscParametersState.BdTotalSectors)
             or nameof(DiscParametersState.CdInnerRadius)
             or nameof(DiscParametersState.CdOuterRadius)
             or nameof(DiscParametersState.CdSectors)
@@ -200,7 +217,26 @@ public partial class ToneViewModel : ObservableObject
             TonePreviewStatus = "正在按当前影调渲染…";
 
             int samplesPerSector;
-            if (IsDvd)
+            if (IsBluRay)
+            {
+                BluRayDiscParameters parameters = ReadBluRayPreviewParameters();
+                bool invert = _state.BdInvertMapping;
+                ToneProfile tone = _state.BluRayTone;
+                samplesPerSector = 0;
+                await StaWorker.RunAsync(() =>
+                {
+                    BluRayPreviewRenderer.RenderProjection(
+                        sourcePath,
+                        outputPath,
+                        parameters,
+                        TonePreviewBluRaySize,
+                        invert,
+                        tone,
+                        cancellationToken);
+                    return 0;
+                });
+            }
+            else if (IsDvd)
             {
                 DvdStreamingOptions options = ReadDvdPreviewOptions();
                 samplesPerSector = TonePreviewDvdSamplesPerSector;
@@ -301,6 +337,24 @@ public partial class ToneViewModel : ObservableObject
         _state.ToneDitherStrength = ToneProfile.Photo.DitherStrength;
         _state.ToneLevels = ToneProfile.Photo.Levels;
         _state.ToneBrightness = ToneProfile.Photo.Brightness;
+        _state.ToneSrgbLinearization = ToneProfile.Photo.SrgbLinearization;
+    }
+
+    private BluRayDiscParameters ReadBluRayPreviewParameters()
+    {
+        long totalSectors = ParameterParser.ParsePositiveLong(_state.BdTotalSectors, "蓝光总扇区数");
+        if (totalSectors > uint.MaxValue)
+        {
+            throw new ArgumentOutOfRangeException("蓝光总扇区数", "总扇区数超出蓝光引擎支持范围。");
+        }
+
+        BluRayDiscParameters parameters = new(
+            checked((uint)totalSectors),
+            1,
+            ParameterParser.ParsePositiveDouble(_state.BdInnerRadius, "蓝光内半径"),
+            ParameterParser.ParsePositiveDouble(_state.BdOuterRadius, "蓝光外半径"));
+        parameters.Validate();
+        return parameters;
     }
 
     private CdDiscParameters ReadCdPreviewParameters()

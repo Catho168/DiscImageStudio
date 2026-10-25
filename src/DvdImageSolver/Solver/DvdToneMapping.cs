@@ -15,17 +15,8 @@ public static class DvdToneMapping
         ToneProfile? tone,
         long sampleIndex)
     {
-        if (tone is not { } profile || profile.IsLegacyBinary)
-        {
-            return luminance >= threshold;
-        }
-
-        // Profiles are validated by the caller (DvdStreamingOptions.Validate / the CLI); this
-        // runs once per payload byte, so it deliberately does not re-normalize.
-        double adjusted = Math.Clamp(luminance + profile.Brightness, 0, 255);
-        double strength = profile.DitherStrength > 1 ? 1 : profile.DitherStrength;
-        double shiftedThreshold = threshold
-            + (strength * 255.0 * (ToneDither.Phase(sampleIndex) - 0.5));
-        return adjusted >= shiftedThreshold;
+        return tone is { } profile
+            ? profile.UseWhite(luminance, sampleIndex, threshold)
+            : luminance >= threshold;
     }
 }

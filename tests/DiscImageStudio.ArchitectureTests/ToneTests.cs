@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using DiscImageStudio.BluRay;
 using DiscImageStudio.Cd;
 using DiscImageStudio.Core;
 using DiscImageStudio.Dvd;
@@ -20,6 +21,8 @@ internal static class ToneTests
         TestDitherIsDeterministic();
         TestDvdThresholdAndDither();
         TestDvdRejectsFourLevels();
+        TestGammaCurve();
+        TestBluRayToneAtSourceResolution();
         TestGenerationAndPreviewAgree();
         TestProjectToneRoundtrip();
     }
@@ -51,6 +54,64 @@ internal static class ToneTests
                 True(actual == expected, $"binary mapping at grey {grey}");
             }
         }
+    }
+
+    /// <summary>sRGB linearization changes dot density, not the endpoints: mid-grey decodes
+    /// to ~55/255 linear light, so the same dither threshold now yields fewer white dots.</summary>
+    private static void TestGammaCurve()
+    {
+        ToneProfile linear = new(0, ToneProfile.TwoLevels, 0, SrgbLinearization: true);
+        True(linear.AdjustedGray(0) == 0 && linear.AdjustedGray(255) == 255,
+            "gamma keeps black and white endpoints");
+        True(linear.AdjustedGray(128) is >= 50 and <= 60,
+            $"sRGB mid-grey decodes near 55/255, observed {linear.AdjustedGray(128)}");
+        True(!linear.UseWhite(128, 0), "gamma makes mid-grey dark at the binary threshold");
+        True(ToneProfile.LegacyBinary.UseWhite(128, 0), "the legacy threshold keeps 128 white");
+
+        int legacyWhite = 0, gammaWhite = 0;
+        for (long index = 0; index < 4096; index++)
+        {
+            if (CdToneMapping.Map(128, ToneProfile.LegacyBinary, index) == 0xAA) legacyWhite++;
+            if (CdToneMapping.Map(128, linear, index) == 0xAA) gammaWhite++;
+        }
+
+        True(legacyWhite == 4096, "legacy CD mapping keeps mid-grey white");
+        True(gammaWhite == 0, "gamma CD mapping makes mid-grey black with no dither");
+
+        ToneProfile fourLevels = new(0, ToneProfile.FourLevels, 0);
+        ToneProfile fourLevelsGamma = fourLevels with { SrgbLinearization = true };
+        True(
+            CdToneMapping.DisplayGray(CdToneMapping.Map(128, fourLevelsGamma, 0))
+                < CdToneMapping.DisplayGray(CdToneMapping.Map(128, fourLevels, 0)),
+            "gamma lowers the four-level mid-grey tone");
+    }
+
+    private static void TestBluRayToneAtSourceResolution()
+    {
+        BluRayGray8Raster source = new(4, 1, new byte[] { 0, 64, 128, 255 });
+        True(ReferenceEquals(
+            source,
+            DiscImageStudio.BluRay.BluRayToneMapping.Apply(source, ToneProfile.LegacyBinary)),
+            "legacy BD tone leaves the source raster and its 128 threshold untouched");
+
+        ToneProfile linear = new(0, ToneProfile.TwoLevels, 0, SrgbLinearization: true);
+        BluRayGray8Raster binary = DiscImageStudio.BluRay.BluRayToneMapping.Apply(source, linear);
+        True(binary.Pixels.SequenceEqual(new byte[] { 0, 0, 0, 255 }),
+            "BD tone quantizes once at source resolution");
+        True(
+            new DiscImageStudio.BluRay.BluRayRunLengthMapping().Map(0,
+                default) == DiscImageStudio.BluRay.BluRayRunLengthMapping.ThreeTByte
+            && new DiscImageStudio.BluRay.BluRayRunLengthMapping(invert: true).Map(0,
+                default) == DiscImageStudio.BluRay.BluRayRunLengthMapping.SixTByte,
+            "BD polarity swaps dark to 6T without touching tone");
+
+        byte[] mixed = new byte[4096];
+        Array.Fill(mixed, (byte)64);
+        BluRayGray8Raster dithered = DiscImageStudio.BluRay.BluRayToneMapping.Apply(
+            new BluRayGray8Raster(64, 64, mixed),
+            new ToneProfile(1, ToneProfile.TwoLevels, 0));
+        int white = dithered.Pixels.ToArray().Count(value => value == 255);
+        True(white is > 600 and < 1400, $"BD dither approximates 25% white, observed {white}/4096");
     }
 
     /// <summary>Full-strength dither must integrate back to the source grey at viewing scale;
@@ -281,7 +342,7 @@ internal static class ToneTests
                 ThumbnailPngBase64: null,
                 CreatedUtc: DateTimeOffset.Now,
                 ModifiedUtc: DateTimeOffset.Now,
-                Tone: new ToneProfile(0.65, ToneProfile.FourLevels, -12));
+                Tone: new ToneProfile(0.65, ToneProfile.FourLevels, -12, SrgbLinearization: true));
             ProjectJsonStore.Save(path, document);
             ProjectDocument loaded = ProjectJsonStore.Load(path);
             True(

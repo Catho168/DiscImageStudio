@@ -112,6 +112,12 @@ public partial class DiscParametersState : ObservableObject
     [NotifyPropertyChangedFor(nameof(ToneBrightnessText), nameof(ToneSummary))]
     private double _toneBrightness;
 
+    /// <summary>Decode the source through the sRGB transfer function before thresholding.
+    /// This changes the black/white dot density, not the generated output level.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ToneSummary))]
+    private bool _toneSrgbLinearization;
+
     /// <summary>Two-way flag of the 2/4-level segmented control (the right option is 4 levels).</summary>
     public bool IsFourLevelSelected
     {
@@ -124,7 +130,8 @@ public partial class DiscParametersState : ObservableObject
     public ToneProfile Tone => new ToneProfile(
         Math.Clamp(ToneDitherStrength, 0, 1),
         ToneLevels == ToneProfile.FourLevels ? ToneProfile.FourLevels : ToneProfile.TwoLevels,
-        Math.Clamp(ToneBrightness, ToneProfile.MinimumBrightness, ToneProfile.MaximumBrightness));
+        Math.Clamp(ToneBrightness, ToneProfile.MinimumBrightness, ToneProfile.MaximumBrightness),
+        ToneSrgbLinearization);
 
     /// <summary>DVD's dispersion pool has only the black and white textures; a CD project's
     /// 4-level setting must not leak into a DVD job.</summary>
@@ -139,7 +146,8 @@ public partial class DiscParametersState : ObservableObject
         ? $"+{ToneBrightness:0}"
         : $"{ToneBrightness:0}";
 
-    public string ToneSummary => $"{ToneLevels} 级 · {ToneDitherText} 抖动";
+    public string ToneSummary => $"{ToneLevels} 级 · {ToneDitherText} 抖动"
+        + (ToneSrgbLinearization ? " · sRGB 线性化" : string.Empty);
 
     /// <summary>A CUE sheet only accompanies PCM WAV tracks, so the CD page offers its
     /// toggle only while the chosen output is a .wav file.</summary>

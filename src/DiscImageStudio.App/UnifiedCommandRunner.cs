@@ -13,7 +13,7 @@ internal static class UnifiedCommandRunner
     [
         new CdDiscModule(),
         new DvdDiscModule(),
-        new BluRayDiscModule(Services.BluRayImageLoader.Load),
+        new BluRayDiscModule((path, token) => Services.BluRayImageLoader.Load(path, token)),
     ]);
 
     internal static int Run(string[] arguments)
@@ -166,6 +166,7 @@ internal static class UnifiedCommandRunner
             bd-encode exports one ECC cluster; bd-generate maps dark to 3T and light to 6T run-count bias.
               bd-generate --input IMAGE.png --output PICTURE.iso [--invert true]
                           [--total-sectors 12219392] [--data-dir FOLDER] [--volume-label BD_IMAGE]
+                          [--tone-dither 0..1] [--tone-brightness -64..64] [--tone-gamma true]
             Total sectors must align to 32. Output is a complete ISO9660/Joliet image:
             inner files first, followed by picture data. Press Ctrl+C to cancel.
             See docs/ADDING_BLURAY.md for options and physical-model limitations.

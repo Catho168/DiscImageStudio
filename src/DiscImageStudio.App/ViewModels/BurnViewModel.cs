@@ -217,7 +217,7 @@ public partial class BurnViewModel : ObservableObject
                 _state.DvdInnerRadius, _state.DvdOuterRadius,
                 _state.DvdPitchLinear, _state.DvdPitchQuadratic, _state.DvdPitchCubic,
                 _state.DvdDataDirectory, _state.DvdVolumeLabel,
-                _state.ToneDitherStrength, _state.ToneBrightness);
+                _state.ToneDitherStrength, _state.ToneBrightness, _state.ToneSrgbLinearization);
         }
         else
         {
@@ -232,7 +232,8 @@ public partial class BurnViewModel : ObservableObject
                 : $"合成图会自动生成本页输入。 · {encoding}";
             identity = string.Join("\u001f", "cd", _design.CompositeRevision, _state.CdSectors,
                 _state.CdInnerRadius, _state.CdOuterRadius, _state.CdInterleave,
-                _state.ToneDitherStrength, _state.ToneLevels, _state.ToneBrightness);
+                _state.ToneDitherStrength, _state.ToneLevels, _state.ToneBrightness,
+                _state.ToneSrgbLinearization);
         }
 
         if (!string.Equals(identity, _sourceIdentity, StringComparison.Ordinal))

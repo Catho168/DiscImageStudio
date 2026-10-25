@@ -10,7 +10,8 @@ namespace DiscImageStudio.Core;
 public readonly record struct ToneProfile(
     double DitherStrength,
     int Levels,
-    double Brightness)
+    double Brightness,
+    bool SrgbLinearization = false)
 {
     public const int TwoLevels = 2;
     public const int FourLevels = 4;
@@ -27,9 +28,40 @@ public readonly record struct ToneProfile(
 
     /// <summary>True when mapping is exactly the old <c>grey &lt; 128 ? black : white</c> rule.</summary>
     public bool IsLegacyBinary
-        => DitherStrength <= 0 && Levels == TwoLevels && Brightness == 0;
+        => DitherStrength <= 0 && Levels == TwoLevels && Brightness == 0 && !SrgbLinearization;
 
     public bool IsDvdCompatible => Levels == TwoLevels;
+
+    /// <summary>Source grey → sRGB-linear light (when enabled) → brightness offset. This is
+    /// the one tone curve shared by the byte-level CD/DVD paths and the image-level BD path;
+    /// gamma changes black/white dot density, not the output voltage or reflectance.</summary>
+    public byte AdjustedGray(byte gray)
+    {
+        double value = gray / 255.0;
+        if (SrgbLinearization)
+        {
+            value = value <= 0.04045
+                ? value / 12.92
+                : Math.Pow((value + 0.055) / 1.055, 2.4);
+        }
+
+        value = Math.Clamp(value + (Brightness / 255.0), 0.0, 1.0);
+        return (byte)Math.Round(value * 255.0, MidpointRounding.AwayFromZero);
+    }
+
+    /// <summary>Binary decision shared with the engines' 128 threshold. Absent dithering
+    /// and gamma this is exactly the historical threshold comparison.</summary>
+    public bool UseWhite(byte gray, long sampleIndex, double threshold = 128)
+    {
+        if (IsLegacyBinary)
+        {
+            return gray >= threshold;
+        }
+
+        double strength = DitherStrength > 1 ? 1 : DitherStrength;
+        double shiftedThreshold = threshold + (strength * 255.0 * (ToneDither.Phase(sampleIndex) - 0.5));
+        return AdjustedGray(gray) >= shiftedThreshold;
+    }
 
     public void Validate(string fieldName = "tone")
     {
@@ -65,7 +97,8 @@ public readonly record struct ToneProfile(
             Math.Clamp(
                 double.IsFinite(Brightness) ? Brightness : 0,
                 MinimumBrightness,
-                MaximumBrightness));
+                MaximumBrightness),
+            SrgbLinearization);
 }
 
 /// <summary>

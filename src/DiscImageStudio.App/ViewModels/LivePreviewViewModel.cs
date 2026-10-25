@@ -220,14 +220,16 @@ public partial class LivePreviewViewModel : ObservableObject
         ToneProfile tone = new ToneProfile(
             metadata.ToneDitherStrength,
             metadata.ToneLevels,
-            metadata.ToneBrightness).Normalized();
+            metadata.ToneBrightness,
+            metadata.ToneSrgbLinearization).Normalized();
         if (state.CdSectors.Trim() == sectors
             && state.CdInnerRadius.Trim() == innerRadius
             && state.CdOuterRadius.Trim() == outerRadius
             && state.CdInterleave == metadata.Interleaved
             && state.ToneDitherStrength == tone.DitherStrength
             && state.ToneLevels == tone.Levels
-            && state.ToneBrightness == tone.Brightness)
+            && state.ToneBrightness == tone.Brightness
+            && state.ToneSrgbLinearization == tone.SrgbLinearization)
         {
             return;
         }
@@ -239,6 +241,7 @@ public partial class LivePreviewViewModel : ObservableObject
         state.ToneDitherStrength = tone.DitherStrength;
         state.ToneLevels = tone.Levels;
         state.ToneBrightness = tone.Brightness;
+        state.ToneSrgbLinearization = tone.SrgbLinearization;
         _shell.AppendLog(
             $"[{DateTime.Now:HH:mm:ss}] 已按 {System.IO.Path.GetFileName(trackPath)} 的生成参数载入标定几何："
             + $"r0={innerRadius} mm, r1={outerRadius} mm, {sectors} 扇区，交织={metadata.Interleaved}，"

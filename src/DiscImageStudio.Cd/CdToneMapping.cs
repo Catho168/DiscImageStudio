@@ -33,7 +33,7 @@ public static class CdToneMapping
         ReadOnlySpan<byte> palette = Palette(tone.Levels);
         int last = palette.Length - 1;
         double position = Math.Clamp(
-            (gray + tone.Brightness - BlackGray) / (double)(WhiteGray - BlackGray),
+            (tone.AdjustedGray(gray) - BlackGray) / (double)(WhiteGray - BlackGray),
             0.0,
             1.0) * last;
         int index = (int)position;

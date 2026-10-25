@@ -146,7 +146,7 @@ static void TestDiscPresets()
     DiscPresetJsonDocument builtIn = DiscPresetJsonStore.LoadBuiltIn();
     Equal(4, builtIn.CdPresets.Count, "built-in CD preset count");
     Equal(3, builtIn.DvdPresets.Count, "built-in DVD preset count");
-    Equal(2, builtIn.BluRayPresets?.Count, "built-in Blu-ray preset count");
+    Equal(2, builtIn.BluRayPresets!.Count, "built-in Blu-ray preset count");
     Equal("zh-CN", builtIn.FallbackLanguage!, "built-in preset fallback language");
     True(
         builtIn.CdPresets.All(value =>
@@ -251,7 +251,7 @@ static void TestDiscPresetJson()
         True(File.Exists(path), "user preset JSON is created on first load");
         Equal(1, created.CdPresets.Count, "initial user CD preset count");
         Equal(1, created.DvdPresets.Count, "initial user DVD preset count");
-        Equal(1, created.BluRayPresets?.Count, "initial user Blu-ray preset count");
+        Equal(1, created.BluRayPresets!.Count, "initial user Blu-ray preset count");
         True(
             File.ReadAllText(path).Contains("自定义 DVD 参数", StringComparison.Ordinal),
             "initial user JSON keeps custom preset names readable");
@@ -272,7 +272,7 @@ static void TestDiscPresetJson()
         DiscPresetJsonDocument merged = DiscPresetJsonStore.Merge(builtIn, created);
         Equal(5, merged.CdPresets.Count, "merged CD preset count");
         Equal(4, merged.DvdPresets.Count, "merged DVD preset count");
-        Equal(3, merged.BluRayPresets?.Count, "merged Blu-ray preset count");
+        Equal(3, merged.BluRayPresets!.Count, "merged Blu-ray preset count");
         DvdDiscPresetDefinition verbatim = merged.DvdPresets.Single(
             value => value.Id == "verbatim-dvd-r-azo-43533");
         Equal(2_297_888U, verbatim.TotalSectors, "merged Verbatim DVD sectors");
@@ -421,7 +421,7 @@ static void TestDiscPresetJson()
             "interim schema without the field falls back to the DVD standard");
         Equal(
             2,
-            DiscPresetJsonStore.Merge(builtIn, interim).BluRayPresets?.Count,
+            DiscPresetJsonStore.Merge(builtIn, interim).BluRayPresets!.Count,
             "pre-BD schema still receives the built-in Blu-ray catalog");
 
         File.WriteAllText(
