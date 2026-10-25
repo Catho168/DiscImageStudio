@@ -5,12 +5,13 @@ public static partial class CalibrationCrossFitter
     private sealed record CubicSolution(CalibrationParameters Parameters, double Rotation,
         double Cost, double Rms, double[] Residuals);
 
-    private static CalibrationFitResult FitCubic(CalibrationTarget target, Datum[] data, double coverage,
+    private static SolveOutcome FitCubic(CalibrationTarget target, Datum[] data, double coverage,
         CalibrationFitOptions options, CalibrationFitCandidate[] baseline, List<string> warnings,
-        CancellationToken token)
+        double[] baselineResiduals, double delta, bool boundaryLimited, CancellationToken token)
     {
-        CalibrationFitResult Baseline() => new(true, baseline[0].Parameters, baseline[0].RotationRadians,
-            baseline[0].RmsErrorMm, baseline, warnings);
+        SolveOutcome Baseline() => new(new CalibrationFitResult(true, baseline[0].Parameters,
+            baseline[0].RotationRadians, baseline[0].RmsErrorMm, baseline, warnings)
+            { BoundaryLimited = boundaryLimited }, baselineResiduals);
         // Three shape terms plus two radii and rotation need substantially more support
         // than the constant-pitch model. Repeated points on different arms do not add radii.
         int radialLevels = data.Select(d => Math.Round(d.Radius, 4)).Distinct().Count();
@@ -26,7 +27,10 @@ public static partial class CalibrationCrossFitter
         CalibrationParameters center = options.SearchCenter ?? target.Parameters;
         var generated = new CalibrationGeometry(target.Parameters);
         int traces = data.Max(d => d.Trace) + 1;
-        double delta = options.HuberDeltaMm;
+        double lowerInner = Math.Max(0.1, center.InnerRadiusMm - options.RadiusRangeMm);
+        double upperInner = center.InnerRadiusMm + options.RadiusRangeMm;
+        double lowerOuter = Math.Max(lowerInner + 0.1, center.OuterRadiusMm - options.RadiusRangeMm);
+        double upperOuter = center.OuterRadiusMm + options.RadiusRangeMm;
         CubicSolution Evaluate(CalibrationParameters parameters)
         {
             CubicSolution Invalid() => new(parameters, 0, double.PositiveInfinity, double.PositiveInfinity, []);
@@ -129,9 +133,19 @@ public static partial class CalibrationCrossFitter
             Math.Max(Math.Abs(best.Parameters.PitchQuadratic - center.PitchQuadratic),
                 Math.Abs(best.Parameters.PitchCubic - center.PitchCubic))) > options.PitchCoefficientRange * 0.995)
             warnings.Add("轨距系数接近搜索边界，请复核点位，必要时扩大系数搜索范围。");
-        CalibrationFitCandidate[] candidates = solutions.Take(options.MaxCandidates).Select(s =>
-            new CalibrationFitCandidate(s.Parameters, Normalize(s.Rotation), s.Rms, s.Cost)).ToArray();
-        return new(true, best.Parameters, Normalize(best.Rotation), best.Rms, candidates, warnings);
+        CalibrationFitCandidate[] candidates = solutions.Take(options.MaxCandidates).Select(solution =>
+        {
+            (double maxError, int outliers) = ResidualStats(solution.Residuals, delta);
+            return new CalibrationFitCandidate(solution.Parameters, Normalize(solution.Rotation),
+                solution.Rms, solution.Cost, maxError, outliers);
+        }).ToArray();
+        bool cubicBoundary = Math.Min(best.Parameters.InnerRadiusMm - lowerInner,
+                upperInner - best.Parameters.InnerRadiusMm) < options.RadiusRangeMm * 0.005
+            || Math.Min(best.Parameters.OuterRadiusMm - lowerOuter,
+                upperOuter - best.Parameters.OuterRadiusMm) < options.RadiusRangeMm * 0.005;
+        var cubicResult = new CalibrationFitResult(true, best.Parameters, Normalize(best.Rotation),
+            best.Rms, candidates, warnings) { BoundaryLimited = cubicBoundary };
+        return new(cubicResult, best.Residuals);
     }
 
     private static CubicSolution RefineCubic(CubicSolution initial, Datum[] data, double delta,

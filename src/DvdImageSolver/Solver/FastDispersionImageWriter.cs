@@ -249,9 +249,13 @@ public static class FastDispersionImageWriter
                     continue;
                 }
 
-                byte scrambledByte = sample.Luminance < options.ImageMapping.LuminanceThreshold
-                    ? DispersionPoolSolver.BlackScrambledByte
-                    : DispersionPoolSolver.WhiteScrambledByte;
+                byte scrambledByte = DvdToneMapping.UseWhite(
+                    sample.Luminance,
+                    options.ImageMapping.LuminanceThreshold,
+                    options.ImageMapping.Tone,
+                    checked((((long)lba + sector) * DvdEccBlockEncoder.PayloadBytesPerSector) + byteIndex))
+                    ? DispersionPoolSolver.WhiteScrambledByte
+                    : DispersionPoolSolver.BlackScrambledByte;
                 sectorPayload[byteIndex] = (byte)(scrambledByte ^ scrambler[byteIndex]);
                 controlledWords++;
             }

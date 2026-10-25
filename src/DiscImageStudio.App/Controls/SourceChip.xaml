@@ -1,0 +1,28 @@
+<UserControl x:Class="DiscImageStudio.Controls.SourceChip"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:iconPacks="http://metro.mahapps.com/winfx/xaml/iconpacks">
+    <!-- Small read-only source strip: "what this workspace consumes". The preview workspace
+         used to retype the same bordered icon+text box once per disc family; the export
+         workspace retyped it a third time to hang an owner link off it. Optional Actions slot
+         for that link, so the row keeps one chrome wherever it appears. -->
+    <Border Background="{StaticResource Surface2Brush}"
+            BorderBrush="{StaticResource DividerBrush}" BorderThickness="1"
+            CornerRadius="{StaticResource RadiusPanel}" Padding="10,8">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <iconPacks:PackIconLucide Grid.Column="0" Kind="Layers" Width="15" Height="15"
+                                      VerticalAlignment="Center"
+                                      Foreground="{StaticResource TextSecondaryBrush}" />
+            <TextBlock x:Name="ChipText" Grid.Column="1" Style="{StaticResource RowText}" Margin="8,0,0,0"
+                       VerticalAlignment="Center"
+                       Foreground="{StaticResource TextSecondaryBrush}" />
+            <ContentPresenter x:Name="ActionHost" Grid.Column="2" VerticalAlignment="Center"
+                              Margin="12,0,0,0" />
+        </Grid>
+    </Border>
+</UserControl>

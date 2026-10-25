@@ -1,0 +1,246 @@
+<UserControl x:Class="DiscImageStudio.Views.DesignView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:DiscImageStudio.Controls"
+             xmlns:iconPacks="http://metro.mahapps.com/winfx/xaml/iconpacks"
+             xmlns:vm="clr-namespace:DiscImageStudio.ViewModels"
+             SizeChanged="OnPageSizeChanged">
+    <UserControl.Resources>
+        <!-- Property panel for the selected layer: numeric mm/°/% fields plus rename.
+             Two-column compact grid instead of the old fixed 94px WrapPanel cells. -->
+        <DataTemplate DataType="{x:Type vm:DesignLayerViewModel}">
+            <StackPanel>
+                <TextBlock Style="{StaticResource FieldLabel}" Text="图层名" />
+                <TextBox Style="{StaticResource CompactTextBox}"
+                         Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,14" />
+                <Grid Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="12" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <StackPanel Grid.Row="0" Grid.Column="0">
+                        <TextBlock Style="{StaticResource FieldLabel}" Text="X (mm)" />
+                        <TextBox Style="{StaticResource CompactTextBox}"
+                                 Text="{Binding TranslateXMm, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:F2}}" />
+                    </StackPanel>
+                    <StackPanel Grid.Row="0" Grid.Column="2">
+                        <TextBlock Style="{StaticResource FieldLabel}" Text="Y (mm)" />
+                        <TextBox Style="{StaticResource CompactTextBox}"
+                                 Text="{Binding TranslateYMm, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:F2}}" />
+                    </StackPanel>
+                    <StackPanel Grid.Row="2" Grid.Column="0">
+                        <TextBlock Style="{StaticResource FieldLabel}" Text="旋转 (°)" />
+                        <TextBox Style="{StaticResource CompactTextBox}"
+                                 Text="{Binding RotationDeg, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:F1}}" />
+                    </StackPanel>
+                    <StackPanel Grid.Row="2" Grid.Column="2">
+                        <TextBlock Style="{StaticResource FieldLabel}" Text="缩放 (%)" />
+                        <TextBox Style="{StaticResource CompactTextBox}"
+                                 Text="{Binding ScalePercent, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                </Grid>
+                <!-- One line with the full path in the tooltip: the picture itself is on the
+                     canvas, so the path should not push the tone module below the rail fold. -->
+                <TextBlock Style="{StaticResource HintText}" TextWrapping="NoWrap"
+                           Text="{Binding ImagePath, Mode=OneWay}"
+                           TextTrimming="CharacterEllipsis"
+                           ToolTip="{Binding ImagePath, Mode=OneWay}" />
+            </StackPanel>
+        </DataTemplate>
+    </UserControl.Resources>
+    <Grid Margin="{StaticResource PagePadding}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <controls:PageHeader Grid.Row="0" Title="设计" Badge="{Binding FamilyLabel}"
+                             Workspace="{x:Static vm:Workspace.Design}"
+                             Hint="导入图片后，可在盘面上拖动移动（或选中后用方向键移动）、用角点缩放、用上方圆柄旋转（按住 Shift 吸附直角）；右侧属性面板可输入精确数值。图层列表自上而下即叠放顺序，上层遮盖下层。">
+            <controls:PageHeader.Actions>
+                <Button Style="{StaticResource CompactButton}" Content="下一步：预览"
+                        Command="{Binding NavigateCommand}"
+                        CommandParameter="{x:Static vm:Workspace.Preview}" />
+            </controls:PageHeader.Actions>
+        </controls:PageHeader>
+
+        <!-- Wide: canvas in the middle with the layer stack and the property panel flanking it.
+             Narrow: the panels stack under the canvas and the page scrolls as one surface, so
+             the canvas never gets squeezed to a sliver (see OnPageSizeChanged). -->
+        <ScrollViewer x:Name="WorkScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled" ScrollChanged="OnWorkScrollChanged"
+                      controls:ScrollMaskBehavior.Enabled="True">
+            <Grid x:Name="Workspace">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition x:Name="LayersColumn" Width="{StaticResource SidePanelWidth}" />
+                    <ColumnDefinition x:Name="CanvasLeadColumn" Width="16" />
+                    <ColumnDefinition x:Name="CanvasColumn" Width="*" />
+                    <ColumnDefinition x:Name="PropsLeadColumn" Width="16" />
+                    <ColumnDefinition x:Name="PropsColumn" Width="{StaticResource SidePanelWidth}" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition x:Name="StageRow" Height="*" />
+                    <RowDefinition x:Name="LayersRow" Height="Auto" />
+                    <RowDefinition x:Name="RailRow" Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- Layer list. Rows are selectable and drive both the canvas selection and the
+                     property panel, mirroring how a selection drives the other workspaces. -->
+                <Border x:Name="LayersCard" Grid.Row="0" Grid.Column="0"
+                        Style="{StaticResource CardStyle}" Padding="0">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Border Grid.Row="0" Style="{StaticResource CardHeaderBandStyle}">
+                            <Grid Margin="16,0,12,0">
+                                <TextBlock Text="图层" Style="{StaticResource PanelTitle}" />
+                                <TextBlock Text="{Binding Layers.Count, StringFormat={}{0} 层}"
+                                           Style="{StaticResource HintText}" HorizontalAlignment="Right" />
+                            </Grid>
+                        </Border>
+                        <ListBox Grid.Row="1" ItemsSource="{Binding Layers}"
+                                 SelectedItem="{Binding SelectedLayer, Mode=TwoWay}"
+                                 Background="Transparent" BorderThickness="0" Padding="0"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto">
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem" BasedOn="{StaticResource RowListBoxItem}">
+                                    <Setter Property="Padding" Value="12,8" />
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="40" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border Grid.Column="0" Width="40" Height="40" CornerRadius="{StaticResource RadiusChip}"
+                                                Background="{StaticResource Surface2Brush}">
+                                            <Image Source="{Binding Thumbnail}" Width="36" Height="36"
+                                                   Stretch="Uniform" />
+                                        </Border>
+                                        <StackPanel Grid.Column="1" Margin="10,0,6,0" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Name}" Style="{StaticResource RowText}" />
+                                            <TextBlock Style="{StaticResource MicroText}" Margin="0,2,0,0">
+                                                <Run Text="{Binding TranslateXMm, Mode=OneWay, StringFormat={}{0:F1}}" />
+                                                <Run Text=", " />
+                                                <Run Text="{Binding TranslateYMm, Mode=OneWay, StringFormat={}{0:F1}}" />
+                                                <Run Text=" mm" />
+                                            </TextBlock>
+                                        </StackPanel>
+                                        <Button Grid.Column="2" Style="{StaticResource IconButton}"
+                                                VerticalAlignment="Center"
+                                                Command="{Binding DataContext.ToggleVisibilityCommand,
+                                                          RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding}"
+                                                AutomationProperties.Name="显示或隐藏图层"
+                                                ToolTip="显示 / 隐藏">
+                                            <iconPacks:PackIconLucide Kind="Eye" Width="15" Height="15">
+                                                <iconPacks:PackIconLucide.Style>
+                                                    <Style TargetType="iconPacks:PackIconLucide">
+                                                        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsVisible}" Value="False">
+                                                                <Setter Property="Kind" Value="EyeOff" />
+                                                                <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </iconPacks:PackIconLucide.Style>
+                                            </iconPacks:PackIconLucide>
+                                        </Button>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <StackPanel Grid.Row="2" Margin="12,10,12,12">
+                            <!-- Selection actions: operate on the highlighted layer only. -->
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10"
+                                        Visibility="{Binding HasSelectionVisibility}">
+                                <Button Style="{StaticResource IconButton}" Command="{Binding MoveSelectedUpCommand}"
+                                        AutomationProperties.Name="上移图层" ToolTip="上移一层（更靠近顶层）">
+                                    <iconPacks:PackIconLucide Kind="ArrowUp" Width="15" Height="15"
+                                                              Foreground="{StaticResource TextSecondaryBrush}" />
+                                </Button>
+                                <Button Style="{StaticResource IconButton}" Margin="6,0,0,0"
+                                        Command="{Binding MoveSelectedDownCommand}"
+                                        AutomationProperties.Name="下移图层" ToolTip="下移一层（更靠近底层）">
+                                    <iconPacks:PackIconLucide Kind="ArrowDown" Width="15" Height="15"
+                                                              Foreground="{StaticResource TextSecondaryBrush}" />
+                                </Button>
+                                <Button Style="{StaticResource IconButton}" Margin="6,0,0,0"
+                                        Command="{Binding RemoveSelectedCommand}"
+                                        AutomationProperties.Name="删除图层" ToolTip="删除选中图层（Del）">
+                                    <iconPacks:PackIconLucide Kind="Trash2" Width="15" Height="15"
+                                                              Foreground="{StaticResource TextSecondaryBrush}" />
+                                </Button>
+                            </StackPanel>
+                            <Button Style="{StaticResource SecondaryButton}" Height="{StaticResource ControlHeight}"
+                                    Content="导入图片" Command="{Binding ImportImagesCommand}"
+                                    HorizontalAlignment="Stretch" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- Center: the mm canvas -->
+                <Border x:Name="CanvasCard" Grid.Row="0" Grid.Column="2"
+                        Background="{StaticResource Surface1Brush}"
+                        BorderBrush="{StaticResource DividerBrush}" BorderThickness="1"
+                        CornerRadius="{StaticResource RadiusCard}"
+                        ClipToBounds="True">
+                    <controls:DiscDesignCanvas />
+                </Border>
+
+                <!-- Right rail: selected-layer properties on top, the tone module below.
+                     The rail is pinned to the viewport height (see UpdateResponsiveLayout),
+                     so the tone card's star row absorbs the height the property card leaves
+                     over and the column ends flush with the canvas. -->
+                <ScrollViewer x:Name="RightRailScroll" Grid.Row="0" Grid.Column="4"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              controls:ScrollMaskBehavior.Enabled="True">
+                    <Grid x:Name="RightRail">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <Border x:Name="PropsCard" Grid.Row="0" Style="{StaticResource CardStyle}" Padding="18">
+                            <StackPanel>
+                                <TextBlock Text="属性" Style="{StaticResource PanelTitle}"
+                                           Margin="0,0,0,12" />
+                                <!-- Selected/empty as two gates, like every other page: the
+                                     ContentPresenter keeps the numeric fields' implicit styles alive. -->
+                                <controls:VisibilityGate IsOpen="{Binding HasSelection}">
+                                    <ContentControl Content="{Binding SelectedLayer}" />
+                                </controls:VisibilityGate>
+                                <controls:VisibilityGate IsOpen="{Binding HasSelection}" Inverted="True">
+                                    <TextBlock Style="{StaticResource HintText}"
+                                               Text="在画布上点击一个图层以编辑它的位置、旋转与缩放。" />
+                                </controls:VisibilityGate>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Tone lives next to the composite because it is the last step of the
+                             same material: the preview projects the composed picture through the
+                             engines' mapping, and the sliders feed generation, burn and read-back
+                             through the shared state. -->
+                        <Border x:Name="ToneCard" Grid.Row="1" Style="{StaticResource CardStyle}" Padding="18"
+                                Margin="0,16,0,0">
+                            <controls:TonePanel x:Name="ToneRail" DataContext="{Binding Tone}" />
+                        </Border>
+                    </Grid>
+                </ScrollViewer>
+            </Grid>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

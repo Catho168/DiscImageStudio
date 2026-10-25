@@ -8,15 +8,13 @@
         <Border x:Name="DialogCard" Width="480" HorizontalAlignment="Center" VerticalAlignment="Center"
                 Background="{StaticResource Surface1Brush}"
                 BorderBrush="{StaticResource DividerBrush}" BorderThickness="1"
-                CornerRadius="16" Padding="24" SnapsToDevicePixels="True">
-            <Border.Effect>
-                <DropShadowEffect ShadowDepth="10" BlurRadius="32" Opacity="0.5" Color="#000000" />
-            </Border.Effect>
+                CornerRadius="{StaticResource RadiusCard}" Padding="24" SnapsToDevicePixels="True"
+                Effect="{StaticResource ModalShadow}">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <iconPacks:PackIconLucide Kind="TriangleAlert" Width="24" Height="24"
+                    <iconPacks:PackIconLucide x:Name="HeaderIcon" Kind="TriangleAlert" Width="24" Height="24"
                                               Foreground="{StaticResource DangerBrush}" />
-                    <TextBlock x:Name="TitleText" Style="{StaticResource CardTitle}" FontSize="17"
+                    <TextBlock x:Name="TitleText" Style="{StaticResource CardTitle}"
                                Margin="10,0,0,0" VerticalAlignment="Center" />
                 </StackPanel>
                 <TextBlock x:Name="MessageText" Style="{StaticResource BodyText}" Margin="0,14,0,0"
@@ -26,10 +24,16 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="10" />
                         <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="10" />
+                        <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <Button x:Name="CancelButton" Grid.Column="0" Style="{StaticResource SecondaryButton}"
                             Content="取消" Click="Cancel_Click" />
-                    <Button x:Name="ConfirmButton" Grid.Column="2" Style="{StaticResource DangerButton}"
+                    <!-- Three-way save dialog only: sits between refuse (cancel) and the
+                         constructive action, hidden for the two-button burn confirm. -->
+                    <Button x:Name="NeutralButton" Grid.Column="2" Style="{StaticResource SecondaryButton}"
+                            Content="不保存" Visibility="Collapsed" Click="Neutral_Click" />
+                    <Button x:Name="ConfirmButton" Grid.Column="4" Style="{StaticResource DangerButton}"
                             Content="确认刻录" Click="Confirm_Click" />
                 </Grid>
             </StackPanel>

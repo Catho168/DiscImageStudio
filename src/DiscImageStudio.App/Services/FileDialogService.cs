@@ -25,6 +25,19 @@ internal sealed class FileDialogService
         return dialog.ShowDialog(_ownerProvider()) == true ? dialog.FileName : null;
     }
 
+    /// <summary>Multi-select image picker for the design page's import action.</summary>
+    internal string[]? PickImages()
+    {
+        OpenFileDialog dialog = new()
+        {
+            Title = "导入图片",
+            Filter = "图片文件|*.png;*.jpg;*.jpeg;*.bmp;*.tif;*.tiff;*.gif|所有文件|*.*",
+            CheckFileExists = true,
+            Multiselect = true,
+        };
+        return dialog.ShowDialog(_ownerProvider()) == true ? dialog.FileNames : null;
+    }
+
     internal string? PickOpen(string title, string filter)
     {
         OpenFileDialog dialog = new()

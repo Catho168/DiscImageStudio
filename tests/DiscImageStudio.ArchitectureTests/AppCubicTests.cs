@@ -17,7 +17,7 @@ internal static class AppCubicTests
         Require(state.DvdPitchLinear == "0.12" && state.DvdPitchQuadratic == "-0.08"
             && state.DvdPitchCubic == "0.04", "preset applies the three coefficients");
         Require(state.DvdPitchSummary.Contains("x²") && state.DvdPitchSummary.Contains("x³ μm")
-            && state.DvdPitchSummary.Contains("a₀"), "generation displays the full dimensional polynomial and constrained constant");
+            && !state.DvdPitchSummary.Contains("a₀"), "generation displays the dimensional polynomial without the constant footnote");
         List<string?> changed = [];
         state.PropertyChanged += (_, args) => changed.Add(args.PropertyName);
         state.DvdPitchCubic = "0.06";
@@ -67,7 +67,7 @@ internal static class AppCubicTests
             foreach (string file in Directory.EnumerateFiles(directory)) File.Delete(file);
             Directory.Delete(directory);
         }
-        Console.WriteLine("app-cubic: passed (presets, UI invalidation, complete polynomial, calibration snapshots)");
+        Console.WriteLine("app-cubic: passed (presets, UI invalidation, dimensional polynomial, calibration snapshots)");
     }
 
     private static void Require(bool condition, string message)

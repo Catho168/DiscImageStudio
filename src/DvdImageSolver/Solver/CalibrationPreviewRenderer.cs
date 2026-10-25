@@ -1,5 +1,6 @@
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using DiscImageStudio.Core;
 using DvdImageSolver.Encoding;
 
 namespace DvdImageSolver.Solver;
@@ -23,7 +24,8 @@ public sealed record CalibrationPreviewOptions(
     double GeneratedPitchCubic = 0,
     double ActualPitchLinear = 0,
     double ActualPitchQuadratic = 0,
-    double ActualPitchCubic = 0);
+    double ActualPitchCubic = 0,
+    ToneProfile? Tone = null);
 
 public sealed record CalibrationPreviewSummary(
     string SourceImage,
@@ -54,7 +56,8 @@ public sealed record CalibrationPreviewSummary(
     double GeneratedPitchCubic = 0,
     double ActualPitchLinear = 0,
     double ActualPitchQuadratic = 0,
-    double ActualPitchCubic = 0)
+    double ActualPitchCubic = 0,
+    ToneProfile? Tone = null)
 {
     public double GeneratedPitchLinearMicrometres => GeneratedTrackPitchMicrometres * GeneratedPitchLinear;
     public double GeneratedPitchQuadraticMicrometres => GeneratedTrackPitchMicrometres * GeneratedPitchQuadratic;
@@ -64,12 +67,13 @@ public sealed record CalibrationPreviewSummary(
     public double ActualPitchCubicMicrometres => ActualTrackPitchMicrometres * ActualPitchCubic;
 }
 
-internal static class CalibrationPreviewRenderer
+public static class CalibrationPreviewRenderer
 {
-    internal static CalibrationPreviewSummary Render(
+    public static CalibrationPreviewSummary Render(
         string imagePath,
         string outputPath,
-        CalibrationPreviewOptions options)
+        CalibrationPreviewOptions options,
+        CancellationToken cancellationToken = default)
     {
         Validate(options);
         string sourceFullPath = Path.GetFullPath(imagePath);
@@ -126,8 +130,15 @@ internal static class CalibrationPreviewRenderer
         int workerCount = Environment.ProcessorCount;
         Parallel.For(0, workerCount, worker =>
         {
-            for (long sampleIndex = worker; sampleIndex < totalSamples; sampleIndex += workerCount)
+            for (long sampleIndex = worker, iteration = 0;
+                 sampleIndex < totalSamples;
+                 sampleIndex += workerCount, iteration++)
             {
+                if ((iteration & 0x3FF) == 0)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+
                 double globalChannelBit = firstGlobalChannelBit
                     + ((sampleIndex + 0.5) * channelBitsPerSample);
                 double arcLengthMm = globalChannelBit * options.ChannelBitLengthNm * 1e-6;
@@ -155,7 +166,13 @@ internal static class CalibrationPreviewRenderer
                 }
 
                 int pixelIndex = (pixelY * size) + pixelX;
-                int binaryLevel = sample.Luminance < options.LuminanceThreshold ? 0 : 255;
+                int binaryLevel = DvdToneMapping.UseWhite(
+                    sample.Luminance,
+                    options.LuminanceThreshold,
+                    options.Tone,
+                    (long)(globalChannelBit / 16.0))
+                    ? 255
+                    : 0;
                 Interlocked.Add(
                     ref weightedLevelSums[pixelIndex],
                     binaryLevel * sample.Alpha);
@@ -163,6 +180,7 @@ internal static class CalibrationPreviewRenderer
             }
         });
 
+        cancellationToken.ThrowIfCancellationRequested();
         Parallel.For(0, size, pixelY =>
         {
             double yMm = (centre - pixelY) * millimetresPerPixel;
@@ -222,7 +240,8 @@ internal static class CalibrationPreviewRenderer
             options.GeneratedPitchCubic,
             options.ActualPitchLinear,
             options.ActualPitchQuadratic,
-            options.ActualPitchCubic);
+            options.ActualPitchCubic,
+            options.Tone);
     }
 
     private static void WritePng(string outputPath, int size, byte[] pixels, int stride)

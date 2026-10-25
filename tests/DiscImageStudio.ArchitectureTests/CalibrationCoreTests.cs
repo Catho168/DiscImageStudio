@@ -16,6 +16,7 @@ internal static class CalibrationCoreTests
             TestOneArmWithUnknownSourceRadii(kind);
             TestNoisyCurveAndArmIdentity(kind);
             TestMappedOutline(kind);
+            TestBoundarySignalAndWideRecovery(kind);
         }
         Console.WriteLine("calibration-core: concentric guides, continuous single-arm fitting, winding, sessions and cancellation passed");
     }
@@ -95,8 +96,8 @@ internal static class CalibrationCoreTests
         CalibrationCrossTrace valid = Trace(target, target.Parameters, 0.4, 0, 12);
         Check(!CalibrationCrossFitter.Fit(target, [valid with { Points = valid.Points.Reverse().ToArray() }]).Succeeded,
             "reversed or switched path is not silently reinterpreted as another arm");
-        CalibrationPoint[] sparse = [Polar(27, 0), Polar(31, 2.8), Polar(36, 2.9), Polar(42, 3), Polar(48, 3.1), Polar(54, 3.2)];
-        Check(!CalibrationCrossFitter.Fit(target, [new(0, sparse)]).Succeeded, "large adjacent angle asks for intermediate points");
+        CalibrationPoint[] sparse = [Polar(27, 0), Polar(31, Math.PI), Polar(36, 2.9), Polar(42, 3), Polar(48, 3.1), Polar(54, 3.2)];
+        Check(!CalibrationCrossFitter.Fit(target, [new(0, sparse)]).Succeeded, "a half-turn jump asks for intermediate points");
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
         Throws<OperationCanceledException>(() => CalibrationCrossFitter.Fit(target, [valid], cancellationToken: cancellation.Token),
@@ -159,6 +160,30 @@ internal static class CalibrationCoreTests
         Near(actual.OuterRadiusMm, combined.BestParameters.OuterRadiusMm, 3e-7, "different arms share both fitted radii");
         Check(combined.Candidates.Zip(combined.Candidates.Skip(1)).All(pair => pair.First.RobustCost <= pair.Second.RobustCost),
             "candidate ordering uses the robust continuous-curve objective");
+    }
+
+    private static void TestBoundarySignalAndWideRecovery(CalibrationDiscKind kind)
+    {
+        CalibrationParameters generated = Parameters(kind);
+        CalibrationParameters actual = generated with
+        {
+            InnerRadiusMm = generated.InnerRadiusMm + 0.05,
+            OuterRadiusMm = generated.OuterRadiusMm - 0.04,
+        };
+        CalibrationTarget target = CalibrationTarget.Create(generated);
+        CalibrationCrossTrace trace = Trace(target, actual, 0.37, 0, 70);
+        CalibrationFitResult narrow = CalibrationCrossFitter.Fit(target, [trace],
+            new(RadiusRangeMm: 0.02, FitDvdPitch: false));
+        Check(narrow.Succeeded && narrow.BoundaryLimited,
+            $"{kind} narrow search marks its boundary-clamped optimum");
+        Check(narrow.RmsErrorMm > 0.5, $"{kind} clamped optimum is visibly off the trace");
+        CalibrationFitResult wide = CalibrationCrossFitter.Fit(target, [trace],
+            new(RadiusRangeMm: 0.1, FitDvdPitch: false));
+        Check(wide.Succeeded && !wide.BoundaryLimited, $"{kind} wider search finds an interior optimum");
+        Near(actual.InnerRadiusMm, wide.BestParameters!.InnerRadiusMm, 3e-7, $"{kind} wide-search inner radius");
+        Near(actual.OuterRadiusMm, wide.BestParameters.OuterRadiusMm, 3e-7, $"{kind} wide-search outer radius");
+        Check(wide.RmsErrorMm < 0.05 && wide.Candidates.All(candidate => candidate.MaxErrorMm > 0),
+            $"{kind} wide-search residual and per-point maximum are populated");
     }
 
     private static void TestMappedOutline(CalibrationDiscKind kind)

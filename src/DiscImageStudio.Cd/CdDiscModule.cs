@@ -26,6 +26,15 @@ public sealed class CdDiscModule : IOpticalDiscModule
         new("actual-r1", "Measured outer radius", DiscOptionValueType.Decimal, DefaultValue: "56.6", Unit: "mm"),
     ];
 
+    /// <summary>Tone mapping shared by generation and the source-projection preview. The
+    /// defaults reproduce the pre-tone hard threshold exactly.</summary>
+    private static readonly IReadOnlyList<DiscOptionDefinition> ToneOptions =
+    [
+        new("tone-dither", "Dither strength", DiscOptionValueType.Decimal, DefaultValue: "0", Unit: "0..1"),
+        new("tone-levels", "Palette levels", DiscOptionValueType.Integer, DefaultValue: "2", Unit: "2 or 4"),
+        new("tone-brightness", "Tone brightness", DiscOptionValueType.Decimal, DefaultValue: "0", Unit: "-64..64"),
+    ];
+
     private static readonly DiscModuleDescriptor ModuleDescriptor = new(
         ModuleId,
         "CD-DA",
@@ -45,6 +54,7 @@ public sealed class CdDiscModule : IOpticalDiscModule
                     .. GeometryOptions,
                     new("interleave", "CD-DA delay interleave", DiscOptionValueType.Boolean, DefaultValue: "true"),
                     new("cue", "Write a CUE sheet next to the WAV track", DiscOptionValueType.Boolean, DefaultValue: "true"),
+                    .. ToneOptions,
                 ]),
             new DiscCommandDescriptor(
                 "cd-preview-warp",
@@ -56,6 +66,7 @@ public sealed class CdDiscModule : IOpticalDiscModule
                     new("output", "Preview PNG", DiscOptionValueType.OutputFile, Required: true),
                     .. GeometryOptions,
                     .. MeasuredGeometryOptions,
+                    .. ToneOptions,
                     new("size", "Preview size", DiscOptionValueType.Integer, DefaultValue: "1600", Unit: "px"),
                     new("samples-per-sector", "Samples per sector", DiscOptionValueType.Integer, DefaultValue: "16"),
                 ]),
@@ -116,7 +127,8 @@ public sealed class CdDiscModule : IOpticalDiscModule
                 value.CompletedBytes,
                 value.TotalBytes,
                 value.Elapsed)),
-            cancellationToken);
+            cancellationToken,
+            ReadTone(options));
         string message =
             $"CD track complete: {summary.Sectors} sectors, {summary.BytesWritten} bytes, "
             + $"interleave={summary.Interleaved}, elapsed={summary.Elapsed.TotalSeconds:F1}s, "
@@ -141,6 +153,7 @@ public sealed class CdDiscModule : IOpticalDiscModule
             ReadMeasuredParameters(options, generated),
             options.GetInt("size", 1600),
             options.GetInt("samples-per-sector", 16),
+            ReadTone(options),
             cancellationToken);
         return new DiscJobResult(
             ModuleId,
@@ -184,6 +197,16 @@ public sealed class CdDiscModule : IOpticalDiscModule
             options.GetDouble("velocity", CdDiscParameters.StandardLinearVelocityMmPerSecond),
             startAngleDegrees * Math.PI / 180.0,
             options.GetDouble("outer", CdDiscParameters.StandardImageOuterRadiusMm));
+    }
+
+    private static ToneProfile ReadTone(CdCommandOptions options)
+    {
+        ToneProfile tone = new(
+            options.GetDouble("tone-dither", 0.0),
+            options.GetInt("tone-levels", ToneProfile.TwoLevels),
+            options.GetDouble("tone-brightness", 0.0));
+        tone.Validate();
+        return tone;
     }
 
     /// <summary>Measured set of the geometry preview: the program it reads is the generated

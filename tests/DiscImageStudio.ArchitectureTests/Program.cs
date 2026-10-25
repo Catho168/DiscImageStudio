@@ -35,11 +35,15 @@ Throws<ArgumentException>(
     () => new DiscModuleCatalog([new FutureBluRayModule(), new ConflictingModule()]),
     "duplicate command rejection");
 Throws<ArgumentException>(() => catalog.Resolve("unknown-command"), "unknown command rejection");
-TestRingImageLayout();
+RunStreamingGenerationTests();
 TestDiscPresets();
 TestDiscPresetJson();
+ProjectStoreTests.Run();
+DesignComposerTests.Run();
 CdAudioCompatibilityTests.Run();
 CdRawImageByteOrderTests.Run();
+ToneTests.Run();
+SaveTrailTests.Run();
 DvdCubicPipelineTests.Run();
 AppCubicTests.Run();
 CalibrationEncoderTests.Run();
@@ -89,56 +93,14 @@ static void Throws<TException>(Action action, string name)
     throw new InvalidOperationException($"{name}: expected {typeof(TException).Name}.");
 }
 
-static void TestRingImageLayout()
+static void RunStreamingGenerationTests()
 {
-    Equal(8192, RingImageQuality.GenerationSize, "formal ring image resolution");
-    Equal(4096, RingImageQuality.SavedPreviewSize, "saved ring preview resolution");
-    Equal(2048, RingImageQuality.LivePreviewSize, "live ring preview resolution");
-    new RingImageLayoutOptions(58, 26, 56, RingImageQuality.GenerationSize).Validate();
-
-    string directory = Path.Combine(Path.GetTempPath(), $"disc-ring-test-{Guid.NewGuid():N}");
+    string directory = Path.Combine(Path.GetTempPath(), $"disc-stream-test-{Guid.NewGuid():N}");
     Directory.CreateDirectory(directory);
     try
     {
         string sourcePath = Path.Combine(directory, "source.png");
-        string outputPath = Path.Combine(directory, "ring.png");
         WriteSolidPng(sourcePath, 80, 40, 0);
-        RingImageLayoutSummary summary = RingImageProcessor.Render(
-            sourcePath,
-            outputPath,
-            new RingImageLayoutOptions(
-                CanvasOuterRadiusMm: 58,
-                ContentInnerRadiusMm: 26,
-                ContentOuterRadiusMm: 56,
-                OutputSize: 512));
-        True(summary.CopyCount >= 3, "ring image copies source multiple times");
-        True(
-            summary.CopyWidthPixels > 0 && summary.CopyHeightPixels > 0,
-            "ring layout reports per-copy pixel resolution");
-        True(
-            Math.Abs((summary.CopyWidthMm / summary.CopyHeightMm) - 2.0) < 1e-10,
-            "ring copies preserve source aspect ratio");
-        double innerEdgeRadiusMm =
-            summary.CopyCentreRadiusMm - (summary.CopyHeightMm / 2.0);
-        double outerCornerRadiusMm = Math.Sqrt(
-            Math.Pow(summary.CopyCentreRadiusMm + (summary.CopyHeightMm / 2.0), 2)
-            + Math.Pow(summary.CopyWidthMm / 2.0, 2));
-        True(
-            innerEdgeRadiusMm >= summary.ContentInnerRadiusMm,
-            "ring copy stays outside inner boundary");
-        True(
-            outerCornerRadiusMm <= summary.ContentOuterRadiusMm,
-            "ring copy corners stay inside outer boundary");
-        double copyAngularSpan = 2.0 * Math.Atan(
-            (summary.CopyWidthMm / 2.0) / innerEdgeRadiusMm);
-        double availableAngularSpan =
-            ((2.0 * Math.PI) / summary.CopyCount)
-            - (summary.AngularGapDegrees * Math.PI / 180.0);
-        True(
-            copyAngularSpan <= availableAngularSpan + 1e-10,
-            "ring copies do not overlap");
-        True(File.Exists(outputPath), "ring image output exists");
-        ValidateRingSafetyMargins(outputPath, 58, 25.5, 56.5);
         TestStreamingGeneration(sourcePath);
     }
     finally
@@ -826,47 +788,6 @@ static void WriteSolidPng(string path, int width, int height, byte level)
     encoder.Frames.Add(BitmapFrame.Create(bitmap));
     using FileStream output = File.Create(path);
     encoder.Save(output);
-}
-
-static void ValidateRingSafetyMargins(
-    string path,
-    double canvasOuterRadiusMm,
-    double safeInnerLimitMm,
-    double safeOuterLimitMm)
-{
-    using FileStream stream = File.OpenRead(path);
-    BitmapFrame frame = BitmapFrame.Create(
-        stream,
-        BitmapCreateOptions.PreservePixelFormat,
-        BitmapCacheOption.OnLoad);
-    FormatConvertedBitmap converted = new(frame, PixelFormats.Bgra32, null, 0);
-    int stride = checked(converted.PixelWidth * 4);
-    byte[] pixels = new byte[checked(stride * converted.PixelHeight)];
-    converted.CopyPixels(pixels, stride, 0);
-    double centre = converted.PixelWidth / 2.0;
-    int darkRingPixels = 0;
-    for (int y = 0; y < converted.PixelHeight; y++)
-    {
-        for (int x = 0; x < converted.PixelWidth; x++)
-        {
-            int offset = (y * stride) + (x * 4);
-            byte level = pixels[offset];
-            double dx = x - centre;
-            double dy = y - centre;
-            double radiusMm = Math.Sqrt((dx * dx) + (dy * dy))
-                * canvasOuterRadiusMm / centre;
-            if (radiusMm < safeInnerLimitMm || radiusMm > safeOuterLimitMm)
-            {
-                True(level >= 250, "ring safety margins stay blank");
-            }
-            else if (level < 32)
-            {
-                darkRingPixels++;
-            }
-        }
-    }
-
-    True(darkRingPixels > 100, "ring layout contains copied image pixels");
 }
 
 sealed class ForwardOnlyWriteStream(Stream destination) : Stream

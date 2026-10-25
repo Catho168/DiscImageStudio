@@ -31,12 +31,13 @@ internal static class CalibrationPhotoViewModelTests
         };
         var model = CreateModel(state);
         model.CreateTargetCommand.Execute(null);
-        var target = model.Target ?? throw new InvalidOperationException(model.StatusText);
+        var target = model.Target ?? throw new InvalidOperationException(model.LastStatusMessage);
         Require(target.SchemaVersion == CalibrationTarget.CurrentSchemaVersion && model.IsPhotoStep && !model.SolveCommand.CanExecute(null), "new target starts in photo step");
         Require(model.CanvasOuterRadiusMm == CalibrationReferencePattern.CanvasRadiusMm && model.PhotoCanvasRadiusMm == 63,
             "disc-preview background remains 120 mm while target scaling and corrected-photo margin are independent");
-        Require(model.TargetSummary.Contains("按生成外半径缩放", StringComparison.Ordinal),
-            "target summary explains the source-image mapping instead of claiming a fixed physical image scale");
+        Require(model.CurrentParametersSummary.Contains("内半径", StringComparison.Ordinal)
+            && model.CurrentParametersSummary.Contains("外半径", StringComparison.Ordinal),
+            "the target button names the project parameters a new target is built from");
         var actual = target.Parameters with { InnerRadiusMm = 24.507, OuterRadiusMm = 56.791 };
         var camera = new CalibrationPhotoTransform([6.5, .8, 460, .35, 5.4, 380, .0018, -.0025, 1]);
         string photoPath = Path.Combine(directory, "disc.png");
@@ -54,7 +55,7 @@ internal static class CalibrationPhotoViewModelTests
         }
         model.RectifyPhotoCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         Require(model.IsRectificationReady && model.PreviewRectification && model.RectifiedPhoto is not null,
-            "joint contour calculation produces a read-only corrected preview: " + model.StatusText);
+            "joint contour calculation produces a read-only corrected preview: " + model.LastStatusMessage);
         model.ConfirmRectificationCommand.Execute(null);
         Require(model.IsTraceStep && !model.PreviewRectification && !model.SolveCommand.CanExecute(null),
             "confirmation opens an empty editable single-curve step");
@@ -78,7 +79,7 @@ internal static class CalibrationPhotoViewModelTests
         model.TraceEditedCommand.Execute(new(0, first.Index, first.XMm, first.YMm));
         model.SolveCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         Require(model.CoarseCandidates.Count > 0 && model.CrossPredictionContours.Count == 1,
-            "fit produces a continuous one-arm overlay: " + model.StatusText);
+            "fit produces a continuous one-arm overlay: " + model.LastStatusMessage);
         var best = model.SelectedCoarseCandidate ?? throw new InvalidOperationException("No candidate.");
         Require(Math.Abs(best.Parameters.InnerRadiusMm - actual.InnerRadiusMm) < .0002
             && Math.Abs(best.Parameters.OuterRadiusMm - actual.OuterRadiusMm) < .0002, "single photographed curve recovers radii");
@@ -180,7 +181,7 @@ internal static class CalibrationPhotoViewModelTests
             "physical outer edge and central hole reject invalid additions and moves without deleting any of the ten valid points");
         model.SolveCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         Require(model.CoarseCandidates.Count > 0 && model.CrossPredictionContours.Count == 1,
-            "complete ten-point record produces a diagnostic continuous prediction: " + model.StatusText);
+            "complete ten-point record produces a diagnostic continuous prediction: " + model.LastStatusMessage);
         Require(model.TracePoints.Count == 10 && model.TracePoints.Select(p => new CalibrationPoint(p.XMm, p.YMm)).SequenceEqual(measured),
             "solving never trims the original ten measured samples");
         AssertObservedEndpoints(model);
@@ -223,6 +224,35 @@ internal static class CalibrationPhotoViewModelTests
         Require(Math.Sqrt(Radius(model.TracePoints[0])) < target.Parameters.InnerRadiusMm
             && Math.Sqrt(Radius(model.TracePoints[^1])) > target.Parameters.OuterRadiusMm,
             "both ends of the extended regression curve genuinely exceed the baseline annulus");
+
+        // A disc whose geometry is 0.05 mm away from the generated baseline must not be
+        // published as the clamped edge of the default +-0.02 mm box. Auto mode widens the
+        // box until the optimum is interior and then recovers the real radii.
+        model.ClearTracesCommand.Execute(null);
+        model.FitDvdPitch = false;
+        CalibrationParameters farActual = target.Parameters with
+        {
+            InnerRadiusMm = target.Parameters.InnerRadiusMm + .05,
+            OuterRadiusMm = target.Parameters.OuterRadiusMm - .04,
+        };
+        double band = target.Parameters.OuterRadiusMm - target.Parameters.InnerRadiusMm;
+        for (int i = 0; i < 70; i++)
+        {
+            double radius = target.Parameters.InnerRadiusMm + band * (.08 + .84 * i / 69.0);
+            var point = target.MapPoint(new(0, -radius), farActual, .41);
+            model.TraceEditedCommand.Execute(new(0, -1, point.X, point.Y));
+        }
+        Require(model.TracePoints.Count == 70 && model.SolveCommand.CanExecute(null),
+            "a dense far-offset curve is ready for the auto-range fit");
+        model.SolveCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        var autoCandidate = model.SelectedCoarseCandidate;
+        Require(autoCandidate is not null
+            && Math.Abs(autoCandidate.Parameters.InnerRadiusMm - farActual.InnerRadiusMm) < .001
+            && Math.Abs(autoCandidate.Parameters.OuterRadiusMm - farActual.OuterRadiusMm) < .001,
+            "auto search widens past the default box and recovers the far-offset radii: " + model.LastStatusMessage);
+        Require(model.FitAssessment.Contains("已自动扩大", StringComparison.Ordinal),
+            "fit assessment names the widened search box");
+
         Invoke(model, "OnWindowClosed"); Invoke(reopened, "OnWindowClosed");
     }
 
@@ -264,8 +294,7 @@ internal static class CalibrationPhotoViewModelTests
         Set(shell, "<Toasts>k__BackingField", new ObservableCollection<ToastItem>());
         foreach (string name in new[]
         {
-            "OpenOutputCommand", "BrowseCdImageCommand", "BrowseDvdImageCommand",
-            "BrowseCdTrackCommand", "BrowseDvdIsoCommand",
+            "OpenOutputCommand", "BrowseCdTrackCommand", "BrowseDvdIsoCommand",
         })
             Set(shell, $"<{name}>k__BackingField", new RelayCommand(() => { }));
         return new(shell, state);

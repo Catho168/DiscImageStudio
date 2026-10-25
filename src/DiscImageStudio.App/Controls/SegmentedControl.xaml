@@ -4,7 +4,7 @@
              x:Name="SegmentedRoot"
              UseLayoutRounding="True" SnapsToDevicePixels="True"
              MinWidth="176">
-    <Grid x:Name="LayoutRoot" Height="36">
+    <Grid x:Name="LayoutRoot" Height="{StaticResource CompactHeight}">
         <!-- Rounded-rect track one level above the card surface, divider hairline;
              12px radius matches the TextBox/ComboBox field language (not a pill) -->
         <Border CornerRadius="12" Background="{StaticResource Surface2Brush}"

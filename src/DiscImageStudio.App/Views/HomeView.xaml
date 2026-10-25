@@ -3,74 +3,90 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:controls="clr-namespace:DiscImageStudio.Controls"
              xmlns:iconPacks="http://metro.mahapps.com/winfx/xaml/iconpacks">
-    <ScrollViewer Margin="40,28,40,32" controls:ScrollMaskBehavior.Enabled="True">
-        <!-- MaxWidth alone centers this column: Stretch + MaxWidth arranges it at 840 and
+    <!-- The page padding lives on the content, not on the scroller, so the scroll rail sits at
+         the window edge like every other workspace. -->
+    <ScrollViewer controls:ScrollMaskBehavior.Enabled="True">
+        <!-- MaxWidth alone centers this column: Stretch + MaxWidth arranges it at 1120 and
              WPF centers the capped element, so the sections span the full page column. -->
-        <StackPanel MaxWidth="840">
-            <TextBlock Text="欢迎使用 Disc Image Studio。" Style="{StaticResource H1Title}" />
+        <StackPanel MaxWidth="1120" Margin="{StaticResource PagePadding}">
+            <TextBlock Text="Disc Image Studio" Style="{StaticResource H1Title}" />
+            <TextBlock Style="{StaticResource PageSubtitle}" Margin="0,8,0,0"
+                       Text="把图层合成到盘面，生成 CD 音轨或 DVD 图像盘并刻录。流程：设计 → 预览 → 导出 → 刻录；标定可实测盘片几何。" />
 
-            <!-- Action bar: disc family on the left, the two entry actions on the right.
-                 Replaces the old left rail, so the whole page reads top to bottom. -->
+            <!-- One card for the three ways forward: the open project on the left, starting
+                 something else on the right. The project name appears once, on the control that
+                 actually goes there. -->
             <Border Style="{StaticResource CardStyle}" Padding="18,16" Margin="0,20,0,0">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <controls:SegmentedControl Width="200" VerticalAlignment="Center"
-                                               IsSecondSelected="{Binding IsDvdSelected}" />
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
-                        <Button Style="{StaticResource GhostButton}" Content="打开预设 JSON"
-                                Height="40" Padding="14,0" FontSize="13" VerticalAlignment="Center"
-                                Foreground="{StaticResource TextMutedBrush}"
-                                Command="{Binding OpenPresetsJsonCommand}" />
-                        <Button Style="{StaticResource SecondaryButton}" Content="打开"
-                                Height="40" Padding="22,0" Margin="10,0,0,0"
-                                Command="{Binding OpenCommand}" />
-                        <Button Style="{StaticResource PrimaryButton}" Content="新建"
-                                Height="40" Padding="26,0" Margin="10,0,0,0"
-                                Command="{Binding NewCommand}" />
+                    <Button Grid.Column="0" Style="{StaticResource SecondaryButton}"
+                            Height="{StaticResource ControlHeight}" Padding="18,0"
+                            Command="{Binding ContinueProjectCommand}"
+                            Visibility="{Binding IsProjectOpenVisibility}"
+                            ToolTip="回到打开的工程，从设计工作区继续。">
+                        <StackPanel Orientation="Horizontal">
+                            <iconPacks:PackIconLucide Kind="ArrowLeft" Width="16" Height="16"
+                                                      VerticalAlignment="Center"
+                                                      Foreground="{StaticResource PrimaryBrush}" />
+                            <TextBlock Text="返回工程" Margin="8,0,0,0" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding CurrentProjectName}" Margin="8,0,0,0"
+                                       VerticalAlignment="Center" MaxWidth="260"
+                                       TextTrimming="CharacterEllipsis"
+                                       Foreground="{StaticResource TextMutedBrush}" />
+                        </StackPanel>
+                    </Button>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button Style="{StaticResource SecondaryButton}" Content="打开工程"
+                                Height="{StaticResource ControlHeight}" Padding="18,0"
+                                Command="{Binding OpenProjectCommand}" />
+                        <Button Style="{StaticResource PrimaryButton}" Content="新建工程"
+                                Height="{StaticResource ControlHeight}" Padding="18,0" Margin="10,0,0,0"
+                                Command="{Binding NewProjectCommand}" />
                     </StackPanel>
                 </Grid>
             </Border>
 
-            <controls:SectionCard Header="快速创建" Margin="0,20,0,0">
-                <ItemsControl ItemsSource="{Binding Tiles}">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <controls:CenteringWrapPanel />
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Button Style="{StaticResource TileButton}" Width="146" Height="132" Margin="4"
-                                    CommandParameter="{Binding}"
-                                    Command="{Binding DataContext.CreateTileCommand,
-                                                      RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                    ToolTip="{Binding ToolTipText}">
-                                <StackPanel VerticalAlignment="Center">
-                                    <iconPacks:PackIconLucide Kind="{Binding Icon}" Width="30" Height="30"
-                                                              HorizontalAlignment="Center"
-                                                              Foreground="{StaticResource TextSecondaryBrush}" />
-                                    <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="Medium"
-                                               Height="36" Margin="0,10,0,0" TextAlignment="Center"
-                                               TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
-                                               Foreground="{StaticResource TextPrimaryBrush}" />
-                                    <TextBlock Text="{Binding Caption}" FontSize="12" Height="20"
-                                               Margin="0,4,0,0" TextAlignment="Center"
-                                               TextTrimming="CharacterEllipsis"
-                                               Foreground="{StaticResource TextMutedBrush}" />
-                                </StackPanel>
-                            </Button>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </controls:SectionCard>
+            <!-- Sections follow the Adobe start-page idiom: a bare heading and the content
+                 sitting directly on the page, no surrounding card. -->
+            <TextBlock Text="从模板开始" Style="{StaticResource CardTitle}" Margin="0,32,0,8" />
+            <!-- Tiles left-align with the section heading; a hanging last row is correct in
+                 the flat, Adobe-style layout. -->
+            <ItemsControl ItemsSource="{Binding Templates}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Button Style="{StaticResource TileButton}" Width="146" Height="132" Margin="4"
+                                CommandParameter="{Binding}"
+                                Command="{Binding DataContext.TemplateCommand,
+                                          RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                ToolTip="{Binding ToolTipText}">
+                            <StackPanel VerticalAlignment="Center">
+                                <iconPacks:PackIconLucide Kind="{Binding Icon}" Width="30" Height="30"
+                                                          HorizontalAlignment="Center"
+                                                          Foreground="{StaticResource TextSecondaryBrush}" />
+                                <TextBlock Text="{Binding Title}" Style="{StaticResource RowText}"
+                                           FontWeight="Medium" Height="36" Margin="0,10,0,0" TextAlignment="Center"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding Detail}" Style="{StaticResource CompactHint}"
+                                           Height="20" Margin="0,4,0,0" TextAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
 
-            <!-- No recents means no section: an empty "最近使用项" card is noise on first run. -->
-            <controls:SectionCard Header="最近使用项" Margin="0,20,0,0">
-                <controls:SectionCard.Style>
-                    <Style TargetType="controls:SectionCard">
+            <!-- No recents means no section: an empty "最近工程" heading is noise on first run. -->
+            <StackPanel>
+                <StackPanel.Style>
+                    <Style TargetType="StackPanel">
                         <Setter Property="Visibility" Value="Collapsed" />
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding HasRecents}" Value="True">
@@ -78,99 +94,55 @@
                             </DataTrigger>
                         </Style.Triggers>
                     </Style>
-                </controls:SectionCard.Style>
-                <StackPanel>
-                    <ItemsControl ItemsSource="{Binding Recents}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <controls:CenteringWrapPanel />
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Button Style="{StaticResource TileButton}" Width="188" Margin="4"
-                                        CommandParameter="{Binding}"
-                                        Command="{Binding DataContext.OpenRecentCommand,
-                                                          RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                        ToolTip="{Binding ToolTipText}">
-                                    <StackPanel>
-                                        <Border Height="106" CornerRadius="12,12,0,0"
-                                                Background="{StaticResource Surface2Brush}">
-                                            <Grid>
-                                                <!-- Thumbnail paints through the border brush so the
-                                                     rounded corners clip it; the glyph shows when the
-                                                     source picture cannot be decoded. -->
-                                                <Border CornerRadius="12,12,0,0">
-                                                    <Border.Style>
-                                                        <Style TargetType="Border">
-                                                            <Setter Property="Visibility" Value="Collapsed" />
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding HasThumbnail}" Value="True">
-                                                                    <Setter Property="Visibility" Value="Visible" />
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </Border.Style>
-                                                    <Border.Background>
-                                                        <ImageBrush ImageSource="{Binding Thumbnail}"
-                                                                    Stretch="UniformToFill" />
-                                                    </Border.Background>
-                                                </Border>
-                                                <iconPacks:PackIconLucide Kind="FileImage" Width="32" Height="32"
-                                                                          HorizontalAlignment="Center"
-                                                                          VerticalAlignment="Center"
-                                                                          Foreground="{StaticResource Surface3Brush}">
-                                                    <iconPacks:PackIconLucide.Style>
-                                                        <Style TargetType="iconPacks:PackIconLucide">
-                                                            <Setter Property="Visibility" Value="Visible" />
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding HasThumbnail}" Value="True">
-                                                                    <Setter Property="Visibility" Value="Collapsed" />
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </iconPacks:PackIconLucide.Style>
-                                                </iconPacks:PackIconLucide>
-                                                <Border HorizontalAlignment="Left" VerticalAlignment="Bottom"
-                                                        Margin="8" Padding="6,2" CornerRadius="6"
-                                                        Background="#CC121212"
-                                                        BorderBrush="{StaticResource DividerBrush}"
-                                                        BorderThickness="1">
-                                                    <TextBlock Text="{Binding FamilyLabel}" FontSize="10"
-                                                               FontWeight="Bold"
-                                                               Foreground="{StaticResource TextPrimaryBrush}" />
-                                                </Border>
-                                            </Grid>
-                                        </Border>
-                                        <StackPanel Margin="12,10,12,12">
-                                            <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="Medium"
-                                                       TextTrimming="CharacterEllipsis"
-                                                       Foreground="{StaticResource TextPrimaryBrush}" />
-                                            <Grid Margin="0,6,0,0">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="*" />
-                                                </Grid.ColumnDefinitions>
-                                                <iconPacks:PackIconLucide Kind="Folder" Width="13" Height="13"
-                                                                          VerticalAlignment="Center"
-                                                                          Foreground="{StaticResource TextMutedBrush}" />
-                                                <TextBlock Grid.Column="1" Text="{Binding LocationText}" FontSize="12"
-                                                           Margin="6,0,0,0" VerticalAlignment="Center"
-                                                           TextTrimming="CharacterEllipsis"
-                                                           Foreground="{StaticResource TextMutedBrush}" />
-                                            </Grid>
-                                        </StackPanel>
-                                    </StackPanel>
-                                </Button>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                    <Button Style="{StaticResource GhostButton}" Content="清空" Height="32" Padding="12,0"
-                            FontSize="13" HorizontalAlignment="Right" Margin="0,0,0,0"
-                            Foreground="{StaticResource TextMutedBrush}"
+                </StackPanel.Style>
+                <Grid Margin="0,36,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="最近工程" Style="{StaticResource CardTitle}"
+                               VerticalAlignment="Center" />
+                    <Button Grid.Column="1" Style="{StaticResource QuietButton}" Content="清空"
+                            Height="{StaticResource CompactHeight}" Padding="14,0"
                             Command="{Binding ClearRecentsCommand}" />
-                </StackPanel>
-            </controls:SectionCard>
+                </Grid>
+                <!-- Three mini tiles per row at any window width: UniformGrid stretches the
+                     tiles, the sleeve's 3*:1* template shrinks with them. Tag carries the
+                     remove command into the ContextMenu, which sits in a popup outside the
+                     visual tree: the menu item reaches it via PlacementTarget, and its own
+                     DataContext stays the tile. -->
+                <ItemsControl ItemsSource="{Binding Recents}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <UniformGrid Columns="3" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <controls:RecentProjectCard Margin="4"
+                                                        Tag="{Binding DataContext.RemoveRecentCommand,
+                                                                  RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                        Title="{Binding Title}"
+                                                        FamilyLabel="{Binding FamilyLabel}"
+                                                        LocationText="{Binding LocationText}"
+                                                        ThumbnailSource="{Binding Thumbnail}"
+                                                        Command="{Binding DataContext.OpenRecentCommand,
+                                                                  RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        ToolTip="{Binding ToolTipText}">
+                                <controls:RecentProjectCard.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="从列表中移除"
+                                                  Command="{Binding PlacementTarget.Tag,
+                                                            RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                  CommandParameter="{Binding}" />
+                                    </ContextMenu>
+                                </controls:RecentProjectCard.ContextMenu>
+                            </controls:RecentProjectCard>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
         </StackPanel>
     </ScrollViewer>
 </UserControl>

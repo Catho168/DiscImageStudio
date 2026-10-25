@@ -1,0 +1,97 @@
+<UserControl x:Class="DiscImageStudio.Controls.JobDock"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:iconPacks="http://metro.mahapps.com/winfx/xaml/iconpacks">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+    </UserControl.Resources>
+    <!-- Shell-level task strip. It lives in the window chrome rather than on a page so a job
+         never navigates the user away from the workspace it was started from: the collapsed
+         strip shows what is running and what it produced, and the expanded strip is the log. -->
+    <Border Background="{StaticResource Surface1Brush}" BorderBrush="{StaticResource DividerBrush}"
+            BorderThickness="0,1,0,0">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="40" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0" Margin="20,0,12,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" MinWidth="80" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <iconPacks:PackIconLucide x:Name="StatusIcon" Grid.Column="0" Kind="CircleCheck"
+                                          Width="16" Height="16" VerticalAlignment="Center"
+                                          Foreground="{StaticResource TextMutedBrush}" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,16,0">
+                    <TextBlock Text="{Binding JobTitle}" Style="{StaticResource CompactText}"
+                               Foreground="{StaticResource TextPrimaryBrush}" />
+                    <TextBlock Text="{Binding JobStatusText}" Style="{StaticResource CompactHint}"
+                               Margin="10,0,0,0" TextTrimming="CharacterEllipsis" MaxWidth="420" />
+                </StackPanel>
+                <ProgressBar Grid.Column="2" Style="{StaticResource CompactProgressBar}"
+                             VerticalAlignment="Center" Margin="0,0,16,0"
+                             IsIndeterminate="{Binding IsJobProgressIndeterminate}"
+                             Minimum="0" Maximum="100"
+                             Value="{Binding JobProgressValue, Mode=OneWay}"
+                             Visibility="{Binding JobProgressVisibility}" />
+                <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- Result and log actions appear with the thing they act on: a project with
+                         nothing generated yet shows only the status line. -->
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                                Visibility="{Binding ResultActionsVisibility}">
+                        <Button Style="{StaticResource CompactButton}" Content="打开输出位置"
+                                Command="{Binding OpenOutputCommand}" Margin="0,0,8,0" />
+                        <Button Style="{StaticResource CompactButton}" Content="查看读回预览"
+                                Command="{Binding PreviewLastOutputCommand}" Margin="0,0,8,0"
+                                Visibility="{Binding CanPreviewLastOutputVisibility}"
+                                ToolTip="把最近生成的文件作为输入镜像，在预览工作区模拟读回。" />
+                    </StackPanel>
+                    <Button Style="{StaticResource CompactButton}" Content="清空日志"
+                            Command="{Binding ClearLogCommand}" Margin="0,0,8,0"
+                            Visibility="{Binding LogActionsVisibility}" />
+                    <Button Style="{StaticResource IconButton}" Command="{Binding ToggleJobDockCommand}"
+                            AutomationProperties.Name="任务详情" ToolTip="任务详情 / 运行日志"
+                            Visibility="{Binding DockToggleVisibility}">
+                        <iconPacks:PackIconLucide Kind="ChevronUp" Width="16" Height="16"
+                                                  Foreground="{StaticResource TextSecondaryBrush}">
+                            <iconPacks:PackIconLucide.Style>
+                                <Style TargetType="iconPacks:PackIconLucide">
+                                    <Setter Property="RenderTransform">
+                                        <Setter.Value>
+                                            <RotateTransform Angle="180" />
+                                        </Setter.Value>
+                                    </Setter>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsJobDockExpanded}" Value="True">
+                                            <Setter Property="RenderTransform">
+                                                <Setter.Value>
+                                                    <RotateTransform Angle="0" />
+                                                </Setter.Value>
+                                            </Setter>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </iconPacks:PackIconLucide.Style>
+                        </iconPacks:PackIconLucide>
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <Border Grid.Row="1" x:Name="LogHost" Height="220" Background="{StaticResource BackgroundBrush}"
+                    BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0"
+                    Visibility="{Binding IsJobDockExpanded, Converter={StaticResource BoolToVisibility}}">
+                <TextBox x:Name="LogTextBox" Style="{StaticResource BareTextBox}" IsReadOnly="True"
+                         AcceptsReturn="True" VerticalAlignment="Stretch"
+                         FontFamily="{StaticResource MonoFontFamily}" FontSize="12"
+                         Foreground="{StaticResource TextSecondaryBrush}"
+                         Background="Transparent" BorderThickness="0"
+                         HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                         TextWrapping="NoWrap" Padding="20,10,20,10" />
+            </Border>
+        </Grid>
+    </Border>
+</UserControl>

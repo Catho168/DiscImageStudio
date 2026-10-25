@@ -5,97 +5,81 @@ using MahApps.Metro.IconPacks;
 
 namespace DiscImageStudio.ViewModels;
 
-/// <summary>
-/// One card under "快速创建": a disc preset from the editable catalog, or the trailing
-/// custom-size card (<see cref="PresetId"/> null), which opens the parameter page for the
-/// family the action bar has selected and therefore ignores <see cref="IsDvd"/>. The custom
-/// card belongs to no family, so it carries its own caption rather than a CD/DVD one.
-/// </summary>
-public sealed record QuickCreateTile(
+/// <summary>One template card on the home page: the blank project (PresetId null) or a disc
+/// preset from the editable catalog. Clicking opens the project dialog with the template
+/// preselected; the dialog remains where the parameters are confirmed.</summary>
+public sealed record HomeTemplateTile(
+    string? PresetId,
     string Title,
-    string Caption,
     string Detail,
     PackIconLucideKind Icon,
     bool IsDvd,
-    string? PresetId)
+    bool IsBlank)
 {
-    /// <summary>The preset's own discriminator (its parenthetical, or its geometry) stays off
-    /// the card face — the family is what the row is read for — and shows on hover instead.</summary>
+    public static HomeTemplateTile Blank { get; } = new(
+        null,
+        "空白工程",
+        "从默认参数开始",
+        PackIconLucideKind.SquarePen,
+        IsDvd: false,
+        IsBlank: true);
+
     public string ToolTipText => string.IsNullOrWhiteSpace(Detail)
-        ? $"{Title}\n{Caption}"
-        : $"{Title}\n{Caption} · {Detail}";
+        ? Title
+        : $"{Title}\n{Detail}";
 }
 
-/// <summary>
-/// One card in the start page's recent list. The source picture is the thumbnail when it is
-/// still readable; otherwise the card degrades to the disc glyph and says so.
-/// </summary>
-public sealed class RecentJobTile
+/// <summary>One card in the home page's recent-project list. The thumbnail is the picture
+/// rendered into the project file at last save; a missing file degrades the card but keeps
+/// its row so the path stays discoverable.</summary>
+public sealed class RecentProjectTile
 {
-    private readonly bool _sourceExists;
+    private readonly bool _projectExists;
 
-    private RecentJobTile(RecentJobEntry entry, BitmapSource? thumbnail, bool sourceExists)
+    private RecentProjectTile(RecentProjectEntry entry, BitmapSource? thumbnail, bool projectExists)
     {
         Entry = entry;
         Thumbnail = thumbnail;
-        _sourceExists = sourceExists;
+        _projectExists = projectExists;
     }
 
-    internal RecentJobEntry Entry { get; }
+    internal RecentProjectEntry Entry { get; }
 
     public BitmapSource? Thumbnail { get; }
 
     public bool HasThumbnail => Thumbnail is not null;
 
+    public string Title => Entry.Name;
+
     public string FamilyLabel => Entry.IsDvd ? "DVD" : "CD";
 
-    public string Title => Path.GetFileName(Entry.SourceImagePath);
-
-    public string LocationText => _sourceExists
-        ? Path.GetDirectoryName(Entry.SourceImagePath) ?? Entry.SourceImagePath
-        : "源图片已移动或删除";
+    public string LocationText => _projectExists
+        ? Path.GetDirectoryName(Entry.ProjectPath) ?? Entry.ProjectPath
+        : "工程文件已移动或删除";
 
     public string ToolTipText
-        => $"源图片：{Entry.SourceImagePath}\n输出：{Entry.OutputPath}"
-           + $"\n最近使用：{Entry.LastUsedUtc.ToLocalTime():yyyy-MM-dd HH:mm}";
+        => $"{Entry.ProjectPath}\n最近打开：{Entry.LastOpenedUtc.ToLocalTime():yyyy-MM-dd HH:mm}";
 
-    internal static RecentJobTile Create(RecentJobEntry entry, int decodeWidth, long maxThumbnailBytes)
+    internal static RecentProjectTile Create(RecentProjectEntry entry)
     {
-        bool sourceExists = false;
-        try
-        {
-            FileInfo source = new(entry.SourceImagePath);
-            sourceExists = source.Exists;
-            if (sourceExists && source.Length <= maxThumbnailBytes)
-            {
-                return new RecentJobTile(entry, LoadThumbnail(entry.SourceImagePath, decodeWidth), true);
-            }
-        }
-        catch (Exception exception) when (exception is IOException
-                                              or UnauthorizedAccessException
-                                              or ArgumentException
-                                              or NotSupportedException)
-        {
-            // A path the file system refuses to describe still gets a card.
-        }
-
-        return new RecentJobTile(entry, null, sourceExists);
+        bool projectExists = File.Exists(entry.ProjectPath);
+        return new RecentProjectTile(entry, DecodeThumbnail(entry.ThumbnailPngBase64), projectExists);
     }
 
-    /// <summary>
-    /// Any decode failure degrades the card to the glyph; a corrupt or unsupported picture
-    /// must not take the start page down. WPF reports damaged image data as
-    /// <see cref="OutOfMemoryException"/>, so that is caught here on purpose.
-    /// </summary>
-    private static BitmapSource? LoadThumbnail(string path, int decodeWidth)
+    private static BitmapSource? DecodeThumbnail(string? pngBase64)
     {
+        if (string.IsNullOrWhiteSpace(pngBase64))
+        {
+            return null;
+        }
+
         try
         {
-            using FileStream stream = new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            byte[] bytes = Convert.FromBase64String(pngBase64);
             BitmapImage bitmap = new();
+            using MemoryStream stream = new(bytes);
             bitmap.BeginInit();
             bitmap.CacheOption = BitmapCacheOption.OnLoad;
-            bitmap.DecodePixelWidth = decodeWidth;
             bitmap.StreamSource = stream;
             bitmap.EndInit();
             bitmap.Freeze();

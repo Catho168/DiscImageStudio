@@ -23,22 +23,26 @@ public partial class SegmentedControl : UserControl
         new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault,
             static (sender, _) => ((SegmentedControl)sender).SyncVisuals()));
 
-    // Motion and color idiom mirrored from SideNavItem: 150 ms cubic ease-out for label
-    // emphasis, a slightly slower slide so the thumb visibly travels the shared track.
-    private static readonly Duration SlideDuration = new(TimeSpan.FromMilliseconds(180));
-    private static readonly Duration ColorDuration = new(TimeSpan.FromMilliseconds(150));
-    private static readonly EasingFunctionBase TransitionEase = new CubicEase { EasingMode = EasingMode.EaseOut };
-    private static readonly Color ActiveTextColor = Color.FromRgb(0xFA, 0xFA, 0xFA);
-    private static readonly Color IdleTextColor = Color.FromRgb(0xA1, 0xA1, 0xAA);
+    // Motion and color idiom mirrored from SideNavItem: the fast duration for label
+    // emphasis, one step slower so the thumb visibly travels the shared track.
+    private static readonly Duration SlideDuration = Motion.Base;
+    private static readonly Duration ColorDuration = Motion.Fast;
+    private static readonly IEasingFunction TransitionEase = Motion.EaseOut;
 
-    private readonly SolidColorBrush _labelABrush = new(IdleTextColor);
-    private readonly SolidColorBrush _labelBBrush = new(IdleTextColor);
+    private readonly Color _activeTextColor;
+    private readonly Color _idleTextColor;
+    private readonly SolidColorBrush _labelABrush;
+    private readonly SolidColorBrush _labelBBrush;
     private bool _hoverA;
     private bool _hoverB;
 
     public SegmentedControl()
     {
         InitializeComponent();
+        _activeTextColor = ThemeValues.Color("TextPrimaryColor", Color.FromRgb(0xFA, 0xFA, 0xFA));
+        _idleTextColor = ThemeValues.Color("TextSecondaryColor", Color.FromRgb(0xA1, 0xA1, 0xAA));
+        _labelABrush = new SolidColorBrush(_idleTextColor);
+        _labelBBrush = new SolidColorBrush(_idleTextColor);
         OptionAText.Foreground = _labelABrush;
         OptionBText.Foreground = _labelBBrush;
         Loaded += (_, _) => ApplyLayout(animate: false);
@@ -107,8 +111,8 @@ public partial class SegmentedControl : UserControl
 
     private void UpdateLabelColors(bool animate = true)
     {
-        AnimateColor(_labelABrush, !IsSecondSelected || _hoverA ? ActiveTextColor : IdleTextColor, animate);
-        AnimateColor(_labelBBrush, IsSecondSelected || _hoverB ? ActiveTextColor : IdleTextColor, animate);
+        AnimateColor(_labelABrush, !IsSecondSelected || _hoverA ? _activeTextColor : _idleTextColor, animate);
+        AnimateColor(_labelBBrush, IsSecondSelected || _hoverB ? _activeTextColor : _idleTextColor, animate);
     }
 
     private void AnimateColor(SolidColorBrush brush, Color target, bool animate)

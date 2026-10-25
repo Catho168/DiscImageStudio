@@ -1,0 +1,52 @@
+<Window x:Class="DiscImageStudio.AboutWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:DiscImageStudio.Controls"
+        Title="关于 Disc Image Studio"
+        Width="560" Height="430"
+        WindowStartupLocation="CenterOwner"
+        WindowStyle="None" ResizeMode="NoResize"
+        Background="{StaticResource BackgroundBrush}"
+        FontFamily="{StaticResource AppFontFamily}"
+        UseLayoutRounding="True" SnapsToDevicePixels="True">
+    <WindowChrome.WindowChrome>
+        <WindowChrome GlassFrameThickness="0" CaptionHeight="32" CornerRadius="0"
+                      ResizeBorderThickness="7" UseAeroCaptionButtons="False" />
+    </WindowChrome.WindowChrome>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="32" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <controls:TitleBar Grid.Row="0" ProjectTitle="关于"
+                           ShowMinimizeButton="False" ShowMaximizeButton="False" />
+
+        <!-- About is a dialog, not a workspace: it has no task of its own and does not belong
+             in the navigation the way a work surface does. -->
+        <StackPanel Grid.Row="1" Margin="28,20,28,24">
+            <StackPanel Orientation="Horizontal">
+                <Image Source="{StaticResource AppIconSource}" Width="64" Height="64" VerticalAlignment="Center" />
+                <StackPanel Margin="16,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="Disc Image Studio" Style="{StaticResource CardTitle}" FontWeight="Medium"
+                               Foreground="{StaticResource TextPrimaryBrush}" />
+                    <TextBlock Text="{Binding VersionText}" Style="{StaticResource HintText}" Margin="0,6,0,0" />
+                </StackPanel>
+            </StackPanel>
+
+            <TextBlock Style="{StaticResource BodyText}" Margin="0,24,0,0"
+                       Text="Disc Image Studio是帮助您在光盘表面印刷图案的一站式工作台。" />
+
+            <StackPanel Margin="0,20,0,0">
+                <TextBlock Style="{StaticResource FieldLabel}" Text="开源组件" />
+                <TextBlock Style="{StaticResource BodyText}"
+                           Text="HarmonyOS Sans SC — HarmonyOS Sans 字体许可协议" />
+                <TextBlock Style="{StaticResource BodyText}" Margin="0,4,0,0"
+                           Text="MahApps.Metro.IconPacks.Lucide（Lucide Icons）— MIT 许可协议" />
+                <TextBlock Style="{StaticResource BodyText}" Margin="0,4,0,0"
+                           Text="CommunityToolkit.Mvvm — Apache 许可协议 2.0" />
+            </StackPanel>
+        </StackPanel>
+    </Grid>
+</Window>

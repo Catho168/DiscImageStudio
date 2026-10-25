@@ -2,6 +2,7 @@ using DiscImageStudio.Burning;
 using DiscImageStudio.Cd;
 using DiscImageStudio.Core;
 using DiscImageStudio.Dvd;
+using DiscImageStudio.ViewModels;
 
 namespace DiscImageStudio;
 
@@ -32,19 +33,37 @@ internal static class UnifiedCommandRunner
             {
                 ReadOnlySpan<string> snapshotArguments = arguments.AsSpan(1);
                 string? tabValue = FindOption(snapshotArguments, "tab");
-                int tabIndex = tabValue is null ? 0 : int.Parse(tabValue);
+                int workspaceIndex = tabValue is null ? 0 : int.Parse(tabValue);
+                if (workspaceIndex < 0 || workspaceIndex > (int)Workspace.Calibration)
+                {
+                    throw new ArgumentOutOfRangeException(
+                        nameof(arguments),
+                        "Tabs: 0 home, 1 design, 2 preview, 3 export, 4 burn, 5 calibration.");
+                }
+
                 return UiPreviewRenderer.Render(
                     RequireOption(snapshotArguments, "output"),
-                    tabIndex,
+                    (Workspace)workspaceIndex,
                     FindOption(snapshotArguments, "preview"),
                     FindOption(snapshotArguments, "live-input"),
                     FindOption(snapshotArguments, "live-disc"),
                     FindOption(snapshotArguments, "live-mode"),
-                    FindOption(snapshotArguments, "live-processing"),
                     int.Parse(FindOption(snapshotArguments, "width") ?? "1366"),
                     int.Parse(FindOption(snapshotArguments, "height") ?? "768"),
                     FindOption(snapshotArguments, "calibration-session"),
-                    FindOption(snapshotArguments, "calibration-view"));
+                    FindOption(snapshotArguments, "calibration-view"),
+                    FindOption(snapshotArguments, "project"),
+                    FindOption(snapshotArguments, "project-dialog"),
+                    HasOption(snapshotArguments, "about-dialog"),
+                    HasOption(snapshotArguments, "preset-dialog"),
+                    HasOption(snapshotArguments, "dock"),
+                    FindOption(snapshotArguments, "burn-source"),
+                    HasOption(snapshotArguments, "expand"),
+                    int.Parse(FindOption(snapshotArguments, "scroll") ?? "0"),
+                    HasOption(snapshotArguments, "home-hover"),
+                    HasOption(snapshotArguments, "project-update"),
+                    HasOption(snapshotArguments, "project-save"),
+                    HasOption(snapshotArguments, "tone-preview"));
             }
 
             if (command == "burn-devices")
@@ -78,7 +97,7 @@ internal static class UnifiedCommandRunner
         }
         catch (Exception exception)
         {
-            Console.Error.WriteLine($"error: {exception.Message}");
+            Console.Error.WriteLine($"error: {exception}");
             return 1;
         }
     }
@@ -106,8 +125,21 @@ internal static class UnifiedCommandRunner
 
             Developer command:
               ui-snapshot --output SCREENSHOT.png [--tab N] [--width 1366] [--height 768]
+                          [--project FILE.discproj] [--live-input IMAGE --live-disc cd|dvd]
+                          [--dock] [--burn-source project|calibration]
+                          [--about-dialog] [--preset-dialog] [--expand] [--scroll N] [--home-hover]
+                          [--project-update] [--project-save] [--tone-preview]
               burn-devices
               burn-build-info
+
+            Tabs: 0 home, 1 design, 2 preview, 3 export, 4 burn, 5 calibration.
+            --dock expands the job dock (progress + run log) for the snapshot; --burn-source
+            picks what the burn workspace shows as the material to write (calibration also
+            creates the calibration target); --scroll N scrolls the page down N pixels so the
+            part below the viewport can be captured; --project-update plays the applied-
+            calibration header acknowledgement; --project-save paints the saved-project
+            header trail at a fixed point in its lap; --tone-preview waits for the design
+            page's tone module and switches the snapshot to that page.
 
             Blu-ray support is added as another IOpticalDiscModule; CD and DVD engines
             do not need to be modified. See docs/ADDING_BLURAY.md.
@@ -180,6 +212,22 @@ internal static class UnifiedCommandRunner
         }
 
         return null;
+    }
+
+    /// Presence check for valueless flags (<c>--dock</c>): FindOption cannot express them —
+    /// trailing, it finds no next token; mid-order, it would swallow the next flag as a value.
+    private static bool HasOption(ReadOnlySpan<string> arguments, string key)
+    {
+        string name = "--" + key;
+        for (int index = 0; index < arguments.Length; index++)
+        {
+            if (arguments[index].Equals(name, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private sealed class ImmediateProgress(Action<DiscJobProgress> report)

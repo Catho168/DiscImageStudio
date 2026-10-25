@@ -1,4 +1,5 @@
 using System.Text.Json;
+using DiscImageStudio.Core;
 using DvdImageSolver.Encoding;
 using DvdImageSolver.Solver;
 
@@ -311,7 +312,8 @@ internal static class Program
             ReadGeneratedPitch(arguments, "cubic"),
             arguments.GetDouble("actual-pitch-linear", 0),
             arguments.GetDouble("actual-pitch-quadratic", 0),
-            arguments.GetDouble("actual-pitch-cubic", 0));
+            arguments.GetDouble("actual-pitch-cubic", 0),
+            ReadToneProfile(arguments));
         CalibrationPreviewSummary summary = CalibrationPreviewRenderer.Render(imagePath, outputPath, options);
         WriteJson(outputPath + ".json", summary);
         Console.WriteLine(
@@ -914,7 +916,33 @@ internal static class Program
             arguments.GetInt("constraint-step", defaultConstraintStep),
             arguments.GetDouble("pitch-linear", 0),
             arguments.GetDouble("pitch-quadratic", 0),
-            arguments.GetDouble("pitch-cubic", 0));
+            arguments.GetDouble("pitch-cubic", 0),
+            ReadToneProfile(arguments));
+    }
+
+    /// <summary>Optional tone mapping of the sampled picture. Absent means the historical
+    /// hard threshold, so existing command lines produce the same bytes.</summary>
+    private static ToneProfile? ReadToneProfile(CliArguments arguments)
+    {
+        if (!arguments.Has("tone-dither")
+            && !arguments.Has("tone-levels")
+            && !arguments.Has("tone-brightness"))
+        {
+            return null;
+        }
+
+        ToneProfile tone = new(
+            arguments.GetDouble("tone-dither", 0),
+            arguments.GetInt("tone-levels", ToneProfile.TwoLevels),
+            arguments.GetDouble("tone-brightness", 0));
+        tone.Validate();
+        if (!tone.IsDvdCompatible)
+        {
+            throw new ArgumentException(
+                "DVD dispersion uses two textures; --tone-levels must be 2.");
+        }
+
+        return tone;
     }
 
     private static double ReadGeneratedPitch(CliArguments arguments, string order)
@@ -1393,6 +1421,9 @@ internal static class Program
               --start-angle-deg N       Track start angle (default 0)
               --spiral-direction ccw|cw Polar direction (default cw)
               --image-threshold 0..255  Below threshold is pit/black (default 128)
+              --tone-dither 0..1        Mix black/white textures per sample; 0 is the hard threshold
+              --tone-levels 2           DVD dispersion has two textures; only 2 is accepted
+              --tone-brightness N       Shift the tone ramp by -64..64 (default 0)
               --alpha-threshold 1..255  Lower alpha is unconstrained (default 1)
               --constraint-output FILE  Save the mapped 619008-symbol target
               --constraint-step N       Constrain every Nth channel bit (single block default 1)

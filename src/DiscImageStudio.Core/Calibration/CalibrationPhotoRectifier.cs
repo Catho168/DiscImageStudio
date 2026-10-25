@@ -85,15 +85,15 @@ public static class CalibrationPhotoRectifier
         double physicalHoleRadiusMm = 7.5, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (outerPixels is null || holePixels is null) return Failed("请分别输入实体外缘和中心孔轮廓。");
+        if (outerPixels is null || holePixels is null) return Failed("请分别输入实体外缘和实体内缘轮廓。");
         outerPixels = outerPixels.ToArray();
         holePixels = holePixels.ToArray();
         if (!double.IsFinite(physicalOuterRadiusMm) || !double.IsFinite(physicalHoleRadiusMm)
             || physicalOuterRadiusMm is < 10 or > 100 || physicalHoleRadiusMm <= 0
             || physicalHoleRadiusMm >= physicalOuterRadiusMm * 0.5)
-            return Failed("盘片与中心孔的实体尺寸无效。常规盘为直径 120 mm、孔径 15 mm。");
+            return Failed("盘片与内缘的实体尺寸无效。常规盘为直径 120 mm、孔径 15 mm。");
         if (outerPixels.Count is < 5 or > 256 || holePixels.Count is < 5 or > 256)
-            return Failed("外缘和中心孔各需要至少 5 个分散的点，且每条轮廓不超过 256 个点。");
+            return Failed("外缘和内缘各需要至少 5 个分散的点，且每条轮廓不超过 256 个点。");
         if (outerPixels.Concat(holePixels).Any(p => p is null || !double.IsFinite(p.X) || !double.IsFinite(p.Y)))
             return Failed("轮廓中存在无效坐标。");
         double centerX = (outerPixels.Max(p => p.X) + outerPixels.Min(p => p.X)) / 2;
@@ -106,13 +106,13 @@ public static class CalibrationPhotoRectifier
         CalibrationPoint[] hole = holePixels.Select(p => new CalibrationPoint((p.X - centerX) / sourceScale,
             (p.Y - centerY) / sourceScale)).ToArray();
         if (!IsSpread(outer) || !IsSpread(hole))
-            return Failed("轮廓点重复或接近一条直线，请沿外缘和中心孔分别分散布点。");
+            return Failed("轮廓点重复或接近一条直线，请沿外缘和内缘分别分散布点。");
         double[]? initial = InitialAffineEllipse(outer);
         if (initial is null) return Failed("外缘轮廓无法形成稳定椭圆，请核对实体外缘上的点。");
         double holeExtent = hole.Select(p => Math.Sqrt(Math.Pow(Math.Exp(initial[0]) * p.X + initial[1] * p.Y + initial[2], 2)
             + Math.Pow(Math.Exp(initial[3]) * p.Y + initial[4], 2))).Average();
         if (holeExtent is < 0.015 or > 0.9)
-            return Failed("中心孔轮廓与外缘位置不符，请确认选中的是贯通中心孔，而非盘面的印刷圆环。");
+            return Failed("内缘轮廓与外缘位置不符，请确认选中的是贯通的实体内缘，而非盘面的印刷圆环。");
 
         double ratio = physicalHoleRadiusMm / physicalOuterRadiusMm;
         Datum[] data = outer.Select(p => new Datum(p.X, p.Y, 1, 1.0 / Math.Sqrt(outer.Length)))
@@ -158,9 +158,9 @@ public static class CalibrationPhotoRectifier
             double tolerance = Math.Max(2, sourceScale * 0.006);
             if (outerRms > tolerance || holeRms > tolerance || Math.Max(outerMaximum, holeMaximum) > tolerance * 3)
                 return new(false, null, outerRms, holeRms,
-                    $"两条实体轮廓无法同时吻合：外缘误差 {outerRms:0.##} px，中心孔误差 {holeRms:0.##} px。请检查孔边、外缘与盘片尺寸。");
+                    $"两条实体轮廓无法同时吻合：外缘误差 {outerRms:0.##} px，内缘误差 {holeRms:0.##} px。请检查内缘、外缘与盘片尺寸。");
             return new(true, transform, outerRms, holeRms,
-                $"已联合校正外缘与中心孔。轮廓误差：外缘 {outerRms:0.##} px，中心孔 {holeRms:0.##} px。请继续核对两条轮廓。");
+                $"已联合校正外缘与内缘。轮廓误差：外缘 {outerRms:0.##} px，内缘 {holeRms:0.##} px。请继续核对两条轮廓。");
         }
         catch (ArgumentException error) { return Failed(error.Message); }
     }

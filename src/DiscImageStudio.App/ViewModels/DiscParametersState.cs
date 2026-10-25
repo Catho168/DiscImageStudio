@@ -22,14 +22,6 @@ public partial class DiscParametersState : ObservableObject
     private IReadOnlyList<CdDiscPreset> _cdPresets = [CdDiscPreset.Manual];
     private IReadOnlyList<DvdDiscPreset> _dvdPresets = [DvdDiscPreset.Manual];
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsCdRingMode))]
-    private int _cdImageProcessingModeIndex;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsDvdRingMode))]
-    private int _dvdImageProcessingModeIndex;
-
     private bool _isApplyingDiscPreset;
 
     // CD page / live preview shared fields. Linear velocity, start angle and the image
@@ -42,8 +34,6 @@ public partial class DiscParametersState : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsCdWaveOutput))]
     private string _cdOutputPath = string.Empty;
     [ObservableProperty] private bool _cdWriteCue = true;
-    [ObservableProperty] private string _cdRingInnerMargin = "2.0";
-    [ObservableProperty] private string _cdRingOuterMargin = "2.0";
     [ObservableProperty] private string _cdInnerRadius = "24.5";
     [ObservableProperty] private string _cdOuterRadius = "56.8";
     [ObservableProperty] private string _cdSectors = "359849";
@@ -64,8 +54,6 @@ public partial class DiscParametersState : ObservableObject
     [ObservableProperty] private string _dvdIsoPath = string.Empty;
     [ObservableProperty] private string _dvdOutputPath = string.Empty;
     [ObservableProperty] private string _dvdDataDirectory = string.Empty;
-    [ObservableProperty] private string _dvdRingInnerMargin = "2.0";
-    [ObservableProperty] private string _dvdRingOuterMargin = "2.0";
     [ObservableProperty, NotifyPropertyChangedFor(nameof(DvdPitchSummary), nameof(DvdActualPitchSummary))] private string _dvdTotalSectors = "2295104";
     [ObservableProperty, NotifyPropertyChangedFor(nameof(DvdPitchSummary))] private string _dvdInnerRadius = "24.0";
     [ObservableProperty, NotifyPropertyChangedFor(nameof(DvdPitchSummary))] private string _dvdOuterRadius = "58.0";
@@ -73,8 +61,8 @@ public partial class DiscParametersState : ObservableObject
     [ObservableProperty, NotifyPropertyChangedFor(nameof(DvdPitchSummary))] private string _dvdPitchQuadratic = "0";
     [ObservableProperty, NotifyPropertyChangedFor(nameof(DvdPitchSummary))] private string _dvdPitchCubic = "0";
     [ObservableProperty] private string _dvdVolumeLabel = DefaultDvdVolumeLabel;
-    [ObservableProperty] private string _dvdPreviewSize = "1600";
-    [ObservableProperty] private string _dvdSamplesPerSector = "16";
+    [ObservableProperty] private string _dvdPreviewSize = "1200";
+    [ObservableProperty] private string _dvdSamplesPerSector = "4";
 
     /// <summary>Second parameter set of the DVD calibration preview, same role as the CD one.</summary>
     [ObservableProperty, NotifyPropertyChangedFor(nameof(DvdActualPitchSummary))] private string _dvdActualInnerRadius = "24.0";
@@ -88,14 +76,52 @@ public partial class DiscParametersState : ObservableObject
     [ObservableProperty] private CdDiscPreset _selectedCdPreset = CdDiscPreset.Manual;
     [ObservableProperty] private DvdDiscPreset _selectedDvdPreset = DvdDiscPreset.Manual;
 
-    public bool IsCdRingMode => CdImageProcessingModeIndex == 1;
+    // Tone mapping shared by both families. New projects open at 75% dither: enough to keep
+    // midtones at viewing distance without the grain full strength adds. A project file
+    // written before tone mapping existed applies its absent section as 0, so old projects
+    // keep their original hard-threshold output until the user moves the slider.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ToneDitherText), nameof(ToneSummary))]
+    private double _toneDitherStrength = 0.75;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsFourLevelSelected), nameof(ToneSummary))]
+    private int _toneLevels = ToneProfile.TwoLevels;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ToneBrightnessText), nameof(ToneSummary))]
+    private double _toneBrightness;
+
+    /// <summary>Two-way flag of the 2/4-level segmented control (the right option is 4 levels).</summary>
+    public bool IsFourLevelSelected
+    {
+        get => ToneLevels == ToneProfile.FourLevels;
+        set => ToneLevels = value ? ToneProfile.FourLevels : ToneProfile.TwoLevels;
+    }
+
+    /// <summary>Snapshot of the UI fields for the generators; clamped so a
+    /// mid-edit slider value can never reach the engines.</summary>
+    public ToneProfile Tone => new ToneProfile(
+        Math.Clamp(ToneDitherStrength, 0, 1),
+        ToneLevels == ToneProfile.FourLevels ? ToneProfile.FourLevels : ToneProfile.TwoLevels,
+        Math.Clamp(ToneBrightness, ToneProfile.MinimumBrightness, ToneProfile.MaximumBrightness));
+
+    /// <summary>DVD's dispersion pool has only the black and white textures; a CD project's
+    /// 4-level setting must not leak into a DVD job.</summary>
+    public ToneProfile DvdTone => Tone with { Levels = ToneProfile.TwoLevels };
+
+    public string ToneDitherText => $"{ToneDitherStrength * 100:0}%";
+
+    public string ToneBrightnessText => ToneBrightness > 0
+        ? $"+{ToneBrightness:0}"
+        : $"{ToneBrightness:0}";
+
+    public string ToneSummary => $"{ToneLevels} 级 · {ToneDitherText} 抖动";
 
     /// <summary>A CUE sheet only accompanies PCM WAV tracks, so the CD page offers its
     /// toggle only while the chosen output is a .wav file.</summary>
     public bool IsCdWaveOutput => Path.GetExtension(CdOutputPath.Trim())
         .Equals(".wav", StringComparison.OrdinalIgnoreCase);
-
-    public bool IsDvdRingMode => DvdImageProcessingModeIndex == 1;
 
     public string DvdPitchSummary => PitchSummary(actual: false);
     public string DvdActualPitchSummary => PitchSummary(actual: true);
@@ -122,8 +148,6 @@ public partial class DiscParametersState : ObservableObject
     public IReadOnlyList<CdDiscPreset> CdPresets => _cdPresets;
 
     public IReadOnlyList<DvdDiscPreset> DvdPresets => _dvdPresets;
-
-    public string DiscPresetJsonPath => _discPresetJsonPath;
 
     /// <summary>
     /// Loads built-in + user presets (LoadBuiltIn + LoadOrCreate + Merge). Throws when the
@@ -162,28 +186,6 @@ public partial class DiscParametersState : ObservableObject
         }
     }
 
-    public (int CdCount, int DvdCount) ReloadPresets()
-    {
-        DiscPresetJsonDocument builtIn = DiscPresetJsonStore.LoadBuiltIn();
-        DiscPresetJsonDocument user = DiscPresetJsonStore.LoadOrCreate(
-            _discPresetJsonPath,
-            DiscPresetJsonStore.CreateInitialUserDocument());
-        (IReadOnlyList<CdDiscPreset> cdPresets, IReadOnlyList<DvdDiscPreset> dvdPresets) =
-            MergePresets(builtIn, user);
-
-        // Preserve the current selection by Id across the rebind, exactly like before.
-        string? selectedCdId = SelectedCdPreset.Id;
-        string? selectedDvdId = SelectedDvdPreset.Id;
-        ApplyPresetDocuments((cdPresets, dvdPresets));
-        CdDiscPreset selectedCd =
-            cdPresets.FirstOrDefault(value => value.Id == selectedCdId) ?? cdPresets[0];
-        DvdDiscPreset selectedDvd =
-            dvdPresets.FirstOrDefault(value => value.Id == selectedDvdId) ?? dvdPresets[0];
-        ApplyCdDiscPreset(selectedCd);
-        ApplyDvdDiscPreset(selectedDvd);
-        return (cdPresets.Count - 1, dvdPresets.Count - 1);
-    }
-
     public void EnsurePresetsJsonExists()
     {
         if (!File.Exists(_discPresetJsonPath))
@@ -192,6 +194,77 @@ public partial class DiscParametersState : ObservableObject
                 _discPresetJsonPath,
                 DiscPresetJsonStore.CreateInitialUserDocument());
         }
+    }
+
+    /// <summary>
+    /// Appends one parameter set to the user preset JSON and refreshes the catalog. The
+    /// display name and note come from the save dialog the user confirmed; the id carries a
+    /// timestamp plus a random suffix so two saves within the same second stay distinct.
+    /// Refreshing uses <see cref="LoadPresets"/> on purpose: it swaps the lists without
+    /// re-applying the selected preset, so the open project's live values are never
+    /// overwritten. Throws when the name is blank or the JSON cannot be read or written;
+    /// the caller surfaces the message.
+    /// </summary>
+    public string AddUserPreset(
+        bool isDvd,
+        string displayName,
+        string description,
+        double innerRadiusMm,
+        double outerRadiusMm,
+        long sectors,
+        double pitchLinear = 0,
+        double pitchQuadratic = 0,
+        double pitchCubic = 0)
+    {
+        string name = displayName.Trim();
+        if (name.Length == 0)
+        {
+            throw new ArgumentException("请填写预设名称。", nameof(displayName));
+        }
+
+        EnsurePresetsJsonExists();
+        DiscPresetJsonDocument user = DiscPresetJsonStore.Load(_discPresetJsonPath);
+        DateTime now = DateTime.Now;
+        string id = $"user-{(isDvd ? "dvd" : "cd")}-{now:yyyyMMdd-HHmmss}-{Guid.NewGuid().ToString("N")[..4]}";
+        string note = description.Trim();
+        DiscPresetJsonDocument updated = isDvd
+            ? user with
+            {
+                SchemaVersion = DiscPresetJsonStore.CurrentSchemaVersion,
+                DvdPresets =
+                [
+                    .. user.DvdPresets,
+                    new DvdDiscPresetDefinition(
+                        id,
+                        name,
+                        note,
+                        checked((uint)sectors),
+                        innerRadiusMm,
+                        outerRadiusMm,
+                        PitchLinear: pitchLinear,
+                        PitchQuadratic: pitchQuadratic,
+                        PitchCubic: pitchCubic),
+                ],
+            }
+            : user with
+            {
+                SchemaVersion = DiscPresetJsonStore.CurrentSchemaVersion,
+                CdPresets =
+                [
+                    .. user.CdPresets,
+                    new CdDiscPresetDefinition(
+                        id,
+                        name,
+                        note,
+                        sectors,
+                        innerRadiusMm,
+                        outerRadiusMm),
+                ],
+            };
+
+        DiscPresetJsonStore.Save(_discPresetJsonPath, updated);
+        LoadPresets();
+        return displayName;
     }
 
     private (IReadOnlyList<CdDiscPreset> Cd, IReadOnlyList<DvdDiscPreset> Dvd) MergePresets(

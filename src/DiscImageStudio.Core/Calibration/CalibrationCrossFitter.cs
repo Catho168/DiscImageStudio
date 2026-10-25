@@ -14,8 +14,12 @@ public sealed record CalibrationCrossTrace(int ArmIndex, IReadOnlyList<Calibrati
 /// </summary>
 public static partial class CalibrationCrossFitter
 {
+    private const string NearHalfTurnWarning =
+        "有相邻曲线点的转角接近半圈，绕圈判断可能不可靠；请补点后复核。";
+
     private sealed record Datum(int Trace, double Radius, double Angle, double AngularScale, double Weight);
     private sealed record Solution(double Inner, double Outer, double Rotation, double Cost, double Rms, double[] Residuals);
+    private sealed record SolveOutcome(CalibrationFitResult Result, double[] Residuals);
 
     /// <summary>Checks persisted input, including empty or incomplete editing drafts.</summary>
     public static void ValidateTraces(CalibrationTarget target, IReadOnlyList<CalibrationCrossTrace> traces)
@@ -49,13 +53,35 @@ public static partial class CalibrationCrossFitter
         ValidateTraces(target, traces);
         cancellationToken.ThrowIfCancellationRequested();
         double band = target.Parameters.OuterRadiusMm - target.Parameters.InnerRadiusMm;
-        var warnings = new List<string>();
-        Datum[] data = Prepare(traces, band, warnings, out string? inputFailure);
+        var inputWarnings = new List<string>();
+        Datum[] data = Prepare(traces, band, inputWarnings, out string? inputFailure);
         if (inputFailure is not null) return Failed(inputFailure);
         if (data.Length < 6) return Failed("请沿同一条曲线从内到外至少标出 6 个点，覆盖靠内、中间和靠外的位置。");
         double coverage = (data.Max(point => point.Radius) - data.Min(point => point.Radius)) / band;
         if (coverage < 0.18) return Failed("曲线覆盖范围太窄，无法稳定分离内外半径；请继续标出更靠内、外的曲线。");
 
+        // The first pass uses the caller's tolerance. If the trace is much cleaner than
+        // that tolerance, a second pass tightens it to the observed scale. This stops a
+        // few misplaced clicks from bending the curve for every other point, while the
+        // reported RMS and MaxError still expose what was down-weighted.
+        SolveOutcome first = Solve(target, options, data, coverage, inputWarnings, options.HuberDeltaMm, cancellationToken);
+        if (!options.AdaptiveRobustScale || !first.Result.Succeeded || first.Residuals.Length == 0)
+            return first.Result;
+        double median = MedianAbsolute(first.Residuals);
+        // Re-fit only when the plain RMS is visibly inflated by a minority of bad clicks.
+        // Clean data (RMS near the median) keeps the first, cheaper result unchanged.
+        if (first.Result.RmsErrorMm <= median * 2.5) return first.Result;
+        double adaptiveDelta = Math.Clamp(3 * 1.4826 * median, 0.01, options.HuberDeltaMm);
+        if (adaptiveDelta >= options.HuberDeltaMm * 0.75) return first.Result;
+        SolveOutcome tightened = Solve(target, options, data, coverage, inputWarnings, adaptiveDelta, cancellationToken);
+        return tightened.Result.Succeeded ? tightened.Result : first.Result;
+    }
+
+    /// <summary>One bounded search at a fixed robust scale.</summary>
+    private static SolveOutcome Solve(CalibrationTarget target, CalibrationFitOptions options, Datum[] data,
+        double coverage, IReadOnlyList<string> inputWarnings, double delta, CancellationToken cancellationToken)
+    {
+        var warnings = new List<string>(inputWarnings);
         CalibrationParameters center = options.SearchCenter ?? target.Parameters;
         var original = new CalibrationGeometry(target.Parameters);
         double lowerInner = Math.Max(0.1, center.InnerRadiusMm - options.RadiusRangeMm);
@@ -63,7 +89,6 @@ public static partial class CalibrationCrossFitter
         double lowerOuter = Math.Max(lowerInner + 0.1, center.OuterRadiusMm - options.RadiusRangeMm);
         double upperOuter = center.OuterRadiusMm + options.RadiusRangeMm;
         int traceCount = data.Max(point => point.Trace) + 1;
-        double delta = options.HuberDeltaMm;
 
         Solution Evaluate(double inner, double outer)
         {
@@ -162,12 +187,13 @@ public static partial class CalibrationCrossFitter
             else if (result.Cost < solutions[duplicate].Cost) solutions[duplicate] = result;
         }
         solutions.Sort((first, second) => first.Cost.CompareTo(second.Cost));
-        if (solutions.Count == 0) return Failed("搜索范围内没有能覆盖全部观测点的有效正半径曲线延拓，请检查照片尺度、盘心或参数范围。");
+        if (solutions.Count == 0)
+            return new(Failed("搜索范围内没有能覆盖全部观测点的有效正半径曲线延拓，请检查照片尺度、盘心或参数范围。"), []);
         Solution best = solutions[0];
+        bool boundaryLimited = OnBoundary(best, lowerInner, upperInner, lowerOuter, upperOuter, options.RadiusRangeMm);
         if (coverage < 0.6) warnings.Add("曲线覆盖的内外范围偏窄，参数可能互相补偿；请补充更靠内、外的点。");
         if (best.Rms > delta * 2) warnings.Add("曲线偏差较大，请检查照片矫正、点位和是否始终沿同一条线标点。");
-        if (Math.Min(best.Inner - lowerInner, upperInner - best.Inner) < options.RadiusRangeMm * 0.005
-            || Math.Min(best.Outer - lowerOuter, upperOuter - best.Outer) < options.RadiusRangeMm * 0.005)
+        if (boundaryLimited)
             warnings.Add("最佳结果靠近搜索边界，建议扩大搜索范围并补充曲线点复核。");
         if (ParameterCorrelation(best, data, Evaluate) > 0.998)
             warnings.Add("当前曲线对两个半径的约束较相似，暂不能仅凭低残差判断参数唯一；请扩大径向覆盖并检查点位精度。");
@@ -178,11 +204,46 @@ public static partial class CalibrationCrossFitter
             warnings.Add("宽范围只进行了有限多起点搜索，候选列表不代表穷尽所有可能参数。");
         warnings.Add("角度展开以相邻点之间没有遗漏整圈为前提；请对照完整曲线，在弯曲或绕行处补点后确认。");
         CalibrationFitCandidate[] candidates = solutions.Take(options.MaxCandidates).Select(solution =>
-            new CalibrationFitCandidate(center with { InnerRadiusMm = solution.Inner, OuterRadiusMm = solution.Outer },
-                Normalize(solution.Rotation), solution.Rms, solution.Cost)).ToArray();
+        {
+            (double maxError, int outliers) = ResidualStats(solution.Residuals, delta);
+            return new CalibrationFitCandidate(center with { InnerRadiusMm = solution.Inner, OuterRadiusMm = solution.Outer },
+                Normalize(solution.Rotation), solution.Rms, solution.Cost, maxError, outliers);
+        }).ToArray();
         if (target.Parameters.Kind == CalibrationDiscKind.Dvd && options.FitDvdPitch)
-            return FitCubic(target, data, coverage, options, candidates, warnings, cancellationToken);
-        return new(true, candidates[0].Parameters, candidates[0].RotationRadians, best.Rms, candidates, warnings);
+            return FitCubic(target, data, coverage, options, candidates, warnings, best.Residuals,
+                delta, boundaryLimited, cancellationToken);
+        var fitResult = new CalibrationFitResult(true, candidates[0].Parameters, candidates[0].RotationRadians,
+            best.Rms, candidates, warnings) { BoundaryLimited = boundaryLimited };
+        return new(fitResult, best.Residuals);
+    }
+
+    private static bool OnBoundary(Solution solution, double lowerInner, double upperInner,
+        double lowerOuter, double upperOuter, double range)
+        => Math.Min(solution.Inner - lowerInner, upperInner - solution.Inner) < range * 0.005
+        || Math.Min(solution.Outer - lowerOuter, upperOuter - solution.Outer) < range * 0.005;
+
+    private static (double MaxError, int Outliers) ResidualStats(IReadOnlyList<double> residuals, double delta)
+    {
+        if (residuals.Count == 0) return (0, 0);
+        double threshold = Math.Max(0.05, delta * 3);
+        double maximum = 0;
+        int outliers = 0;
+        foreach (double residual in residuals)
+        {
+            double error = Math.Abs(residual);
+            maximum = Math.Max(maximum, error);
+            if (error > threshold) outliers++;
+        }
+        return (maximum, outliers);
+    }
+
+    private static double MedianAbsolute(IReadOnlyList<double> residuals)
+    {
+        if (residuals.Count == 0) return 0;
+        double[] magnitudes = residuals.Select(Math.Abs).OrderBy(value => value).ToArray();
+        return magnitudes.Length % 2 == 1
+            ? magnitudes[magnitudes.Length / 2]
+            : (magnitudes[magnitudes.Length / 2 - 1] + magnitudes[magnitudes.Length / 2]) / 2;
     }
 
     private static IEnumerable<(double Inner, double Outer)> EstimateShapeSeeds(Datum[] data,
@@ -287,11 +348,17 @@ public static partial class CalibrationCrossFitter
                         return [];
                     }
                     double change = Normalize(angle - Math.Atan2(points[i - 1].Y, points[i - 1].X));
-                    if (Math.Abs(change) > Math.PI * 0.75)
+                    // The shortest path is still the true one right up to half a turn; the
+                    // old 0.75 pi bound rejected valid traces whose points happened to land
+                    // near that limit. Only a change that rounds to +-pi is genuinely
+                    // ambiguous, and that is where unwrapping must stop.
+                    if (Math.Abs(change) > Math.PI * 0.995)
                     {
-                        failure = "相邻曲线点转角过大，无法安全展开；请在这两点之间沿实际曲线补点。";
+                        failure = "相邻曲线点转角接近半圈，无法判断是否漏掉整圈；请在这两点之间沿实际曲线补点。";
                         return [];
                     }
+                    if (Math.Abs(change) > Math.PI * 0.9 && !warnings.Contains(NearHalfTurnWarning))
+                        warnings.Add(NearHalfTurnWarning);
                     angles[i] = angles[i - 1] + change;
                 }
             }

@@ -1,0 +1,39 @@
+<UserControl x:Class="DiscImageStudio.Controls.PageHeader"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:DiscImageStudio.Controls">
+    <!-- One page-header recipe for every workspace: title, optional family badge, optional
+         hint hotspot, optional subtitle line, the workflow stage rail, and a right-aligned
+         action slot (the "next step" affordance). Views only supply content; spacing and
+         type come from here. -->
+    <Grid Margin="0,0,0,20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0" VerticalAlignment="Bottom">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock x:Name="TitleText" Style="{StaticResource H1Title}" />
+                    <Border x:Name="BadgeChip" Margin="10,0,0,4" Padding="6,2" CornerRadius="6"
+                            Background="{StaticResource Surface3Brush}" VerticalAlignment="Bottom"
+                            Visibility="Collapsed">
+                        <TextBlock x:Name="BadgeText" Style="{StaticResource BadgeText}" />
+                    </Border>
+                    <controls:HelpHint x:Name="HintSpot" Margin="10,0,0,3" VerticalAlignment="Bottom"
+                                       Visibility="Collapsed" />
+                </StackPanel>
+                <TextBlock x:Name="SubtitleText" Style="{StaticResource PageSubtitle}" Margin="0,6,0,0"
+                           Visibility="Collapsed" />
+            </StackPanel>
+            <ContentPresenter x:Name="ActionHost" Grid.Column="1" VerticalAlignment="Bottom"
+                              Margin="16,0,0,0" />
+        </Grid>
+        <controls:StageBar x:Name="Stages" Grid.Row="1" Margin="2,14,0,0"
+                           Visibility="Collapsed" />
+    </Grid>
+</UserControl>
