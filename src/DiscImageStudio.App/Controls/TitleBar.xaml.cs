@@ -7,6 +7,55 @@ namespace DiscImageStudio.Controls;
 
 public partial class TitleBar : UserControl
 {
+    public static readonly DependencyProperty ProjectTitleProperty = DependencyProperty.Register(
+        nameof(ProjectTitle), typeof(string), typeof(TitleBar),
+        new PropertyMetadata(string.Empty, static (sender, _) =>
+        {
+            TitleBar bar = (TitleBar)sender;
+            bar.ProjectTitleText.Text = bar.ProjectTitle;
+            bar.ProjectTitleText.Visibility = string.IsNullOrEmpty(bar.ProjectTitle)
+                ? Visibility.Collapsed
+                : Visibility.Visible;
+        }));
+
+    /// <summary>Project-mode text after the app name (name plus unsaved dot); hidden in the
+    /// home mode and in windows without a project.</summary>
+    public string ProjectTitle
+    {
+        get => (string)GetValue(ProjectTitleProperty);
+        set => SetValue(ProjectTitleProperty, value);
+    }
+
+    public static readonly DependencyProperty ShowMinimizeButtonProperty = DependencyProperty.Register(
+        nameof(ShowMinimizeButton), typeof(bool), typeof(TitleBar),
+        new PropertyMetadata(true, static (sender, _) => ((TitleBar)sender).ApplyWindowButtonVisibility()));
+
+    public static readonly DependencyProperty ShowMaximizeButtonProperty = DependencyProperty.Register(
+        nameof(ShowMaximizeButton), typeof(bool), typeof(TitleBar),
+        new PropertyMetadata(true, static (sender, _) => ((TitleBar)sender).ApplyWindowButtonVisibility()));
+
+    /// <summary>Whether the chrome carries a minimize button; dialogs that cannot be
+    /// minimized turn it off. Leave the defaults alone for the main window.</summary>
+    public bool ShowMinimizeButton
+    {
+        get => (bool)GetValue(ShowMinimizeButtonProperty);
+        set => SetValue(ShowMinimizeButtonProperty, value);
+    }
+
+    /// <summary>Whether the chrome carries a maximize/restore button; fixed-size dialogs turn
+    /// it off.</summary>
+    public bool ShowMaximizeButton
+    {
+        get => (bool)GetValue(ShowMaximizeButtonProperty);
+        set => SetValue(ShowMaximizeButtonProperty, value);
+    }
+
+    private void ApplyWindowButtonVisibility()
+    {
+        MinimizeButton.Visibility = ShowMinimizeButton ? Visibility.Visible : Visibility.Collapsed;
+        MaximizeButton.Visibility = ShowMaximizeButton ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     private Window? _window;
     private Path? _maximizeGlyph;
     private Path? _restoreGlyph;

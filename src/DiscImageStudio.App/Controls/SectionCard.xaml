@@ -5,7 +5,9 @@
     <Border Style="{StaticResource CardStyle}">
         <StackPanel>
             <StackPanel x:Name="HeaderRow" Orientation="Horizontal" Margin="0,0,0,16">
-                <iconPacks:PackIconLucide x:Name="HeaderIcon" Width="24" Height="24" Visibility="Collapsed"
+                <!-- 15px matches the MonitorCard header icon: one icon size for all card heads. -->
+                <iconPacks:PackIconLucide x:Name="HeaderIcon" Width="15" Height="15" Visibility="Collapsed"
+                                          VerticalAlignment="Center"
                                           Foreground="{StaticResource TextSecondaryBrush}" />
                 <TextBlock x:Name="HeaderText" Style="{StaticResource CardTitle}" VerticalAlignment="Center" />
             </StackPanel>

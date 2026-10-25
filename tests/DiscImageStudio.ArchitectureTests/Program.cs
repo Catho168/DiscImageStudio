@@ -1,5 +1,5 @@
-using DiscImageStudio.Burning;
 using DiscImageStudio.BluRay;
+using DiscImageStudio.Burning;
 using DiscImageStudio.Cd;
 using DiscImageStudio.Core;
 using DiscImageStudio.Dvd;
@@ -10,61 +10,12 @@ using System.Runtime.InteropServices.ComTypes;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
-// A bounded, hardware-free subset for checking burn fixes while a real burn
-// may be running. Avoid image-generation benchmarks and large-file fixtures.
-if (args is ["--image-processing-checks"])
-{
-    RingDitherTests.Run();
-    BinaryDitherTests.Run();
-    GammaDitherTests.Run();
-    ImageProcessingTests.Run();
-    ImageProcessingWorkflowTests.Run();
-    LivePreviewResolutionTests.Run();
-    LivePreviewViewportTests.Run();
-    Console.WriteLine("image-processing-selftest: all checks passed (no recorder access)");
-    return;
-}
-
-if (args is ["--burning-checks"])
-{
-    RunBurningChecks();
-    Console.WriteLine("burning-selftest: all checks passed (no recorder access)");
-    return;
-}
-
-if (args is ["--ui-checks"])
-{
-    MaximizedWindowBoundsTests.Run();
-    WindowWorkAreaNativeTests.Run();
-    BluRayPresetTests.Run();
-    ParameterNumberFormattingTests.Run();
-    LivePreviewViewportTests.Run();
-    Console.WriteLine("ui-selftest: all checks passed (no recorder access)");
-    return;
-}
-
-if (args is ["--calibration-checks"])
-{
-    CalibrationCoreTests.Run();
-    CalibrationCubicPitchTests.Run();
-    CalibrationCrossExtensionTests.Run();
-    CalibrationShapeSeedTests.Run();
-    BluRayObservedCurveRegressionTests.Run();
-    CalibrationPhotoViewModelTests.Run();
-    BluRayObservedCurveViewModelTests.Run();
-    Console.WriteLine("calibration-selftest: all checks passed (no recorder access)");
-    return;
-}
-
 DiscModuleCatalog catalog = new(
 [
     new CdDiscModule(),
     new DvdDiscModule(),
     new BluRayDiscModule(),
 ]);
-
-MaximizedWindowBoundsTests.Run();
-WindowWorkAreaNativeTests.Run();
 
 Equal(3, catalog.Modules.Count, "module count");
 Equal(OpticalDiscFamily.CompactDisc, catalog.Resolve("cd-generate").Descriptor.Family, "CD routing");
@@ -87,28 +38,33 @@ Throws<ArgumentException>(
     () => new DiscModuleCatalog([new BluRayDiscModule(), new ConflictingModule()]),
     "duplicate command rejection");
 Throws<ArgumentException>(() => catalog.Resolve("unknown-command"), "unknown command rejection");
-HomeBluRayTests.Run();
-RunBurningChecks();
+MaximizedWindowBoundsTests.Run();
+WindowWorkAreaNativeTests.Run();
 BluRayModuleTests.Run();
 BluRayEncodingTests.Run();
-BluRayViewModelTests.Run();
-BluRayPresetTests.Run();
-BluRayLivePreviewTests.Run();
 BluRayPreviewTests.Run();
-PreviewPresetSyncTests.Run();
-LivePreviewResolutionTests.Run();
 BluRayImageMappingTests.Run();
 BluRayParallelGenerationTests.Run();
 BluRayPixelReuseTests.Run();
 BluRayIsoTests.Run();
 BluRayDrawingModeTests.Run();
+BluRaySidecarTests.Run();
+BluRayPatternRangeTests.Run();
 UdfFilesystemTests.Run();
 UdfLargeFileTests.Run();
-BluRayCalibrationTests.Run();
-TestRingImageLayout();
-RingDitherTests.Run();
+GeneratedContentProgressTests.Run();
+OpticalWriteProgressTests.Run();
+OpticalBurnOperationGateTests.Run();
+BluRaySequentialBurnTests.Run();
+BluRayFlushDiagnosticsTests.Run();
+BluRaySequentialWriterTests.Run();
+BluRaySessionCleanupTests.Run();
+RunStreamingGenerationTests();
 TestDiscPresets();
 TestDiscPresetJson();
+ProjectStoreTests.Run();
+ProjectSessionTests.Run();
+DesignComposerTests.Run();
 CdAudioCompatibilityTests.Run();
 CdRawImageByteOrderTests.Run();
 CdBinaryTests.Run();
@@ -118,9 +74,9 @@ FourLevelDitherTests.Run();
 ThreeLevelDitherTests.Run();
 BinaryDitherTests.Run();
 GammaDitherTests.Run();
-ImageProcessingTests.Run();
-ImageProcessingWorkflowTests.Run();
 DvdScrambledPatternTests.Run();
+ToneTests.Run();
+SaveTrailTests.Run();
 DvdCubicPipelineTests.Run();
 DvdSimdSamplingTests.Run();
 AppCubicTests.Run();
@@ -135,24 +91,8 @@ CalibrationPhotoCanvasTests.Run();
 CalibrationBurnWorkflowTests.Run();
 CalibrationOutputPublisherTests.Run();
 CalibrationPhotoViewModelTests.Run();
-BluRayObservedCurveViewModelTests.Run();
-ParameterNumberFormattingTests.Run();
-LivePreviewViewportTests.Run();
 
 Console.WriteLine("architecture-selftest: all checks passed");
-
-static void RunBurningChecks()
-{
-    GeneratedContentProgressTests.Run();
-    BurnRateViewModelTests.Run();
-    OpticalWriteProgressTests.Run();
-    OpticalBurnOperationGateTests.Run();
-    BluRayBurnTests.Run();
-    BluRaySequentialBurnTests.Run();
-    BluRayFlushDiagnosticsTests.Run();
-    BluRaySequentialWriterTests.Run();
-    BluRaySessionCleanupTests.Run();
-}
 return;
 
 static void Equal<T>(T expected, T actual, string name)
@@ -188,56 +128,14 @@ static void Throws<TException>(Action action, string name)
     throw new InvalidOperationException($"{name}: expected {typeof(TException).Name}.");
 }
 
-static void TestRingImageLayout()
+static void RunStreamingGenerationTests()
 {
-    Equal(8192, RingImageQuality.GenerationSize, "formal ring image resolution");
-    Equal(4096, RingImageQuality.SavedPreviewSize, "saved ring preview resolution");
-    Equal(2048, RingImageQuality.LivePreviewSize, "live ring preview resolution");
-    new RingImageLayoutOptions(58, 26, 56, RingImageQuality.GenerationSize).Validate();
-
-    string directory = Path.Combine(Path.GetTempPath(), $"disc-ring-test-{Guid.NewGuid():N}");
+    string directory = Path.Combine(Path.GetTempPath(), $"disc-stream-test-{Guid.NewGuid():N}");
     Directory.CreateDirectory(directory);
     try
     {
         string sourcePath = Path.Combine(directory, "source.png");
-        string outputPath = Path.Combine(directory, "ring.png");
         WriteSolidPng(sourcePath, 80, 40, 0);
-        RingImageLayoutSummary summary = RingImageProcessor.Render(
-            sourcePath,
-            outputPath,
-            new RingImageLayoutOptions(
-                CanvasOuterRadiusMm: 58,
-                ContentInnerRadiusMm: 26,
-                ContentOuterRadiusMm: 56,
-                OutputSize: 512));
-        True(summary.CopyCount >= 3, "ring image copies source multiple times");
-        True(
-            summary.CopyWidthPixels > 0 && summary.CopyHeightPixels > 0,
-            "ring layout reports per-copy pixel resolution");
-        True(
-            Math.Abs((summary.CopyWidthMm / summary.CopyHeightMm) - 2.0) < 1e-10,
-            "ring copies preserve source aspect ratio");
-        double innerEdgeRadiusMm =
-            summary.CopyCentreRadiusMm - (summary.CopyHeightMm / 2.0);
-        double outerCornerRadiusMm = Math.Sqrt(
-            Math.Pow(summary.CopyCentreRadiusMm + (summary.CopyHeightMm / 2.0), 2)
-            + Math.Pow(summary.CopyWidthMm / 2.0, 2));
-        True(
-            innerEdgeRadiusMm >= summary.ContentInnerRadiusMm,
-            "ring copy stays outside inner boundary");
-        True(
-            outerCornerRadiusMm <= summary.ContentOuterRadiusMm,
-            "ring copy corners stay inside outer boundary");
-        double copyAngularSpan = 2.0 * Math.Atan(
-            (summary.CopyWidthMm / 2.0) / innerEdgeRadiusMm);
-        double availableAngularSpan =
-            ((2.0 * Math.PI) / summary.CopyCount)
-            - (summary.AngularGapDegrees * Math.PI / 180.0);
-        True(
-            copyAngularSpan <= availableAngularSpan + 1e-10,
-            "ring copies do not overlap");
-        True(File.Exists(outputPath), "ring image output exists");
-        ValidateRingSafetyMargins(outputPath, 58, 25.5, 56.5);
         TestStreamingGeneration(sourcePath);
     }
     finally
@@ -251,6 +149,7 @@ static void TestDiscPresets()
     DiscPresetJsonDocument builtIn = DiscPresetJsonStore.LoadBuiltIn();
     Equal(4, builtIn.CdPresets.Count, "built-in CD preset count");
     Equal(3, builtIn.DvdPresets.Count, "built-in DVD preset count");
+    Equal(2, builtIn.BluRayPresets!.Count, "built-in Blu-ray preset count");
     Equal("zh-CN", builtIn.FallbackLanguage!, "built-in preset fallback language");
     True(
         builtIn.CdPresets.All(value =>
@@ -270,8 +169,14 @@ static void TestDiscPresets()
         builtIn.DvdPresets.Count,
         builtIn.DvdPresets.Select(value => value.Id).Distinct(StringComparer.Ordinal).Count(),
         "DVD preset IDs are unique");
+    True(
+        builtIn.BluRayPresets!.All(value =>
+            !string.IsNullOrWhiteSpace(value.DisplayName)
+            && value.TotalSectors % ProjectDocument.BluRaySectorsPerCluster == 0),
+        "built-in Blu-ray presets carry 32-sector-aligned geometry");
     True(CdDiscPreset.Manual.IsCustom, "CD manual state is separate from JSON presets");
     True(DvdDiscPreset.Manual.IsCustom, "DVD manual state is separate from JSON presets");
+    True(BluRayDiscPreset.Manual.IsCustom, "Blu-ray manual state is separate from JSON presets");
 
     double cdVelocity = CdDiscParameters.StandardLinearVelocityMmPerSecond;
     True(
@@ -289,6 +194,15 @@ static void TestDiscPresets()
     {
         new DvdStreamingOptions(
             preset.TotalSectors,
+            preset.InnerRadiusMm,
+            preset.OuterRadiusMm).Validate();
+    }
+
+    foreach (BluRayDiscPresetDefinition preset in builtIn.BluRayPresets!)
+    {
+        new DiscImageStudio.BluRay.BluRayDiscParameters(
+            preset.TotalSectors,
+            1,
             preset.InnerRadiusMm,
             preset.OuterRadiusMm).Validate();
     }
@@ -340,6 +254,7 @@ static void TestDiscPresetJson()
         True(File.Exists(path), "user preset JSON is created on first load");
         Equal(1, created.CdPresets.Count, "initial user CD preset count");
         Equal(1, created.DvdPresets.Count, "initial user DVD preset count");
+        Equal(1, created.BluRayPresets!.Count, "initial user Blu-ray preset count");
         True(
             File.ReadAllText(path).Contains("自定义 DVD 参数", StringComparison.Ordinal),
             "initial user JSON keeps custom preset names readable");
@@ -360,6 +275,7 @@ static void TestDiscPresetJson()
         DiscPresetJsonDocument merged = DiscPresetJsonStore.Merge(builtIn, created);
         Equal(5, merged.CdPresets.Count, "merged CD preset count");
         Equal(4, merged.DvdPresets.Count, "merged DVD preset count");
+        Equal(3, merged.BluRayPresets!.Count, "merged Blu-ray preset count");
         DvdDiscPresetDefinition verbatim = merged.DvdPresets.Single(
             value => value.Id == "verbatim-dvd-r-azo-43533");
         Equal(2_297_888U, verbatim.TotalSectors, "merged Verbatim DVD sectors");
@@ -506,6 +422,46 @@ static void TestDiscPresetJson()
             133.3,
             interim.DvdPresets[0].ChannelBitLengthNm,
             "interim schema without the field falls back to the DVD standard");
+        Equal(
+            2,
+            DiscPresetJsonStore.Merge(builtIn, interim).BluRayPresets!.Count,
+            "pre-BD schema still receives the built-in Blu-ray catalog");
+
+        File.WriteAllText(
+            path,
+            """
+            {
+              "schemaVersion": 4,
+              "cdPresets": [],
+              "dvdPresets": []
+            }
+            """);
+        Throws<InvalidDataException>(
+            () => DiscPresetJsonStore.Load(path),
+            "schema 4 without a Blu-ray catalog is rejected");
+
+        File.WriteAllText(
+            path,
+            """
+            {
+              "schemaVersion": 4,
+              "cdPresets": [],
+              "dvdPresets": [],
+              "bluRayPresets": [
+                {
+                  "id": "bad-bd",
+                  "displayName": "非法蓝光扇区",
+                  "description": "扇区数必须按 32 对齐。",
+                  "totalSectors": 1000,
+                  "innerRadiusMm": 24.0,
+                  "outerRadiusMm": 58.0
+                }
+              ]
+            }
+            """);
+        Throws<InvalidDataException>(
+            () => DiscPresetJsonStore.Load(path),
+            "Blu-ray preset sectors must align to 32");
 
         File.WriteAllText(
             path,
@@ -925,47 +881,6 @@ static void WriteSolidPng(string path, int width, int height, byte level)
     encoder.Frames.Add(BitmapFrame.Create(bitmap));
     using FileStream output = File.Create(path);
     encoder.Save(output);
-}
-
-static void ValidateRingSafetyMargins(
-    string path,
-    double canvasOuterRadiusMm,
-    double safeInnerLimitMm,
-    double safeOuterLimitMm)
-{
-    using FileStream stream = File.OpenRead(path);
-    BitmapFrame frame = BitmapFrame.Create(
-        stream,
-        BitmapCreateOptions.PreservePixelFormat,
-        BitmapCacheOption.OnLoad);
-    FormatConvertedBitmap converted = new(frame, PixelFormats.Bgra32, null, 0);
-    int stride = checked(converted.PixelWidth * 4);
-    byte[] pixels = new byte[checked(stride * converted.PixelHeight)];
-    converted.CopyPixels(pixels, stride, 0);
-    double centre = converted.PixelWidth / 2.0;
-    int darkRingPixels = 0;
-    for (int y = 0; y < converted.PixelHeight; y++)
-    {
-        for (int x = 0; x < converted.PixelWidth; x++)
-        {
-            int offset = (y * stride) + (x * 4);
-            byte level = pixels[offset];
-            double dx = x - centre;
-            double dy = y - centre;
-            double radiusMm = Math.Sqrt((dx * dx) + (dy * dy))
-                * canvasOuterRadiusMm / centre;
-            if (radiusMm < safeInnerLimitMm || radiusMm > safeOuterLimitMm)
-            {
-                True(level >= 250, "ring safety margins stay blank");
-            }
-            else if (level < 32)
-            {
-                darkRingPixels++;
-            }
-        }
-    }
-
-    True(darkRingPixels > 100, "ring layout contains copied image pixels");
 }
 
 sealed class ForwardOnlyWriteStream(Stream destination) : Stream

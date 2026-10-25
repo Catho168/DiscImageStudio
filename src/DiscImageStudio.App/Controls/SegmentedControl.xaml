@@ -4,7 +4,7 @@
              x:Name="SegmentedRoot"
              UseLayoutRounding="True" SnapsToDevicePixels="True"
              MinWidth="176">
-    <Grid x:Name="LayoutRoot" Height="36">
+    <Grid x:Name="LayoutRoot" Height="{StaticResource CompactHeight}">
         <!-- Rounded-rect track one level above the card surface, divider hairline;
              12px radius matches the TextBox/ComboBox field language (not a pill) -->
         <Border CornerRadius="12" Background="{StaticResource Surface2Brush}"
@@ -14,6 +14,7 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition x:Name="ThirdColumn" Width="0" />
             </Grid.ColumnDefinitions>
             <!-- Sliding selection thumb; code-behind translates it between the two equal cells -->
             <Border x:Name="Thumb" Grid.Column="0" Margin="3" CornerRadius="8"
@@ -73,6 +74,32 @@
                 </RadioButton.Template>
                 <TextBlock x:Name="OptionBText" FontSize="14" FontWeight="Medium"
                            Text="{Binding LabelB, ElementName=SegmentedRoot}"
+                           VerticalAlignment="Center" HorizontalAlignment="Center" />
+            </RadioButton>
+            <RadioButton x:Name="OptionCRadio" Grid.Column="2" Margin="3" Cursor="Hand"
+                         Visibility="Collapsed"
+                         Click="OptionCClick" KeyDown="OptionKeyDown"
+                         MouseEnter="OptionMouseEnter" MouseLeave="OptionMouseLeave">
+                <RadioButton.Template>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Grid Background="Transparent">
+                            <Border x:Name="FocusRing" CornerRadius="9" BorderThickness="2"
+                                    Background="Transparent" BorderBrush="Transparent" />
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              RecognizesAccessKey="True" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="FocusRing" Property="BorderBrush" Value="{StaticResource PrimaryBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </RadioButton.Template>
+                <TextBlock x:Name="OptionCText" FontSize="14" FontWeight="Medium"
+                           Text="{Binding LabelC, ElementName=SegmentedRoot}"
                            VerticalAlignment="Center" HorizontalAlignment="Center" />
             </RadioButton>
         </Grid>

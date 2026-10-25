@@ -6,7 +6,7 @@ using DiscImageStudio.Core.Calibration;
 namespace DiscImageStudio.Services;
 
 public sealed record CalibrationPhotoContours(IReadOnlyList<CalibrationPoint> Outer,
-    IReadOnlyList<CalibrationPoint> Hole, string Message);
+    IReadOnlyList<CalibrationPoint> Hole);
 
 /// <summary>Bounded photo decoding and perspective resampling; independent of the engraved target.</summary>
 public static class CalibrationPhotoService
@@ -55,8 +55,7 @@ public static class CalibrationPhotoService
             double angle = -Math.PI / 2 + 2 * Math.PI * index / count;
             return new CalibrationPoint(cx + rx * ratio * Math.Cos(angle), cy + ry * ratio * Math.Sin(angle));
         }).ToArray();
-        return new(Array.AsReadOnly(Make(1)), Array.AsReadOnly(Make(0.125)),
-            "这是按照片中心提供的初始轮廓，尚未识别真实边缘。请将外圈点拖到盘片实体外缘、内圈点拖到贯通中心孔边缘，再进行矫正。");
+        return new(Array.AsReadOnly(Make(1)), Array.AsReadOnly(Make(0.125)));
     }
 
     public static BitmapSource Rectify(BitmapSource image, CalibrationPhotoTransform transform,

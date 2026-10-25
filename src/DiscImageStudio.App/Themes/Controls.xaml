@@ -9,8 +9,6 @@
       Content icons come from the Lucide set via MahApps.Metro.IconPacks.
     -->
 
-    <controls:InverseBoolConverter x:Key="InverseBool" />
-
     <!-- Text styles -->
     <Style x:Key="H1Title" TargetType="TextBlock">
         <Setter Property="FontSize" Value="30" />
@@ -32,6 +30,13 @@
         <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
         <Setter Property="Margin" Value="0,0,0,6" />
     </Style>
+    <!-- 13px primary row title (layer rows, list entries); the primary-colored counterpart
+         of FieldLabel. -->
+    <Style x:Key="RowText" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
     <Style x:Key="BodyText" TargetType="TextBlock">
         <Setter Property="FontSize" Value="14" />
         <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
@@ -50,8 +55,80 @@
         <Setter Property="Background" Value="{StaticResource Surface1Brush}" />
         <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="16" />
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusCard}" />
         <Setter Property="Padding" Value="24" />
+    </Style>
+
+    <!-- The card header band: Surface2 strip with a bottom hairline and the header's own top
+         arc. Monitor/list containers (MonitorCard, the design page's layer card) share it so
+         a banded head is pixel-identical wherever it appears; form cards stay unbanded on
+         purpose — the band marks a fixed-chrome surface, not every card. Inner content keeps
+         a 16px left inset and a 12px right inset (room for header actions). -->
+    <Style x:Key="CardHeaderBandStyle" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource Surface2Brush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}" />
+        <Setter Property="BorderThickness" Value="0,0,0,1" />
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusCardHeader}" />
+        <Setter Property="Padding" Value="0,12" />
+    </Style>
+    <!-- Mirror strip for a card's pinned footer (status line, one full-width action). -->
+    <Style x:Key="CardFooterBandStyle" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource Surface2Brush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}" />
+        <Setter Property="BorderThickness" Value="0,1,0,0" />
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusCardFooter}" />
+        <Setter Property="Padding" Value="0,10" />
+    </Style>
+
+    <!-- Danger-zone card (burn confirmation): the surround takes the warning ramp — amber
+         reads as "caution, confirm before acting" — while the destructive action inside stays
+         the only red element, so the button keeps the strongest color in the card. -->
+    <Style x:Key="DangerCard" TargetType="Border" BasedOn="{StaticResource CardStyle}">
+        <Setter Property="Background" Value="{StaticResource WarningSoftBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource WarningBorderBrush}" />
+    </Style>
+
+    <!-- Text hierarchy: 30 page title, 16 card title, 14 panel title, 14 body, 13 field
+         label / hint, 12 compact, 11 badge. Views pick one of these and stop inventing sizes. -->
+    <Style x:Key="PanelTitle" TargetType="TextBlock" BasedOn="{StaticResource CardTitle}">
+        <Setter Property="FontSize" Value="14" />
+    </Style>
+    <Style x:Key="CompactText" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="LineHeight" Value="18" />
+    </Style>
+    <Style x:Key="CompactHint" TargetType="TextBlock" BasedOn="{StaticResource CompactText}">
+        <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+    </Style>
+    <!-- Single-line 13px muted row label without the field label's bottom margin (stage
+         rail, info panels). -->
+    <Style x:Key="InlineText" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+    </Style>
+    <Style x:Key="MicroText" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+    </Style>
+    <!-- Legend swatch dot: one size, fill set per use (calibration colors, status kinds). -->
+    <Style x:Key="LegendDot" TargetType="Ellipse">
+        <Setter Property="Width" Value="8" />
+        <Setter Property="Height" Value="8" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <!-- Legend label: centre it explicitly. A legend row is arranged at the tallest row
+         height (a button next to it), and a stretched TextBlock would paint its glyphs at
+         the row's top while the dot centres, leaving a visible vertical offset. -->
+    <Style x:Key="LegendLabel" TargetType="TextBlock" BasedOn="{StaticResource CompactText}">
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <!-- Family/tag chip label: 11px bold reads as a tag without a second size scale. -->
+    <Style x:Key="BadgeText" TargetType="TextBlock" BasedOn="{StaticResource MicroText}">
+        <Setter Property="FontWeight" Value="Bold" />
+        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
     </Style>
 
     <!-- ToolTip -->
@@ -72,6 +149,76 @@
         </Setter>
     </Style>
 
+    <!-- Context menu (recent-tile right-click): the stock system menu is a light chrome from a
+         foreign palette, so the popup reuses the floating-surface recipe (Surface1 plate,
+         floating radius, one shadow) and its rows behave like list rows. Flat text menus only:
+         the stock icon column is gone, submenus still open through PART_Popup. -->
+    <Style TargetType="ContextMenu">
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="HasDropShadow" Value="False" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ContextMenu">
+                    <!-- The 8px margin is the shadow's room, as in the ComboBox dropdown. -->
+                    <Border Background="{StaticResource Surface1Brush}" BorderBrush="{StaticResource DividerBrush}"
+                            BorderThickness="1" CornerRadius="{StaticResource RadiusFloating}"
+                            Padding="4" Margin="8" Effect="{StaticResource FloatingShadow}">
+                        <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="MenuItem">
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="MenuItem">
+                    <Grid>
+                        <Border x:Name="ItemSurface" Background="Transparent" CornerRadius="8" Padding="12,7">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ContentPresenter Grid.Column="0" ContentSource="Header" RecognizesAccessKey="True"
+                                                  VerticalAlignment="Center" />
+                                <iconPacks:PackIconLucide x:Name="SubmenuChevron" Grid.Column="1" Kind="ChevronRight"
+                                                          Width="14" Height="14" VerticalAlignment="Center"
+                                                          Visibility="Collapsed"
+                                                          Foreground="{StaticResource TextMutedBrush}" />
+                            </Grid>
+                        </Border>
+                        <Popup x:Name="PART_Popup" Placement="Right" Focusable="False" PopupAnimation="Fade"
+                               IsOpen="{TemplateBinding IsSubmenuOpen}">
+                            <Border Background="{StaticResource Surface1Brush}" BorderBrush="{StaticResource DividerBrush}"
+                                    BorderThickness="1" CornerRadius="{StaticResource RadiusFloating}"
+                                    Padding="4" Margin="8" Effect="{StaticResource FloatingShadow}">
+                                <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
+                            </Border>
+                        </Popup>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsHighlighted" Value="True">
+                            <Setter TargetName="ItemSurface" Property="Background" Value="{StaticResource Surface2Brush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+                            <Setter Property="Cursor" Value="Arrow" />
+                        </Trigger>
+                        <Trigger Property="Role" Value="SubmenuHeader">
+                            <Setter TargetName="SubmenuChevron" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- Buttons -->
     <ControlTemplate x:Key="FilledButtonTemplate" TargetType="Button">
         <Border x:Name="ButtonBorder" Background="{TemplateBinding Background}" CornerRadius="12"
@@ -87,15 +234,21 @@
                 <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.8" />
             </Trigger>
             <Trigger Property="IsEnabled" Value="False">
-                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.4" />
+                <!-- A disabled filled button drops its semantic fill instead of fading: a
+                    40%-opacity blue reads as an enabled button in shadow, not as unavailable. -->
+                <Setter TargetName="ButtonBorder" Property="Background" Value="{StaticResource Surface2Brush}" />
+                <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+                <Setter Property="Cursor" Value="Arrow" />
             </Trigger>
         </ControlTemplate.Triggers>
     </ControlTemplate>
 
-    <Style x:Key="PrimaryButton" TargetType="Button">
-        <Setter Property="Background" Value="{StaticResource PrimaryBrush}" />
+    <!-- Filled buttons share one shape; every semantic variant owns its own color ramp.
+         A derived style's own trigger does not outrank the base style's, which is why the
+         danger ramp lives on a sibling of the primary ramp instead of on its subclass. -->
+    <Style x:Key="FilledButtonBase" TargetType="Button">
         <Setter Property="Foreground" Value="White" />
-        <Setter Property="Height" Value="44" />
+        <Setter Property="Height" Value="{StaticResource ButtonHeight}" />
         <Setter Property="Padding" Value="24,0" />
         <Setter Property="FontSize" Value="14" />
         <Setter Property="FontWeight" Value="Medium" />
@@ -103,6 +256,10 @@
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="HorizontalContentAlignment" Value="Center" />
         <Setter Property="Template" Value="{StaticResource FilledButtonTemplate}" />
+    </Style>
+
+    <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource FilledButtonBase}">
+        <Setter Property="Background" Value="{StaticResource PrimaryBrush}" />
         <Style.Triggers>
             <Trigger Property="IsMouseOver" Value="True">
                 <Setter Property="Background" Value="{StaticResource PrimaryHoverBrush}" />
@@ -113,20 +270,22 @@
         </Style.Triggers>
     </Style>
 
-    <Style x:Key="DangerButton" TargetType="Button" BasedOn="{StaticResource PrimaryButton}">
+    <Style x:Key="DangerButton" TargetType="Button" BasedOn="{StaticResource FilledButtonBase}">
         <Setter Property="Background" Value="{StaticResource DangerBrush}" />
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{StaticResource DangerHoverBrush}" />
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="{StaticResource DangerPressedBrush}" />
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
-    <Style x:Key="SecondaryButton" TargetType="Button">
+    <Style x:Key="SecondaryButton" TargetType="Button" BasedOn="{StaticResource FilledButtonBase}">
         <Setter Property="Background" Value="{StaticResource Surface2Brush}" />
         <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
-        <Setter Property="Height" Value="44" />
         <Setter Property="Padding" Value="20,0" />
-        <Setter Property="FontSize" Value="14" />
-        <Setter Property="Cursor" Value="Hand" />
-        <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="HorizontalContentAlignment" Value="Center" />
-        <Setter Property="Template" Value="{StaticResource FilledButtonTemplate}" />
         <Style.Triggers>
             <Trigger Property="IsMouseOver" Value="True">
                 <Setter Property="Background" Value="{StaticResource Surface3Brush}" />
@@ -135,7 +294,7 @@
     </Style>
 
     <Style x:Key="BrowseButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
-        <Setter Property="Height" Value="40" />
+        <Setter Property="Height" Value="{StaticResource ControlHeight}" />
         <Setter Property="Padding" Value="14,0" />
         <Setter Property="FontSize" Value="13" />
         <Setter Property="Margin" Value="8,0,0,0" />
@@ -151,6 +310,36 @@
                 <Setter Property="Background" Value="{StaticResource PressedOverlayBrush}" />
             </Trigger>
         </Style.Triggers>
+    </Style>
+
+    <!-- The quiet variant of a ghost action (clear list, secondary start-page entries): same
+         shape, muted text, so it never competes with a real action nearby. -->
+    <Style x:Key="QuietButton" TargetType="Button" BasedOn="{StaticResource GhostButton}">
+        <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+    </Style>
+
+    <!-- Compact variants for dense tool rows and step cards (36px), the only smaller size. -->
+    <Style x:Key="CompactButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+        <Setter Property="Height" Value="{StaticResource CompactHeight}" />
+        <Setter Property="Padding" Value="14,0" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="MinWidth" Value="0" />
+    </Style>
+
+    <Style x:Key="CompactPrimaryButton" TargetType="Button" BasedOn="{StaticResource PrimaryButton}">
+        <Setter Property="Height" Value="{StaticResource CompactHeight}" />
+        <Setter Property="Padding" Value="16,0" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="MinWidth" Value="0" />
+    </Style>
+
+    <!-- Square icon-only chrome for list rows and canvas toolbars. -->
+    <Style x:Key="IconButton" TargetType="Button" BasedOn="{StaticResource GhostButton}">
+        <Setter Property="Width" Value="28" />
+        <Setter Property="Height" Value="28" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="Focusable" Value="False" />
     </Style>
 
     <!-- Start-page tile: no chrome at rest, the whole card is the hit target, and hover
@@ -188,6 +377,139 @@
         </Setter>
     </Style>
 
+    <!-- Recent-project tile: the whole tile is the hit target, three per row on the home
+         page. The sleeve fills the left three quarters; the disc (the project's face,
+         72px) sits behind the sleeve with its centre on the sleeve's right edge, so
+         exactly half pokes out into the remaining quarter. Hover motion lives in
+         RecentProjectCard's code-behind: sleeve -6px, disc +10px, face spinning at
+         24 deg/s while hovered, and the project path scrolling when it overflows its
+         column. The hub hole and the top sheen sit in a fixed overlay outside the spin so
+         the "lighting" does not rotate with the face. -->
+    <Style TargetType="controls:RecentProjectCard">
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="controls:RecentProjectCard">
+                    <Grid Background="Transparent" Height="96">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="3*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <!-- The disc, behind the sleeve: -36px margin puts its centre on the
+                             column boundary, i.e. exactly on the sleeve's right edge. -->
+                        <Grid x:Name="PART_DiscHost" Grid.Column="1" Width="72" Height="72"
+                              HorizontalAlignment="Left" Margin="-36,0,0,0" VerticalAlignment="Center"
+                              Effect="{StaticResource FloatingShadow}">
+                            <Grid.RenderTransform>
+                                <TranslateTransform x:Name="PART_DiscTranslate" />
+                            </Grid.RenderTransform>
+                            <Grid x:Name="PART_DiscSpin" RenderTransformOrigin="0.5,0.5">
+                                <Grid.RenderTransform>
+                                    <RotateTransform x:Name="PART_DiscRotate" />
+                                </Grid.RenderTransform>
+                                <Ellipse Fill="{StaticResource DiscBodyBrush}" />
+                                <Border CornerRadius="36" BorderBrush="{StaticResource DividerBrush}"
+                                        BorderThickness="1">
+                                    <!-- Binding with TemplatedParent, not TemplateBinding: the
+                                         source sits on a Freezable (brush), where TemplateBinding
+                                         silently never resolves. -->
+                                    <Border.Background>
+                                        <ImageBrush ImageSource="{Binding ThumbnailSource,
+                                                    RelativeSource={RelativeSource TemplatedParent}}"
+                                                    Stretch="UniformToFill" />
+                                    </Border.Background>
+                                </Border>
+                            </Grid>
+                            <!-- Fixed overlay: viewer-side lighting and the hub hole. -->
+                            <Ellipse IsHitTestVisible="False">
+                                <Ellipse.Fill>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                        <GradientStop Color="#12FFFFFF" Offset="0" />
+                                        <GradientStop Color="#00FFFFFF" Offset="0.55" />
+                                    </LinearGradientBrush>
+                                </Ellipse.Fill>
+                            </Ellipse>
+                            <Ellipse Width="10" Height="10" IsHitTestVisible="False"
+                                     Fill="{StaticResource BackgroundBrush}"
+                                     Stroke="#26FFFFFF" StrokeThickness="1" />
+                        </Grid>
+
+                        <!-- The sleeve, on top: its surface hides the disc's left half. -->
+                        <Border x:Name="PART_Card" Grid.Column="0"
+                                Background="{StaticResource Surface1Brush}"
+                                BorderBrush="{StaticResource DividerBrush}" BorderThickness="1"
+                                CornerRadius="{StaticResource RadiusCard}" Padding="16,0,46,0">
+                            <Border.RenderTransform>
+                                <TranslateTransform x:Name="PART_CardTranslate" />
+                            </Border.RenderTransform>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="{TemplateBinding Title}" Style="{StaticResource RowText}"
+                                           FontWeight="Medium" />
+                                <!-- Star column, not a horizontal StackPanel: a bounded width is
+                                     what keeps a long path inside the sleeve and gives the hover
+                                     marquee a viewport to scroll the tail through. -->
+                                <Grid Margin="0,5,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Grid.Column="0" Padding="5,1" CornerRadius="{StaticResource RadiusChip}"
+                                            Background="{StaticResource Surface3Brush}"
+                                            VerticalAlignment="Center">
+                                        <TextBlock Text="{TemplateBinding FamilyLabel}"
+                                                   Style="{StaticResource BadgeText}" />
+                                    </Border>
+                                    <iconPacks:PackIconLucide Grid.Column="1" Kind="Folder" Width="12" Height="12"
+                                                              Margin="10,0,0,0" VerticalAlignment="Center"
+                                                              Foreground="{StaticResource TextMutedBrush}" />
+                                    <Grid x:Name="PART_LocationViewport" Grid.Column="2" Margin="5,0,0,0"
+                                          ClipToBounds="True">
+                                        <!-- The horizontal StackPanel measures its child with an
+                                             unbounded width, which is what makes the whole path
+                                             exist as a line to scroll: a NoWrap TextBlock laid
+                                             out under the viewport's own constraint would be cut
+                                             at the clip edge and the tail could never be drawn.
+                                             The panel overflows the cell and the viewport clips it. -->
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock x:Name="PART_LocationText"
+                                                       Text="{TemplateBinding LocationText}"
+                                                       Style="{StaticResource InlineText}" FontSize="12"
+                                                       TextWrapping="NoWrap" VerticalAlignment="Center">
+                                                <TextBlock.RenderTransform>
+                                                    <TranslateTransform x:Name="PART_LocationTranslate" />
+                                                </TextBlock.RenderTransform>
+                                            </TextBlock>
+                                        </StackPanel>
+                                        <!-- Continuation cue where the clipped path exits, in place
+                                             of an ellipsis: the same edge-fade idiom as the scroll
+                                             surfaces, painted in the sleeve's own surface color. -->
+                                        <Rectangle Width="14" HorizontalAlignment="Right"
+                                                   IsHitTestVisible="False">
+                                            <Rectangle.Fill>
+                                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                                    <GradientStop Color="#0018181B" Offset="0" />
+                                                    <GradientStop Color="{StaticResource Surface1Color}" Offset="1" />
+                                                </LinearGradientBrush>
+                                            </Rectangle.Fill>
+                                        </Rectangle>
+                                    </Grid>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.4" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- TextBox: 40px field with focus ring -->
     <Style TargetType="TextBox">
         <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
@@ -207,7 +529,7 @@
                                 BorderThickness="2" CornerRadius="14" />
                         <Border x:Name="FieldBorder" Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
-                                CornerRadius="12" Margin="2">
+                                CornerRadius="{StaticResource RadiusField}" Margin="2">
                             <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"
                                           VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
                                           Focusable="False" HorizontalScrollBarVisibility="Hidden"
@@ -246,6 +568,127 @@
                                   Focusable="False"
                                   HorizontalScrollBarVisibility="{TemplateBinding HorizontalScrollBarVisibility}"
                                   VerticalScrollBarVisibility="{TemplateBinding VerticalScrollBarVisibility}" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- 36px field variant for inspector/side panels; declared after the implicit TextBox
+         style for the same forward-reference reason as the other Compact variants. The tight
+         horizontal padding keeps long measured values readable in the narrow multi-column
+         inspector grids. -->
+    <Style x:Key="CompactTextBox" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+        <Setter Property="Height" Value="{StaticResource CompactHeight}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Padding" Value="6,0" />
+    </Style>
+
+    <!-- Continuous value slider (tone module): 4px track, 14px thumb, brand fill. The filled
+         portion is the decrease repeat button, so no value converter is involved. -->
+    <Style x:Key="ToneSlider" TargetType="Slider">
+        <Setter Property="Height" Value="26" />
+        <Setter Property="IsMoveToPointEnabled" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Slider">
+                    <Grid VerticalAlignment="Center">
+                        <Border Height="4" CornerRadius="2" Background="{StaticResource Surface3Brush}"
+                                VerticalAlignment="Center" />
+                        <Track x:Name="PART_Track" VerticalAlignment="Center">
+                            <Track.DecreaseRepeatButton>
+                                <RepeatButton Command="{x:Static Slider.DecreaseLarge}" Focusable="False">
+                                    <RepeatButton.Template>
+                                        <ControlTemplate TargetType="RepeatButton">
+                                            <Border Height="4" CornerRadius="2" VerticalAlignment="Center"
+                                                    Background="{StaticResource PrimaryBrush}" />
+                                        </ControlTemplate>
+                                    </RepeatButton.Template>
+                                </RepeatButton>
+                            </Track.DecreaseRepeatButton>
+                            <Track.IncreaseRepeatButton>
+                                <RepeatButton Command="{x:Static Slider.IncreaseLarge}" Focusable="False">
+                                    <RepeatButton.Template>
+                                        <ControlTemplate TargetType="RepeatButton">
+                                            <Border Height="26" Background="Transparent" />
+                                        </ControlTemplate>
+                                    </RepeatButton.Template>
+                                </RepeatButton>
+                            </Track.IncreaseRepeatButton>
+                            <Track.Thumb>
+                                <Thumb Width="14" Height="14" Focusable="False">
+                                    <Thumb.Template>
+                                        <ControlTemplate TargetType="Thumb">
+                                            <Grid>
+                                                <Ellipse Fill="{StaticResource TextPrimaryBrush}" />
+                                                <Ellipse Stroke="{StaticResource BackgroundBrush}" StrokeThickness="2" />
+                                            </Grid>
+                                        </ControlTemplate>
+                                    </Thumb.Template>
+                                </Thumb>
+                            </Track.Thumb>
+                        </Track>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.45" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Bipolar variant (brightness): no fill, because a fill from the left edge would read
+         as "half strength" at the neutral 0 position. A centre tick marks the zero point. -->
+    <Style x:Key="ToneBipolarSlider" TargetType="Slider">
+        <Setter Property="Height" Value="26" />
+        <Setter Property="IsMoveToPointEnabled" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Slider">
+                    <Grid VerticalAlignment="Center">
+                        <Border Height="4" CornerRadius="2" Background="{StaticResource Surface3Brush}"
+                                VerticalAlignment="Center" />
+                        <Border Width="2" Height="10" Background="{StaticResource TextMutedBrush}"
+                                HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <Track x:Name="PART_Track" VerticalAlignment="Center">
+                            <Track.DecreaseRepeatButton>
+                                <RepeatButton Command="{x:Static Slider.DecreaseLarge}" Focusable="False">
+                                    <RepeatButton.Template>
+                                        <ControlTemplate TargetType="RepeatButton">
+                                            <Border Height="26" Background="Transparent" />
+                                        </ControlTemplate>
+                                    </RepeatButton.Template>
+                                </RepeatButton>
+                            </Track.DecreaseRepeatButton>
+                            <Track.IncreaseRepeatButton>
+                                <RepeatButton Command="{x:Static Slider.IncreaseLarge}" Focusable="False">
+                                    <RepeatButton.Template>
+                                        <ControlTemplate TargetType="RepeatButton">
+                                            <Border Height="26" Background="Transparent" />
+                                        </ControlTemplate>
+                                    </RepeatButton.Template>
+                                </RepeatButton>
+                            </Track.IncreaseRepeatButton>
+                            <Track.Thumb>
+                                <Thumb Width="14" Height="14" Focusable="False">
+                                    <Thumb.Template>
+                                        <ControlTemplate TargetType="Thumb">
+                                            <Grid>
+                                                <Ellipse Fill="{StaticResource TextPrimaryBrush}" />
+                                                <Ellipse Stroke="{StaticResource BackgroundBrush}" StrokeThickness="2" />
+                                            </Grid>
+                                        </ControlTemplate>
+                                    </Thumb.Template>
+                                </Thumb>
+                            </Track.Thumb>
+                        </Track>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.45" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
@@ -303,7 +746,7 @@
                                 <ControlTemplate TargetType="ToggleButton">
                                     <Border x:Name="FieldBorder" Background="{StaticResource Surface1Brush}"
                                             BorderBrush="{StaticResource DividerBrush}" BorderThickness="1"
-                                            CornerRadius="12" Margin="2" />
+                                            CornerRadius="{StaticResource RadiusField}" Margin="2" />
                                     <ControlTemplate.Triggers>
                                         <Trigger Property="IsMouseOver" Value="True">
                                             <Setter TargetName="FieldBorder" Property="BorderBrush" Value="{StaticResource TextMutedBrush}" />
@@ -333,10 +776,8 @@
                                Placement="Bottom" PopupAnimation="Fade" Margin="0,4,0,0">
                             <Border Background="{StaticResource Surface1Brush}" BorderBrush="{StaticResource DividerBrush}"
                                     BorderThickness="1" CornerRadius="12" Margin="8" Padding="0,4"
-                                    MinWidth="{TemplateBinding ActualWidth}" MaxHeight="{TemplateBinding MaxDropDownHeight}">
-                                <Border.Effect>
-                                    <DropShadowEffect ShadowDepth="6" BlurRadius="18" Opacity="0.45" Color="#000000" />
-                                </Border.Effect>
+                                    MinWidth="{TemplateBinding ActualWidth}" MaxHeight="{TemplateBinding MaxDropDownHeight}"
+                                    Effect="{StaticResource FloatingShadow}">
                                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                                     <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" />
                                 </ScrollViewer>
@@ -344,6 +785,10 @@
                         </Popup>
                     </Grid>
                     <ControlTemplate.Triggers>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+                            <Setter Property="Opacity" Value="0.55" />
+                        </Trigger>
                         <Trigger Property="IsDropDownOpen" Value="True">
                             <Setter TargetName="FocusGlow" Property="BorderBrush" Value="{StaticResource PrimaryGlowBrush}" />
                             <Setter TargetName="Chevron" Property="RenderTransform">
@@ -403,6 +848,19 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+    </Style>
+
+    <!-- Compact field variants for dense tool rows and step cards. They must be declared
+         after the implicit ComboBox/CheckBox styles: BasedOn with a StaticResource is resolved
+         while the dictionary entry is created, so a forward reference to a style that is not
+         in the dictionary yet silently falls back to the Windows theme style and the control
+         renders with stock chrome. -->
+    <Style x:Key="CompactComboBox" TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+        <Setter Property="Height" Value="{StaticResource CompactHeight}" />
+        <Setter Property="FontSize" Value="13" />
+    </Style>
+    <Style x:Key="CompactCheckBox" TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}">
+        <Setter Property="FontSize" Value="13" />
     </Style>
 
     <!-- RadioButton -->
@@ -557,7 +1015,9 @@
         <Setter Property="Template" Value="{StaticResource OverlayScrollViewerTemplate}" />
     </Style>
 
-    <!-- ProgressBar -->
+    <!-- ProgressBar. WPF drives the indeterminate sweep itself: the control looks up
+         PART_GlowRect and animates its margin across the track, so leaving that element out
+         (as the previous template did) left IsIndeterminate frozen as a solid bar. -->
     <Style TargetType="ProgressBar">
         <Setter Property="Height" Value="8" />
         <Setter Property="Foreground" Value="{StaticResource PrimaryBrush}" />
@@ -570,7 +1030,16 @@
                         <Border x:Name="PART_Track" Background="{TemplateBinding Background}" CornerRadius="4" />
                         <Border x:Name="PART_Indicator" Background="{TemplateBinding Foreground}" CornerRadius="4"
                                 HorizontalAlignment="Left" />
+                        <Border x:Name="PART_GlowRect" Width="120" CornerRadius="4"
+                                Background="{TemplateBinding Foreground}" HorizontalAlignment="Left"
+                                Visibility="Collapsed" />
                     </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsIndeterminate" Value="True">
+                            <Setter TargetName="PART_Indicator" Property="Visibility" Value="Collapsed" />
+                            <Setter TargetName="PART_GlowRect" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
@@ -580,6 +1049,149 @@
                 <Setter Property="Height" Value="Auto" />
             </Trigger>
         </Style.Triggers>
+    </Style>
+
+    <!-- Thin progress bar for inline status rows (calibration and job surfaces). -->
+    <Style x:Key="CompactProgressBar" TargetType="ProgressBar" BasedOn="{StaticResource {x:Type ProgressBar}}">
+        <Setter Property="Height" Value="4" />
+    </Style>
+
+    <!-- Expander: the header is a quiet row with a Lucide chevron; the stock Windows toggle
+         arrow is replaced so disclosure matches the rest of the dark language. -->
+    <Style TargetType="Expander">
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="IsTabStop" Value="False" />
+        <Setter Property="controls:ExpanderAutoScroll.Enabled" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Expander">
+                    <StackPanel Background="Transparent">
+                        <!-- Foreground must be restated: the ToggleButton's theme style would
+                             otherwise paint the header with the system black text brush. -->
+                        <ToggleButton x:Name="PART_Header" Focusable="False" Cursor="Hand"
+                                      Foreground="{TemplateBinding Foreground}"
+                                      IsChecked="{Binding IsExpanded, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                            <ToggleButton.Template>
+                                <ControlTemplate TargetType="ToggleButton">
+                                    <Border x:Name="HeaderSurface" Background="Transparent" CornerRadius="8" Padding="2,6">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <ContentPresenter Grid.Column="0" VerticalAlignment="Center"
+                                                              RecognizesAccessKey="True" />
+                                            <iconPacks:PackIconLucide Grid.Column="1" x:Name="HeaderChevron"
+                                                                      Kind="ChevronDown" Width="16" Height="16"
+                                                                      Margin="8,0,0,0" VerticalAlignment="Center"
+                                                                      Foreground="{StaticResource TextMutedBrush}"
+                                                                      RenderTransformOrigin="0.5,0.5" />
+                                        </Grid>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="HeaderSurface" Property="Background" Value="{StaticResource HoverOverlayBrush}" />
+                                        </Trigger>
+                                        <Trigger Property="IsChecked" Value="True">
+                                            <Setter TargetName="HeaderChevron" Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                                            <Setter TargetName="HeaderChevron" Property="RenderTransform">
+                                                <Setter.Value>
+                                                    <RotateTransform Angle="180" />
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </ToggleButton.Template>
+                            <ContentPresenter Content="{TemplateBinding Header}" />
+                        </ToggleButton>
+                        <ContentPresenter x:Name="Body" ContentSource="Content" Margin="2,8,2,2" Visibility="Collapsed" />
+                    </StackPanel>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsExpanded" Value="True">
+                            <Setter TargetName="Body" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.45" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Disclosure whose header row is a card title: same chrome as SectionCard's header, so a
+         collapsible section stops reading as a footer strip glued to the card above it. The
+         negative margin cancels the header's own 2px inset so its title lines up with the
+         section cards next to it. -->
+    <Style x:Key="CardExpander" TargetType="Expander" BasedOn="{StaticResource {x:Type Expander}}">
+        <Setter Property="FontSize" Value="16" />
+        <Setter Property="FontWeight" Value="Bold" />
+        <Setter Property="Margin" Value="-2,0" />
+    </Style>
+
+    <!-- Selectable rows. RowListBoxItem is the full-bleed list row (layer stack): hover lifts
+         the surface, selection adds a primary accent bar. CardListBoxItem is the inset,
+         rounded variant used inside dialogs. -->
+    <Style x:Key="RowListBoxItem" TargetType="ListBoxItem">
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListBoxItem">
+                    <Border x:Name="RowSurface" Background="Transparent"
+                            BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+                        <Grid>
+                            <Border x:Name="SelectionBar" Width="2" HorizontalAlignment="Left" Background="Transparent" />
+                            <ContentPresenter Margin="{TemplateBinding Padding}" />
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="RowSurface" Property="Background" Value="{StaticResource SurfaceHoverBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="RowSurface" Property="Background" Value="{StaticResource Surface2Brush}" />
+                            <Setter TargetName="SelectionBar" Property="Background" Value="{StaticResource PrimaryBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.4" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="CardListBoxItem" TargetType="ListBoxItem">
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListBoxItem">
+                    <Border x:Name="CardSurface" Background="Transparent" CornerRadius="12"
+                            Padding="14,10" Margin="0,2">
+                        <ContentPresenter />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="CardSurface" Property="Background" Value="{StaticResource HoverOverlayBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="CardSurface" Property="Background" Value="{StaticResource Surface2Brush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.4" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- RevealPanel: collapsible parameter group -->
@@ -592,6 +1204,175 @@
                     <Grid ClipToBounds="True">
                         <ContentPresenter />
                     </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- StepCard: numbered workflow step with a state chip (待开始 muted / 进行中 primary /
+         已完成 success + check) and a collapsible body. Header chrome matches SectionCard so
+         a step column reads as the same design language as the cards beside it. The state
+         triggers live inside the header template: they color parts (dot, number, chip) that
+         only exist there. -->
+    <Style TargetType="controls:StepCard">
+        <Setter Property="IsTabStop" Value="False" />
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="controls:StepCard">
+                    <Border Background="{StaticResource Surface1Brush}" BorderBrush="{StaticResource DividerBrush}"
+                            BorderThickness="1" CornerRadius="{StaticResource RadiusCard}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <ToggleButton x:Name="PART_Header" Focusable="False" Cursor="Hand"
+                                          IsChecked="{Binding IsExpanded, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border x:Name="HeaderSurface" Background="Transparent"
+                                                CornerRadius="{StaticResource RadiusCard}" Padding="18,14">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <Grid Grid.Column="0" Width="22" Height="22" VerticalAlignment="Center">
+                                                    <Border x:Name="StepDot" CornerRadius="11"
+                                                            Background="{StaticResource Surface2Brush}" />
+                                                    <TextBlock x:Name="StepNumberText"
+                                                               Text="{Binding StepNumber, RelativeSource={RelativeSource AncestorType={x:Type controls:StepCard}}}"
+                                                               FontSize="11" FontWeight="Bold"
+                                                               Foreground="{StaticResource TextMutedBrush}"
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                    <iconPacks:PackIconLucide x:Name="DoneCheck" Kind="Check" Width="12" Height="12"
+                                                                              Foreground="{StaticResource SuccessBrush}"
+                                                                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                                              Visibility="Collapsed" />
+                                                </Grid>
+                                                <TextBlock Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center"
+                                                           Text="{Binding StepTitle, RelativeSource={RelativeSource AncestorType={x:Type controls:StepCard}}}"
+                                                           Style="{StaticResource CardTitle}" />
+                                                <Border Grid.Column="2" CornerRadius="{StaticResource RadiusChip}" Padding="7,2"
+                                                        Background="{StaticResource Surface3Brush}" VerticalAlignment="Center"
+                                                        Margin="10,0,0,0">
+                                                    <TextBlock x:Name="StateChipText" Style="{StaticResource MicroText}"
+                                                               Text="待开始" />
+                                                </Border>
+                                                <iconPacks:PackIconLucide Grid.Column="3" x:Name="HeaderChevron" Kind="ChevronDown"
+                                                                          Width="16" Height="16" Margin="10,0,0,0" VerticalAlignment="Center"
+                                                                          Foreground="{StaticResource TextMutedBrush}"
+                                                                          RenderTransformOrigin="0.5,0.5" />
+                                            </Grid>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="HeaderSurface" Property="Background" Value="{StaticResource HoverOverlayBrush}" />
+                                            </Trigger>
+                                            <Trigger Property="IsChecked" Value="True">
+                                                <Setter TargetName="HeaderChevron" Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                                                <Setter TargetName="HeaderChevron" Property="RenderTransform">
+                                                    <Setter.Value>
+                                                        <RotateTransform Angle="180" />
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </Trigger>
+                                            <DataTrigger Binding="{Binding State, RelativeSource={RelativeSource AncestorType={x:Type controls:StepCard}}}"
+                                                         Value="Active">
+                                                <Setter TargetName="StepDot" Property="Background" Value="{StaticResource PrimaryBrush}" />
+                                                <Setter TargetName="StepNumberText" Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                                                <Setter TargetName="StateChipText" Property="Text" Value="进行中" />
+                                                <Setter TargetName="StateChipText" Property="Foreground" Value="{StaticResource PrimaryHoverBrush}" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding State, RelativeSource={RelativeSource AncestorType={x:Type controls:StepCard}}}"
+                                                         Value="Done">
+                                                <Setter TargetName="StepDot" Property="Background" Value="{StaticResource SuccessSoftBrush}" />
+                                                <Setter TargetName="StepNumberText" Property="Visibility" Value="Collapsed" />
+                                                <Setter TargetName="DoneCheck" Property="Visibility" Value="Visible" />
+                                                <Setter TargetName="StateChipText" Property="Text" Value="已完成" />
+                                                <Setter TargetName="StateChipText" Property="Foreground" Value="{StaticResource SuccessBrush}" />
+                                            </DataTrigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <!-- The body scrolls when the card is height-constrained (the
+                                 calibration accordion stretches the expanded card): content
+                                 taller than the card rolls inside instead of overflowing. -->
+                            <ScrollViewer x:Name="BodyScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled" Visibility="Collapsed">
+                                <ContentPresenter x:Name="Body" ContentSource="Content" Margin="18,0,18,18" />
+                            </ScrollViewer>
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsExpanded" Value="True">
+                            <Setter TargetName="BodyScroll" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- MonitorCard: header (icon + title + subtitle + action slot) / body / optional status
+         footer. Templated, not a UserControl, so page content in the body keeps the page's
+         name scope. -->
+    <Style TargetType="controls:MonitorCard">
+        <Setter Property="IsTabStop" Value="False" />
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="Background" Value="{StaticResource Surface1Brush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="controls:MonitorCard">
+                    <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{StaticResource RadiusCard}"
+                            Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Border Grid.Row="0" Style="{StaticResource CardHeaderBandStyle}">
+                                <Grid Margin="16,0,12,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <iconPacks:PackIconLucide x:Name="PART_HeaderIcon" Width="15" Height="15"
+                                                                  VerticalAlignment="Center"
+                                                                  Foreground="{StaticResource TextSecondaryBrush}"
+                                                                  Visibility="Collapsed" />
+                                        <TextBlock x:Name="PART_Title" Style="{StaticResource PanelTitle}"
+                                                   VerticalAlignment="Center" />
+                                    </StackPanel>
+                                    <TextBlock x:Name="PART_Subtitle" Grid.Column="1" Style="{StaticResource HintText}"
+                                               TextTrimming="CharacterEllipsis" HorizontalAlignment="Right"
+                                               Margin="12,0,12,0" VerticalAlignment="Center" Visibility="Collapsed" />
+                                    <ContentPresenter x:Name="PART_Actions" Grid.Column="2" VerticalAlignment="Center"
+                                                      Content="{TemplateBinding Actions}" />
+                                </Grid>
+                            </Border>
+                            <ContentPresenter Grid.Row="1" />
+                            <Border Grid.Row="2" x:Name="PART_StatusStrip" Style="{StaticResource CardFooterBandStyle}"
+                                    Padding="16,8" Visibility="Collapsed">
+                                <Grid>
+                                    <TextBlock x:Name="PART_StatusText" Style="{StaticResource HintText}"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <ContentPresenter x:Name="PART_StatusContent" Visibility="Collapsed" />
+                                </Grid>
+                            </Border>
+                        </Grid>
+                    </Border>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>

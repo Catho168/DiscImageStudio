@@ -6,11 +6,15 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using DiscImageStudio.Cd;
 using DiscImageStudio.Core;
+using DiscImageStudio.ViewModels;
 
 internal static class CdAudioCompatibilityTests
 {
     internal static void Run()
     {
+        True(
+            new DiscParametersState().CdInterleave,
+            "a new CD parameter state enables delay interleave by default");
         string directory = Path.Combine(Path.GetTempPath(), $"disc-cd-audio-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(directory);
         try

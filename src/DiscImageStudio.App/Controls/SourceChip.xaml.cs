@@ -1,0 +1,44 @@
+using System.Windows;
+using System.Windows.Controls;
+
+namespace DiscImageStudio.Controls;
+
+/// <summary>Read-only source strip naming what the current workspace consumes. <see cref="Actions"/>
+/// is an optional trailing slot for the link to whoever owns the described setting, so a
+/// "summary + jump to owner" row keeps one chrome instead of each page building its own.</summary>
+public partial class SourceChip : UserControl
+{
+    public static readonly DependencyProperty TextProperty = DependencyProperty.Register(
+        nameof(Text), typeof(string), typeof(SourceChip),
+        new PropertyMetadata("来自设计页合成图", static (sender, _) => ((SourceChip)sender).ChipText.Text = ((SourceChip)sender).Text));
+
+    public static readonly DependencyProperty ActionsProperty = DependencyProperty.Register(
+        nameof(Actions), typeof(object), typeof(SourceChip),
+        new PropertyMetadata(null, static (sender, _) => ((SourceChip)sender).UpdateActions()));
+
+    public SourceChip()
+    {
+        InitializeComponent();
+        ChipText.Text = Text;
+        UpdateActions();
+    }
+
+    public string Text
+    {
+        get => (string)GetValue(TextProperty);
+        set => SetValue(TextProperty, value);
+    }
+
+    /// <summary>Trailing action slot; empty collapses the column.</summary>
+    public object? Actions
+    {
+        get => GetValue(ActionsProperty);
+        set => SetValue(ActionsProperty, value);
+    }
+
+    private void UpdateActions()
+    {
+        ActionHost.Content = Actions;
+        ActionHost.Visibility = Actions is null ? Visibility.Collapsed : Visibility.Visible;
+    }
+}

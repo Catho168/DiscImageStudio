@@ -9,15 +9,15 @@
 %LOCALAPPDATA%\DiscImageStudio\disc-presets.json
 ```
 
-程序第一次启动时会在用户层放入“自定义 CD 参数”和“自定义 DVD 参数”两个可编辑预设。内置预设不会复制到用户文件，因此应用更新后的参数修正和新增预设会自动生效。
+程序第一次启动时会在用户层放入“自定义 CD 参数”“自定义 DVD 参数”和“自定义蓝光参数”三个可编辑预设。内置预设不会复制到用户文件，因此应用更新后的参数修正和新增预设会自动生效。
 
-在 CD 或 DVD 生成页点击“打开 JSON”即可用系统默认编辑器打开用户层。保存后回到程序点击“重新加载”，无需重启。
+新增用户预设的入口在工程设置对话框：「将此套参数保存为预设」先在独立窗口确认名称与注释，再把当前参数追加进用户层；新建工程的模板列表会列出目录中的全部非手动预设。直接编辑 JSON（增删、改名、禁用）后需重启程序生效。
 
 ## 合并规则
 
 - 用户预设使用新 `id` 时，会追加到内置预设之后。
 - 用户预设使用与内置预设相同的 `id` 时，会完整覆盖该内置预设。
-- `disabledCdPresetIds` 和 `disabledDvdPresetIds` 可以隐藏不需要的内置或用户预设。
+- `disabledCdPresetIds`、`disabledDvdPresetIds` 和 `disabledBluRayPresetIds` 可以隐藏不需要的内置或用户预设。
 - 内置预设更新时，未被同 ID 用户项覆盖的参数会自动更新。
 
 ## 添加 DVD 预设
@@ -61,6 +61,24 @@ DVD 的 `totalSectors` 必须大于 0 且是 16 的倍数，以满足 ECC Block 
 }
 ```
 
+## 添加蓝光预设
+
+在 `bluRayPresets` 数组中复制一个现有对象，修改 `id`、名称和参数。例如：
+
+```json
+{
+  "id": "bd-r-ritek-10x",
+  "displayName": "铼德 BD-R 10x（实测）",
+  "description": "实测参数：内半径 23.988221 mm、外半径 58.023235 mm、12,219,392 扇区。",
+  "totalSectors": 12219392,
+  "innerRadiusMm": 23.98822105616562,
+  "outerRadiusMm": 58.023234731100764,
+  "invertMapping": false
+}
+```
+
+BD 的 `totalSectors` 必须大于 0、按 32 对齐且不超过单层容量 12,219,392；外半径不超过 60 mm。`invertMapping` 是预置的 3T/6T 极性，应用到工程后仍可在设计页影调模块中修改。
+
 ## 固定参数与保留字段
 
 扫描速度、起始角、图片外半径与 DVD channel bit 长度是方案固定的物理量，界面不提供对应表单，程序生成时一律采用 1200 mm/s（ECMA-130）、0°、57.5 mm 与 133.3 nm。
@@ -73,7 +91,7 @@ DVD 的 `totalSectors` 必须大于 0 且是 16 的倍数，以满足 ECC Block 
 
 ## 编辑规则
 
-- 保留顶层的 `"schemaVersion": 2`、`cdPresets`、`dvdPresets`、`disabledCdPresetIds` 和 `disabledDvdPresetIds`。程序也接受临时版本的 `"schemaVersion": 3`，缺少保留字段时按上面的标准值补齐。
+- 当前顶层为 `"schemaVersion": 4`，包含 `cdPresets`、`dvdPresets`、`bluRayPresets`、三个禁用列表与可选 `fallbackLanguage`。程序也接受 `"schemaVersion": 2` 与 `3`；缺少 BD 目录时由内置 BD 模板补齐，保存时升级为 4。
 - 每组预设中的 `id` 必须唯一；`__manual__` 是界面“未保存的自定义参数”状态的保留 ID，不能写进 JSON。
 - 只能填写模板中列出的生成参数；其他字段会被拒绝，避免把图片布局或校准参数混入盘片预设。
 - 半径、`linearVelocityMmPerSecond` 和 `channelBitLengthNm` 必须是大于 0 的有限数值，生成外半径必须大于生成内半径。

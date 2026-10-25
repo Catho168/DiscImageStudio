@@ -51,7 +51,11 @@ public sealed class BluRayDiscModule : IOpticalDiscModule
                     new("output", "ISO output", DiscOptionValueType.OutputFile, Required: true),
                     new("data-dir", "Inner files directory", DiscOptionValueType.InputFolder),
                     new("volume-label", "ISO volume label", DiscOptionValueType.String, DefaultValue: "BD_IMAGE"),
-                    new("invert", "Swap 3T/6T assignment", DiscOptionValueType.Boolean, DefaultValue: "false")]),
+                    new("invert", "Swap 3T/6T assignment", DiscOptionValueType.Boolean, DefaultValue: "false"),
+                    new("tone-dither", "Dither strength 0..1", DiscOptionValueType.Decimal, DefaultValue: "0"),
+                    new("tone-levels", "Tone levels (BD is binary)", DiscOptionValueType.Integer, DefaultValue: "2"),
+                    new("tone-brightness", "Brightness offset -64..64", DiscOptionValueType.Decimal, DefaultValue: "0"),
+                    new("tone-gamma", "sRGB linearization", DiscOptionValueType.Boolean, DefaultValue: "false")]),
         ]);
 
     public Task<DiscJobResult> ExecuteAsync(DiscJobRequest request, IProgress<DiscJobProgress>? progress = null,
@@ -147,12 +151,15 @@ public sealed class BluRayDiscModule : IOpticalDiscModule
         IBluRayPayloadMapping mapping;
         string interpretation;
         BluRayIsoPlan? isoPlan = null;
+        bool generationInvert = false;
+        ToneProfile tone = ToneProfile.LegacyBinary;
         if (isPicture)
         {
             string input = options["input"];
             if (Path.GetFullPath(input).Equals(Path.GetFullPath(output!), StringComparison.OrdinalIgnoreCase))
                 throw new ArgumentException("Input and output paths must be different.");
-            bool invert = options.TryGetValue("invert", out string? polarity) ? Boolean(polarity, "invert") : preset.InvertMapping;
+            generationInvert = options.TryGetValue("invert", out string? polarity)
+                ? Boolean(polarity, "invert") : preset.InvertMapping;
             isoPlan = BluRayIsoGenerator.PrepareDrawing(disc, options.GetValueOrDefault("data-dir"),
                 options.GetValueOrDefault("volume-label", "BD_IMAGE"));
             BluRayIsoGenerator.ValidateOutputPath(output!, isoPlan);
@@ -162,8 +169,22 @@ public sealed class BluRayDiscModule : IOpticalDiscModule
                     "BD picture generation requires an image loader. Run bd-generate through the application or provide a BluRayGray8Raster loader.");
             BluRayGray8Raster raster = _imageLoader(input, token);
             token.ThrowIfCancellationRequested();
-            mapping = new BluRayImagePayloadMapping(disc, raster, new BluRayRunLengthMapping(invert));
-            interpretation = invert ? "dark-to-6T / light-to-3T run-count bias" : "dark-to-3T / light-to-6T run-count bias";
+            int levels = options.TryGetValue("tone-levels", out string? toneLevels)
+                ? (int)UInt(toneLevels, "tone-levels") : ToneProfile.TwoLevels;
+            tone = new ToneProfile(
+                options.TryGetValue("tone-dither", out string? dither) ? Number(dither, "tone-dither") : 0,
+                levels,
+                options.TryGetValue("tone-brightness", out string? brightness) ? Number(brightness, "tone-brightness") : 0,
+                options.TryGetValue("tone-gamma", out string? gamma) && Boolean(gamma, "tone-gamma"));
+            tone.Validate("tone");
+            if (levels != ToneProfile.TwoLevels)
+                throw new ArgumentException("bd-generate accepts only --tone-levels 2.");
+            raster = BluRayToneMapping.Apply(raster, tone, token);
+            token.ThrowIfCancellationRequested();
+            mapping = new BluRayImagePayloadMapping(disc, raster, new BluRayRunLengthMapping(generationInvert));
+            interpretation = generationInvert
+                ? "dark-to-6T / light-to-3T run-count bias"
+                : "dark-to-3T / light-to-6T run-count bias";
         }
         else
         {
@@ -183,6 +204,14 @@ public sealed class BluRayDiscModule : IOpticalDiscModule
         BluRayStreamingSummary summary = isPicture
             ? BluRayIsoGenerator.GenerateFile(output!, isoPlan!, mapping, report, token)
             : BluRayStreamingGenerator.GenerateFile(output!, streaming, mapping, report, token);
+        if (isPicture)
+        {
+            BluRayIsoMetadata.FromPlan(
+                    isoPlan!, options["input"], output!, generationInvert, tone, DateTimeOffset.Now)
+                .Save(output!);
+            token.ThrowIfCancellationRequested();
+        }
+
         return new(Descriptor.Id, command.Name, 0,
             isPicture
                 ? $"BD {(isoPlan!.HasFileSystem ? "UDF 2.01" : "full-area drawing, no filesystem")}: {summary.BytesWritten} bytes, {disc.TotalSectors} sectors; {isoPlan.FileCount} inner files; drawing sectors {isoPlan.DrawingStartSector}..{isoPlan.DrawingEndSectorExclusive - 1}; {interpretation}."

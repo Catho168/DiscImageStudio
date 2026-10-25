@@ -1,14 +1,12 @@
-using System.Diagnostics;
 using System.IO;
-using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DiscImageStudio.BluRay;
 using DiscImageStudio.Burning;
 using DiscImageStudio.Cd;
+using DiscImageStudio.Core;
 using DiscImageStudio.Core.Calibration;
 using DiscImageStudio.Dvd;
-using DiscImageStudio.Imaging;
 using DiscImageStudio.Services;
 
 namespace DiscImageStudio.ViewModels;
@@ -17,18 +15,13 @@ public partial class BurnViewModel : ObservableObject
 {
     private readonly ShellViewModel _shell;
     private readonly DiscParametersState _state;
-    private readonly IOpticalDiscBurner _opticalDiscBurner;
+    private readonly DesignViewModel _design;
+    private readonly IOpticalDiscBurner _opticalDiscBurner = new WindowsImapiBurner();
     private CancellationTokenSource? _burnCancellation;
     private int _burnWriteSpeedRefreshRevision;
     private int _burnPreparationRevision;
     private string? _sourceIdentity;
     private bool _isPreparingBurn;
-    private bool _isFinalizingBurn;
-    private bool _hasDeviceWriteProgress;
-    private int _burnProgressRevision;
-    private DispatcherTimer? _writeRateTimer;
-    private long? _lastDeviceWriteTimestamp;
-    private bool _deviceWriteProgressFinished;
 
     [ObservableProperty]
     private IReadOnlyList<OpticalBurnDevice>? _devices;
@@ -55,19 +48,13 @@ public partial class BurnViewModel : ObservableObject
     private string _speedStatusText = "放入可写盘片后读取其支持的速度；默认自动使用最低可用速度，以降低写入错误率。";
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsDvdBurn))]
-    [NotifyPropertyChangedFor(nameof(IsBluRayBurn))]
-    [NotifyPropertyChangedFor(nameof(SelectedMediaKind))]
-    private int _selectedMediaIndex;
-
-    [ObservableProperty]
     private bool _useCalibrationPattern;
 
     [ObservableProperty]
-    private string _sourceTitle = "使用 CD 页面中的源图片与生成参数";
+    private string _sourceTitle = "使用工程当前合成图与参数";
 
     [ObservableProperty]
-    private string _sourceDetails = "请先在 CD 页面选择图片并完成预览。";
+    private string _sourceDetails = "确保磁盘预留适量空间";
 
     [ObservableProperty]
     private bool _confirmChecked;
@@ -79,26 +66,17 @@ public partial class BurnViewModel : ObservableObject
     private double _burnProgressValue;
 
     [ObservableProperty]
-    private string _currentWriteRateText = "—";
-
-    [ObservableProperty]
     private bool _isBurnRunning;
 
-    public BurnViewModel(ShellViewModel shell, DiscParametersState state,
-        IOpticalDiscBurner? opticalDiscBurner = null)
+    public BurnViewModel(ShellViewModel shell, DiscParametersState state, DesignViewModel design)
     {
         _shell = shell;
         _state = state;
-        _opticalDiscBurner = opticalDiscBurner ?? new WindowsImapiBurner();
+        _design = design;
         RefreshDevicesCommand = new RelayCommand(() => _ = RefreshDevicesAsync(), () => !_shell.IsBusy);
         RefreshSpeedsCommand = new RelayCommand(() => _ = RefreshWriteSpeedsAsync(), () => !_shell.IsBusy);
         StartBurnCommand = new AsyncRelayCommand(() => StartStreamBurnAsync(), CanStartBurn);
-        CancelBurnCommand = new RelayCommand(CancelStreamBurn, () =>
-            !_isFinalizingBurn && (IsBurnRunning || _isPreparingBurn)
-            && _burnCancellation is { IsCancellationRequested: false });
-        OpenCdParametersCommand = new RelayCommand(() => shell.NavigateTo(ShellViewModel.CdTabIndex));
-        OpenDvdParametersCommand = new RelayCommand(() => shell.NavigateTo(ShellViewModel.DvdTabIndex));
-        OpenBluRayParametersCommand = new RelayCommand(() => shell.NavigateTo(ShellViewModel.BluRayTabIndex));
+        CancelBurnCommand = new RelayCommand(CancelStreamBurn, () => IsBurnRunning);
         _shell.BusyChanged += () =>
         {
             InvalidateConfirmation();
@@ -107,6 +85,16 @@ public partial class BurnViewModel : ObservableObject
             RefreshSpeedsCommand.NotifyCanExecuteChanged();
             StartBurnCommand.NotifyCanExecuteChanged();
             CancelBurnCommand.NotifyCanExecuteChanged();
+        };
+        // The disc family is derived from the burn source (project family, or the calibration
+        // target's family), so a project switch or a new target has to re-derive and re-arm.
+        _shell.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName is nameof(ShellViewModel.IsProjectOpen)
+                or nameof(ShellViewModel.CurrentProject))
+            {
+                OnFamilyInputsChanged();
+            }
         };
         PropertyChanged += (_, args) =>
         {
@@ -125,69 +113,49 @@ public partial class BurnViewModel : ObservableObject
 
     public RelayCommand CancelBurnCommand { get; }
 
-    public RelayCommand OpenCdParametersCommand { get; }
-
-    public RelayCommand OpenDvdParametersCommand { get; }
-
-    public RelayCommand OpenBluRayParametersCommand { get; }
-
-    public bool IsDvdBurn
-    {
-        get => SelectedMediaIndex == 1;
-        set
-        {
-            if (value) SelectedMediaIndex = 1;
-            else if (IsDvdBurn) SelectedMediaIndex = 0;
-        }
-    }
-
-    public bool IsBluRayBurn
-    {
-        get => SelectedMediaIndex == 2;
-        set
-        {
-            if (value) SelectedMediaIndex = 2;
-            else if (IsBluRayBurn) SelectedMediaIndex = 0;
-        }
-    }
-
-    public OpticalBurnMediaKind SelectedMediaKind => SelectedMediaIndex switch
-    {
-        0 => OpticalBurnMediaKind.CdAudio,
-        1 => OpticalBurnMediaKind.DvdData,
-        2 => OpticalBurnMediaKind.BluRayData,
-        _ => throw new InvalidOperationException("请选择 CD、DVD 或蓝光刻录类型。"),
-    };
-
     public bool IsSetupEnabled => !_shell.IsBusy && !_isPreparingBurn;
+
+    /// <summary>Exposed for the view's two-way bindings to the shared parameters, so the page
+    /// can bind this view model directly like every other workspace page.</summary>
+    public DiscParametersState State => _state;
+
+    /// <summary>Workspace navigation for the page's cross-workspace links.</summary>
+    public IRelayCommand<Workspace> NavigateCommand => _shell.NavigateCommand;
+
+    /// <summary>Disc family of the material about to be written: the calibration target's
+    /// family while burning a target, otherwise the open project's family. Deriving it removes
+    /// the old manual switch, which could be left on the wrong family and then failed at start
+    /// with only a hint line to explain why.</summary>
+    public bool IsDvdBurn => UseCalibrationPattern
+        ? _shell.Calibration.Target?.Parameters.Kind == CalibrationDiscKind.Dvd
+        : _shell.CurrentProject?.IsDvd ?? false;
+
+    public bool IsBluRayBurn => UseCalibrationPattern
+        ? _shell.Calibration.Target?.Parameters.Kind == CalibrationDiscKind.BluRay
+        : _shell.CurrentProject?.IsBluRay ?? false;
+
+    /// <summary>Family chip in the page header; follows the material being written.</summary>
+    public string FamilyLabel => UseCalibrationPattern
+        ? _shell.Calibration.Target?.Parameters.Kind switch
+        {
+            CalibrationDiscKind.Dvd => "DVD",
+            CalibrationDiscKind.BluRay => "BD",
+            _ => "CD",
+        }
+        : _shell.CurrentProject?.FamilyLabel ?? "CD";
+
+    private OpticalBurnMediaKind CurrentMediaKind => IsBluRayBurn
+        ? OpticalBurnMediaKind.BluRayData
+        : IsDvdBurn
+            ? OpticalBurnMediaKind.DvdData
+            : OpticalBurnMediaKind.CdAudio;
 
     /// <summary>Device→speeds→confirm gating: not busy, device chosen, checkbox ticked.</summary>
     private bool CanStartBurn()
         => !_shell.IsBusy
             && !_isPreparingBurn
             && SelectedDevice is not null
-            && ConfirmChecked
-            && (!UseCalibrationPattern || CalibrationMediaMatches());
-
-    private bool CalibrationMediaMatches()
-        => _shell.Calibration.Target is { } target
-            && CalibrationMediaKind(target.Parameters.Kind) == SelectedMediaKind;
-
-    internal static OpticalBurnMediaKind CalibrationMediaKind(CalibrationDiscKind kind) => kind switch
-    {
-        CalibrationDiscKind.Cd => OpticalBurnMediaKind.CdAudio,
-        CalibrationDiscKind.Dvd => OpticalBurnMediaKind.DvdData,
-        CalibrationDiscKind.BluRay => OpticalBurnMediaKind.BluRayData,
-        _ => throw new ArgumentOutOfRangeException(nameof(kind)),
-    };
-
-    private static string MediaDisplayName(OpticalBurnMediaKind kind) => kind switch
-    {
-        OpticalBurnMediaKind.CdAudio => "CD",
-        OpticalBurnMediaKind.DvdData => "DVD",
-        OpticalBurnMediaKind.BluRayData => "蓝光",
-        _ => throw new ArgumentOutOfRangeException(nameof(kind)),
-    };
+            && ConfirmChecked;
 
     private void InvalidateConfirmation()
     {
@@ -210,29 +178,21 @@ public partial class BurnViewModel : ObservableObject
 
     partial void OnConfirmCheckedChanged(bool value) => UpdateActionState();
 
-    partial void OnSelectedMediaIndexChanging(int value)
-    {
-        if (value is < 0 or > 2) throw new ArgumentOutOfRangeException(nameof(value));
-    }
+    partial void OnUseCalibrationPatternChanged(bool value) => OnFamilyInputsChanged();
 
-    partial void OnSelectedMediaIndexChanged(int value)
+    /// <summary>A source change (project switch, calibration target, calibration switch) moves
+    /// the derived family, so confirmation, summary and speeds all have to re-derive.</summary>
+    public void OnCalibrationTargetChanged() => OnFamilyInputsChanged();
+
+    private void OnFamilyInputsChanged()
     {
+        OnPropertyChanged(nameof(IsDvdBurn));
+        OnPropertyChanged(nameof(IsBluRayBurn));
+        OnPropertyChanged(nameof(FamilyLabel));
         InvalidateConfirmation();
         UpdateSourceSummary();
         UpdateActionState();
         _ = RefreshWriteSpeedsAsync();
-    }
-
-    partial void OnUseCalibrationPatternChanged(bool value)
-    {
-        InvalidateConfirmation();
-        UpdateSourceSummary();
-    }
-
-    public void OnCalibrationTargetChanged()
-    {
-        InvalidateConfirmation();
-        UpdateSourceSummary();
     }
 
     public void UpdateSourceSummary()
@@ -244,78 +204,73 @@ public partial class BurnViewModel : ObservableObject
             if (target is null)
             {
                 SourceTitle = "尚未创建标定图案";
-                SourceDetails = "请先在辅助标定页面创建图案，再选择对应的 CD / DVD / 蓝光刻录类型。";
+                SourceDetails = "请先在辅助标定工作区创建图案，再回到这里刻录。";
                 identity = "calibration:none";
             }
             else
             {
                 CalibrationParameters p = target.Parameters;
-                string kind = MediaDisplayName(CalibrationMediaKind(p.Kind));
+                string kind = p.Kind == CalibrationDiscKind.Dvd ? "DVD" : "CD";
                 SourceTitle = $"标定图案 · {kind} · {target.Id[..8]}";
-                string encoding = p.Kind == CalibrationDiscKind.Cd
-                    ? $"线速度 {ParameterNumberText.ForSummary(p.LinearDensity)} mm/s · "
-                        + (_shell.Calibration.CdInterleave ? "延迟交织" : "未交织")
-                    : p.Kind == CalibrationDiscKind.BluRay
-                        ? $"3T / 6T 数量偏向 · {(CalibrationViewModel.HasBluRayFileSystem(target) ? "UDF" : "全数据区绘图")} · 无备用区 BD-R"
-                        : $"位长 {ParameterNumberText.ForSummary(p.LinearDensity)} nm";
-                SourceDetails = CalibrationRadiusDisplay.Format(target)
+                string encoding = p.Kind == CalibrationDiscKind.Dvd
+                    ? $"位长 {p.LinearDensity:0.######} nm"
+                    : $"线速度 {p.LinearDensity:0.######} mm/s · "
+                        + (_shell.Calibration.CdInterleave ? "延迟交织" : "未交织");
+                SourceDetails = $"绘图区 {p.InnerRadiusMm:0.######}–{p.OuterRadiusMm:0.######} mm"
                     + $" · {p.Sectors} 扇区 · {encoding}\n"
-                    + (CalibrationMediaMatches()
-                        ? "使用创建图案时保存的参数；开始前保存标定记录。"
-                        : $"盘片类型不一致，请将上方刻录类型切换为 {kind}。");
-                identity = $"calibration:{target.Id}:{p}:{_shell.Calibration.CdInterleave}:{SelectedMediaKind}";
+                    + "将使用标定模块提供的参数。";
+                identity = $"calibration:{target.Id}:{p}:{_shell.Calibration.CdInterleave}";
             }
-        }
-        else if (IsBluRayBurn)
-        {
-            BluRayViewModel bluRay = _shell.BluRay;
-            SourceTitle = "使用蓝光页面中的源图片与生成参数";
-            string source = bluRay.ImagePath.Trim();
-            string suffix = string.IsNullOrWhiteSpace(bluRay.DataDirectory)
-                ? "；全数据区绘图，不含文件系统"
-                : "；将顺序写入内圈文件夹与外圈图案";
-            suffix += "。使用全新未格式化的单层 BD-R，不预留备用区。";
-            SourceDetails = source.Length == 0
-                ? "请先在蓝光页面选择图片并检查环带布局。" + suffix
-                : $"{Path.GetFileName(source)} · {bluRay.TotalSectors.Trim()} 扇区 · 3T / 6T"
-                    + (bluRay.InvertMapping ? " · 已反转" : string.Empty) + suffix;
-            SourceDetails += ImageProcessingSummary(bluRay.ImageProcessingEnabled, bluRay.GammaCorrectionEnabled);
-            identity = string.Join("\u001f", "bluray", source, bluRay.TotalSectors,
-                bluRay.InnerRadius, bluRay.OuterRadius, bluRay.InvertMapping,
-                bluRay.ImageProcessingEnabled, bluRay.GammaCorrectionEnabled,
-                bluRay.DataDirectory, bluRay.VolumeLabel, bluRay.SelectedPreset?.Id);
         }
         else if (IsDvdBurn)
         {
-            SourceTitle = "使用 DVD 页面中的源图片与生成参数";
-            string source = _state.DvdImagePath.Trim();
-            string suffix = string.IsNullOrWhiteSpace(_state.DvdDataDirectory)
+            string dataSuffix = string.IsNullOrWhiteSpace(_state.DvdDataDirectory)
                 ? string.Empty
                 : "；将顺序写入内圈文件夹与外圈图案";
-            SourceDetails = source.Length == 0
-                ? "请先在 DVD 页面选择图片并完成实时预览。" + suffix
-                : $"{Path.GetFileName(source)} · {_state.DvdTotalSectors.Trim()} 扇区 · 快速算法 · CW{suffix}";
-            SourceDetails += ImageProcessingSummary(_state.DvdImageProcessingEnabled, _state.DvdGammaCorrectionEnabled);
-            identity = string.Join("\u001f", "dvd", source, _state.DvdTotalSectors,
+            SourceTitle = _design.HasLayers
+                ? "使用工程当前合成图与参数"
+                : "请先在设计页导入图片";
+            SourceDetails = _design.HasLayers
+                ? "确保磁盘预留适量空间" + dataSuffix
+                : "合成图会自动生成本页输入。" + dataSuffix;
+            identity = string.Join("\u001f", "dvd", _design.CompositeRevision, _state.DvdTotalSectors,
                 _state.DvdInnerRadius, _state.DvdOuterRadius,
                 _state.DvdPitchLinear, _state.DvdPitchQuadratic, _state.DvdPitchCubic,
-                _state.DvdImageProcessingModeIndex, _state.DvdRingInnerMargin, _state.DvdRingOuterMargin,
-                _state.DvdImageProcessingEnabled, _state.DvdGammaCorrectionEnabled,
-                _state.DvdDataDirectory, _state.DvdVolumeLabel);
+                _state.DvdDataDirectory, _state.DvdVolumeLabel,
+                _state.ToneDitherStrength, _state.ToneBrightness, _state.ToneSrgbLinearization);
+        }
+        else if (IsBluRayBurn)
+        {
+            string dataSuffix = string.IsNullOrWhiteSpace(_state.BdDataDirectory)
+                ? string.Empty
+                : "；将顺序写入内圈文件夹与外圈图案";
+            SourceTitle = _design.HasLayers
+                ? "使用工程当前合成图与参数"
+                : "请先在设计页导入图片";
+            string polarity = _state.BdInvertMapping ? "反转 3T/6T" : "标准 3T/6T";
+            SourceDetails = _design.HasLayers
+                ? $"确保磁盘预留适量空间 · {polarity}" + dataSuffix
+                : $"合成图会自动生成本页输入。 · {polarity}" + dataSuffix;
+            identity = string.Join("\u001f", "bd", _design.CompositeRevision, _state.BdTotalSectors,
+                _state.BdInnerRadius, _state.BdOuterRadius, _state.BdDataDirectory,
+                _state.BdVolumeLabel, _state.BdInvertMapping,
+                _state.ToneDitherStrength, _state.ToneBrightness, _state.ToneSrgbLinearization);
         }
         else
         {
-            SourceTitle = "使用 CD 页面中的源图片与生成参数";
-            string source = _state.CdImagePath.Trim();
-            SourceDetails = source.Length == 0
-                ? "请先在 CD 页面选择图片并完成实时预览。"
-                : $"{Path.GetFileName(source)} · {_state.CdSectors.Trim()} 扇区 · "
-                    + (_state.CdInterleave ? "延迟交织" : "未交织");
-            SourceDetails += ImageProcessingSummary(_state.CdImageProcessingEnabled, _state.CdGammaCorrectionEnabled);
-            identity = string.Join("\u001f", "cd", source, _state.CdSectors,
-                _state.CdInnerRadius, _state.CdOuterRadius, _state.CdImageProcessingModeIndex,
-                _state.CdImageProcessingEnabled, _state.CdGammaCorrectionEnabled,
-                _state.CdRingInnerMargin, _state.CdRingOuterMargin, _state.CdInterleave);
+            SourceTitle = _design.HasLayers
+                ? "使用工程当前合成图与参数"
+                : "请先在设计页导入图片";
+            // The encoding is part of the material actually written, and the burn page has
+            // no switch of its own: surfacing it here keeps the streamed bytes explainable.
+            string encoding = _state.CdInterleave ? "启用 CD-DA 延迟交织" : "未交织";
+            SourceDetails = _design.HasLayers
+                ? $"确保磁盘预留适量空间 · {encoding}"
+                : $"合成图会自动生成本页输入。 · {encoding}";
+            identity = string.Join("\u001f", "cd", _design.CompositeRevision, _state.CdSectors,
+                _state.CdInnerRadius, _state.CdOuterRadius, _state.CdInterleave,
+                _state.ToneDitherStrength, _state.ToneLevels, _state.ToneBrightness,
+                _state.ToneSrgbLinearization);
         }
 
         if (!string.Equals(identity, _sourceIdentity, StringComparison.Ordinal))
@@ -324,9 +279,6 @@ public partial class BurnViewModel : ObservableObject
             InvalidateConfirmation();
         }
     }
-
-    private static string ImageProcessingSummary(bool enabled, bool gammaCorrectionEnabled)
-        => enabled ? $" · 黑白抖动 · sRGB 伽马：{(gammaCorrectionEnabled ? "开" : "关")}" : string.Empty;
 
     private void UpdateActionState() => StartBurnCommand.NotifyCanExecuteChanged();
 
@@ -346,7 +298,7 @@ public partial class BurnViewModel : ObservableObject
             Devices = devices;
             SelectedDevice = devices.Count == 0 ? null : devices[0];
             DeviceStatusText = devices.Count == 0
-                ? "未检测到支持 IMAPI2 的 CD/DVD/蓝光刻录机。"
+                ? "未检测到支持 IMAPI2 的 CD/DVD/BD 刻录机。"
                 : $"检测到 {devices.Count} 台刻录机";
         }
         catch (Exception exception)
@@ -381,7 +333,7 @@ public partial class BurnViewModel : ObservableObject
             return;
         }
 
-        OpticalBurnMediaKind mediaKind = SelectedMediaKind;
+        OpticalBurnMediaKind mediaKind = CurrentMediaKind;
         IsSpeedComboEnabled = false;
         IsSpeedRefreshEnabled = false;
         SpeedStatusText = "正在读取当前盘片支持的刻录速度…";
@@ -437,132 +389,16 @@ public partial class BurnViewModel : ObservableObject
             + $" · {speed.GetMegabytesPerSecond(mediaKind):0.0} MB/s{rotation}";
     }
 
-    internal void ResetBurnProgress()
-    {
-        StopWriteRateMonitor();
-        _hasDeviceWriteProgress = false;
-        _isFinalizingBurn = false;
-        _deviceWriteProgressFinished = false;
-        CurrentWriteRateText = "—";
-        BurnProgressValue = 0;
-    }
-
-    internal void ApplyBurnProgress(OpticalBurnProgress value, OpticalBurnMediaKind mediaKind, long? timestamp = null)
-    {
-        // Settings and low-frequency timing diagnostics are log records, not
-        // new write samples. In particular, they must not refresh a stale rate.
-        if (value.Stage is "speed" or "diagnostic")
-        {
-            _shell.AppendLog($"[{DateTime.Now:HH:mm:ss}] {value.Message}\n");
-            return;
-        }
-        // A late write/producer callback cannot restore a rate once writing has ended.
-        if (_deviceWriteProgressFinished && (value.Stage is "write" or "transfer")) return;
-        // Reading the producer stream can run ahead of physical writing. Once the
-        // recorder reports its own position, only its updates drive this display.
-        if (value.Stage == "transfer" && _hasDeviceWriteProgress) return;
-
-        long now = timestamp ?? Stopwatch.GetTimestamp();
-        if (value.Stage == "write")
-        {
-            _hasDeviceWriteProgress = true;
-            _lastDeviceWriteTimestamp = now;
-            CurrentWriteRateText = value.BytesPerSecond is double rate && double.IsFinite(rate) && rate >= 0
-                ? FormatCurrentWriteRate(rate, mediaKind)
-                : "测量中…";
-        }
-        else
-        {
-            CurrentWriteRateText = "—";
-        }
-
-        if (value.Stage == "finalize")
-        {
-            _isFinalizingBurn = true;
-            CancelBurnCommand.NotifyCanExecuteChanged();
-        }
-        if (value.Stage is "finalize" or "complete")
-        {
-            _deviceWriteProgressFinished = true;
-            StopWriteRateMonitor();
-        }
-        BurnStatusText = value.Message;
-        // Stream reads are buffering activity, not confirmed writes to the disc.
-        if (value.Stage != "transfer")
-            BurnProgressValue = Math.Clamp(value.Fraction * 100.0, 0.0, 100.0);
-        UpdateWriteRateAge(now);
-    }
-
-    // Clock-only methods let tests advance monotonic time without constructing a
-    // Dispatcher, waiting for ticks, or contacting a recorder.
-    internal void BeginWriteRateTracking(long timestamp)
-    {
-        if (IsBurnRunning && !_deviceWriteProgressFinished)
-            _lastDeviceWriteTimestamp = timestamp;
-    }
-
-    internal void UpdateWriteRateAge(long timestamp)
-    {
-        if (!IsBurnRunning || _deviceWriteProgressFinished || _lastDeviceWriteTimestamp is not long last
-            || timestamp < last) return;
-        if (Stopwatch.GetElapsedTime(last, timestamp) >= TimeSpan.FromSeconds(2))
-            CurrentWriteRateText = "等待写入进度…";
-    }
-
-    private void StartWriteRateMonitor()
-    {
-        StopWriteRateMonitor();
-        if (!IsBurnRunning) return;
-        BeginWriteRateTracking(Stopwatch.GetTimestamp());
-        _writeRateTimer = new DispatcherTimer(DispatcherPriority.Background)
-        {
-            Interval = TimeSpan.FromMilliseconds(500),
-        };
-        _writeRateTimer.Tick += WriteRateTimer_Tick;
-        _writeRateTimer.Start();
-    }
-
-    private void WriteRateTimer_Tick(object? sender, EventArgs e)
-        => UpdateWriteRateAge(Stopwatch.GetTimestamp());
-
-    private void StopWriteRateMonitor()
-    {
-        if (_writeRateTimer is not null)
-        {
-            _writeRateTimer.Stop();
-            _writeRateTimer.Tick -= WriteRateTimer_Tick;
-            _writeRateTimer = null;
-        }
-        _lastDeviceWriteTimestamp = null;
-    }
-
-    private static string FormatCurrentWriteRate(double bytesPerSecond, OpticalBurnMediaKind mediaKind)
-    {
-        // Reuse the selected-speed model's media-specific 1x conversion without
-        // rounding the measured rate to an integer number of sectors per second.
-        OpticalWriteSpeed oneSectorPerSecond = new(1, false);
-        double megabytes = bytesPerSecond / 1_000_000.0;
-        double multiplier = megabytes / oneSectorPerSecond.GetMegabytesPerSecond(mediaKind)
-            * oneSectorPerSecond.GetMultiplier(mediaKind);
-        return $"{megabytes:0.00} MB/s · {multiplier:0.0}×";
-    }
-
     private async Task StartStreamBurnAsync()
     {
-        if (_shell.IsBusy || _isPreparingBurn)
+        if (_shell.IsBusy)
         {
             _shell.ShowToast("操作未执行", "已有任务正在运行。", ToastKind.Info);
             return;
         }
 
-        RingImagePreparation.PreparedImage? preparedImage = null;
         bool ownsBusyState = false;
-        ResetBurnProgress();
-        int progressRevision = ++_burnProgressRevision;
-        _burnCancellation = new CancellationTokenSource();
-        CancellationToken burnToken = _burnCancellation.Token;
         _isPreparingBurn = true;
-        CancelBurnCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(IsSetupEnabled));
         UpdateActionState();
         try
@@ -577,22 +413,19 @@ public partial class BurnViewModel : ObservableObject
                 throw new ArgumentException("请先勾选刻录确认。");
             }
 
+            bool dvd = IsDvdBurn;
+            bool bluRay = IsBluRayBurn;
             bool calibration = UseCalibrationPattern;
             int preparationRevision = _burnPreparationRevision;
-            OpticalBurnMediaKind mediaKind = SelectedMediaKind;
+            OpticalBurnMediaKind mediaKind = CurrentMediaKind;
             BurnWriteSpeedOption selectedWriteSpeed = SelectedSpeed ?? BurnWriteSpeedOption.Automatic;
             OpticalBurnRequest request;
             string contentDescription;
             if (calibration)
             {
                 CalibrationTarget target = _shell.Calibration.Target
-                    ?? throw new ArgumentException("请先在辅助标定页面创建图案。");
+                    ?? throw new ArgumentException("请先在辅助标定工作区创建图案。");
                 bool interleave = _shell.Calibration.CdInterleave;
-                if (CalibrationMediaKind(target.Parameters.Kind) != mediaKind)
-                {
-                    throw new ArgumentException("刻录类型与标定图案不一致，请切换到图案对应的 CD / DVD / 蓝光。");
-                }
-
                 if (!_shell.Calibration.EnsureSessionSavedForBurn())
                 {
                     return;
@@ -605,123 +438,114 @@ public partial class BurnViewModel : ObservableObject
                 }
 
                 request = CreateCalibrationBurnRequest(target, interleave, device.Id, selectedWriteSpeed.Speed);
-                contentDescription = $"{MediaDisplayName(mediaKind)} 标定图案 · {target.Id[..8]}"
-                    + $" · {target.Parameters.Sectors} 扇区 · {request.ContentLength / (1024.0 * 1024.0):F1} MiB";
-            }
-            else if (mediaKind == OpticalBurnMediaKind.BluRayData)
-            {
-                BluRayViewModel bluRay = _shell.BluRay;
-                string source = RequirePath(bluRay.ImagePath, "请先在蓝光页面选择源图片。");
-                BluRayDiscParameters parameters = bluRay.ReadParameters();
-                IBluRayLuminanceMapping luminanceMapping = bluRay.CreateLuminanceMapping();
-                string dataDirectory = bluRay.DataDirectory.Trim();
-                string volumeLabel = bluRay.VolumeLabel.Trim();
-                bool imageProcessingEnabled = bluRay.ImageProcessingEnabled;
-                bool gammaCorrectionEnabled = bluRay.GammaCorrectionEnabled;
-                // Snapshot the raster and file layout before asking for confirmation.
-                // The ISO writer also checks source file metadata during production.
-                (BluRayGray8Raster raster, BluRayIsoPlan plan) = await Task.Run(() =>
+                string family = target.Parameters.Kind switch
                 {
-                    if (imageProcessingEnabled) BluRayImageLoader.ValidateSource(source, burnToken);
-                    using RingImagePreparation.PreparedImage prepared = RingImagePreparation.PrepareImage(
-                        source, null, "bd-burn", imageProcessingEnabled, gammaCorrectionEnabled,
-                        burnToken, writeLog: false);
-                    BluRayGray8Raster loaded = BluRayImageLoader.Load(prepared.Path, burnToken);
-                    burnToken.ThrowIfCancellationRequested();
-                    BluRayIsoPlan layout = BluRayIsoGenerator.PrepareDrawing(parameters,
-                        dataDirectory.Length == 0 ? null : dataDirectory,
-                        volumeLabel.Length == 0 ? "BD_IMAGE" : volumeLabel);
-                    burnToken.ThrowIfCancellationRequested();
-                    return (loaded, layout);
-                }, burnToken);
-                request = CreateBluRayBurnRequest(plan,
-                    new BluRayImagePayloadMapping(parameters, raster, luminanceMapping),
-                    device.Id, selectedWriteSpeed.Speed);
-                contentDescription = $"蓝光 · {parameters.TotalSectors} 扇区 · {plan.FileCount} 个内圈文件"
-                    + $" · {(plan.HasFileSystem ? "UDF" : "无文件系统，全区绘图")} · 绘图 LBA {plan.DrawingStartSector}–{plan.DrawingEndSectorExclusive - 1}"
-                    + $" · {request.ContentLength / (1024.0 * 1024.0):F1} MiB";
-            }
-            else if (mediaKind == OpticalBurnMediaKind.DvdData)
-            {
-                string source = RequirePath(_state.DvdImagePath, "请先在 DVD 页面选择源图片。");
-                RingImagePreparation.Request imagePreparation = CreateDvdImageRequest(source, RingImageQuality.GenerationSize);
-                DvdStreamingOptions options = ReadDvdStreamingOptions();
-                string dataDirectory = _state.DvdDataDirectory.Trim();
-                DvdHybridStreamingPlan? hybridPlan = dataDirectory.Length == 0
-                    ? null
-                    : DvdStreamingGenerator.PrepareHybrid(
-                        dataDirectory,
-                        options,
-                        string.IsNullOrWhiteSpace(_state.DvdVolumeLabel)
-                            ? "DISC_IMAGE"
-                            : _state.DvdVolumeLabel.Trim());
-                BurnStatusText = "正在处理源图片…";
-                preparedImage = await StaWorker.RunAsync(() => imagePreparation.Prepare(
-                    burnToken, appendLog: _shell.AppendLog));
-                string preparedPath = preparedImage.Path;
-                request = new OpticalBurnRequest(
-                    device.Id,
-                    OpticalBurnMediaKind.DvdData,
-                    options.ContentLength,
-                    (output, cancellationToken) =>
-                    {
-                        if (hybridPlan is null)
-                        {
-                            DvdStreamingGenerator.Generate(
-                                preparedPath,
-                                output,
-                                options,
-                                cancellationToken: cancellationToken);
-                        }
-                        else
-                        {
-                            DvdStreamingGenerator.GenerateHybrid(
-                                preparedPath,
-                                output,
-                                options,
-                                hybridPlan,
-                                cancellationToken: cancellationToken);
-                        }
-                    },
-                    selectedWriteSpeed.Speed);
-                contentDescription = hybridPlan is null
-                    ? $"DVD · {options.TotalSectors} 扇区 · {options.ContentLength / (1024.0 * 1024.0):F1} MiB"
-                    : $"DVD 混合盘 · {hybridPlan.FileCount} 个文件 · 绘图从 LBA {hybridPlan.DrawingStartLba} 开始"
-                        + $" · {options.ContentLength / (1024.0 * 1024.0):F1} MiB";
+                    CalibrationDiscKind.Dvd => "DVD",
+                    CalibrationDiscKind.BluRay => "BD",
+                    _ => "CD",
+                };
+                contentDescription = $"{family} 标定图案 · {target.Id[..8]}"
+                    + $" · {target.Parameters.Sectors} 扇区 · {request.ContentLength / (1024.0 * 1024.0):F1} MiB";
             }
             else
             {
-                string source = RequirePath(_state.CdImagePath, "请先在 CD 页面选择源图片。");
-                RingImagePreparation.Request imagePreparation = CreateCdImageRequest(source, RingImageQuality.GenerationSize);
-                CdDiscParameters parameters = ReadCdGeneratedParameters();
-                bool interleave = _state.CdInterleave;
-                BurnStatusText = "正在处理源图片…";
-                preparedImage = await StaWorker.RunAsync(() => imagePreparation.Prepare(
-                    burnToken, appendLog: _shell.AppendLog));
-                string preparedPath = preparedImage.Path;
-                request = new OpticalBurnRequest(
-                    device.Id,
-                    OpticalBurnMediaKind.CdAudio,
-                    parameters.TotalBytes,
-                    (output, cancellationToken) => CdTrackGenerator.GenerateToStream(
-                        preparedPath,
-                        output,
-                        parameters,
-                        interleave,
-                        cancellationToken: cancellationToken,
-                        audioByteOrder: CdAudioByteOrder.LittleEndian),
-                    selectedWriteSpeed.Speed);
-                contentDescription = $"CD · {parameters.Sectors} 扇区 · {parameters.TotalBytes / (1024.0 * 1024.0):F1} MiB";
+                // Streaming burns the same export-quality composite the file path writes, so
+                // what the read-back preview verified is the material that lands on the disc.
+                string compositePath = await _design.EnsureExportCompositeAsync();
+                if (bluRay)
+                {
+                    BluRayDiscParameters disc = ReadBluRayParameters();
+                    string dataDirectory = _state.BdDataDirectory.Trim();
+                    BluRayIsoPlan plan = BluRayIsoGenerator.PrepareDrawing(
+                        disc,
+                        dataDirectory.Length == 0 ? null : dataDirectory,
+                        string.IsNullOrWhiteSpace(_state.BdVolumeLabel)
+                            ? "BD_IMAGE"
+                            : _state.BdVolumeLabel.Trim());
+                    ToneProfile tone = _state.BluRayTone;
+                    bool invert = _state.BdInvertMapping;
+                    request = new OpticalBurnRequest(
+                        device.Id,
+                        OpticalBurnMediaKind.BluRayData,
+                        plan.ContentLength,
+                        (output, cancellationToken) =>
+                        {
+                            BluRayGray8Raster raster = BluRayImageLoader.Load(
+                                compositePath, tone, cancellationToken);
+                            BluRayImagePayloadMapping mapping = new(
+                                disc, raster, new BluRayRunLengthMapping(invert));
+                            BluRayIsoGenerator.GenerateToStream(
+                                output, plan, mapping, progress: null, cancellationToken);
+                        },
+                        selectedWriteSpeed.Speed);
+                    contentDescription = $"BD-R · {disc.TotalSectors} 扇区"
+                        + $" · {plan.ContentLength / (1024.0 * 1024.0):F1} MiB"
+                        + $" · 绘图 LBA {plan.DrawingStartSector}–{plan.DrawingEndSectorExclusive - 1}"
+                        + (invert ? " · 反转 3T/6T" : " · 标准 3T/6T");
+                }
+                else if (dvd)
+                {
+                    DvdStreamingOptions options = ReadDvdStreamingOptions();
+                    string dataDirectory = _state.DvdDataDirectory.Trim();
+                    DvdHybridStreamingPlan? hybridPlan = dataDirectory.Length == 0
+                        ? null
+                        : DvdStreamingGenerator.PrepareHybrid(
+                            dataDirectory,
+                            options,
+                            string.IsNullOrWhiteSpace(_state.DvdVolumeLabel)
+                                ? "DISC_IMAGE"
+                                : _state.DvdVolumeLabel.Trim());
+                    request = new OpticalBurnRequest(
+                        device.Id,
+                        OpticalBurnMediaKind.DvdData,
+                        options.ContentLength,
+                        (output, cancellationToken) =>
+                        {
+                            if (hybridPlan is null)
+                            {
+                                DvdStreamingGenerator.Generate(
+                                    compositePath,
+                                    output,
+                                    options,
+                                    cancellationToken: cancellationToken);
+                            }
+                            else
+                            {
+                                DvdStreamingGenerator.GenerateHybrid(
+                                    compositePath,
+                                    output,
+                                    options,
+                                    hybridPlan,
+                                    cancellationToken: cancellationToken);
+                            }
+                        },
+                        selectedWriteSpeed.Speed);
+                    contentDescription = hybridPlan is null
+                        ? $"DVD · {options.TotalSectors} 扇区 · {options.ContentLength / (1024.0 * 1024.0):F1} MiB"
+                        : $"DVD 混合盘 · {hybridPlan.FileCount} 个文件 · 绘图从 LBA {hybridPlan.DrawingStartLba} 开始"
+                            + $" · {options.ContentLength / (1024.0 * 1024.0):F1} MiB";
+                }
+                else
+                {
+                    CdDiscParameters parameters = ReadCdGeneratedParameters();
+                    bool interleave = _state.CdInterleave;
+                    request = new OpticalBurnRequest(
+                        device.Id,
+                        OpticalBurnMediaKind.CdAudio,
+                        parameters.TotalBytes,
+                        (output, cancellationToken) => CdTrackGenerator.GenerateToStream(
+                            compositePath,
+                            output,
+                            parameters,
+                            interleave,
+                            cancellationToken: cancellationToken,
+                            audioByteOrder: CdAudioByteOrder.LittleEndian,
+                            tone: _state.Tone),
+                        selectedWriteSpeed.Speed);
+                    contentDescription = $"CD · {parameters.Sectors} 扇区 · {parameters.TotalBytes / (1024.0 * 1024.0):F1} MiB";
+                }
             }
 
-            burnToken.ThrowIfCancellationRequested();
-            if (_shell.IsBusy || preparationRevision != _burnPreparationRevision || !ConfirmChecked)
-            {
-                BurnStatusText = "刻录来源或选项已变化，请重新确认后开始。";
-                return;
-            }
-            if (mediaKind == OpticalBurnMediaKind.BluRayData)
-                contentDescription += "\n无备用区顺序刻录；使用全新未格式化的单层 BD-R，保持所设总扇区数。";
             // In-app danger modal; default focus sits on the refusing button.
             bool confirmed = await _shell.ConfirmAsync(
                 "确认开始流式刻录",
@@ -729,7 +553,6 @@ public partial class BurnViewModel : ObservableObject
                     + $"请求速度：{selectedWriteSpeed.DisplayName}\n\n"
                     + "仅允许空白盘。开始后取消或断电可能使盘片报废。是否继续？",
                 "确认刻录");
-            burnToken.ThrowIfCancellationRequested();
             if (!confirmed)
             {
                 return;
@@ -744,7 +567,10 @@ public partial class BurnViewModel : ObservableObject
             ownsBusyState = true;
             _shell.SetBusy(true);
             IsBurnRunning = true;
-            StartWriteRateMonitor();
+            _burnCancellation = new CancellationTokenSource();
+            // The burn reports real percentages, so it drives the job dock's bar instead of
+            // showing a second progress surface inside this page.
+            _shell.BeginDockJob("流式刻录", determinate: true);
             BurnProgressValue = 0;
             BurnStatusText = "正在准备流式刻录…";
             _shell.AppendLog(
@@ -752,39 +578,38 @@ public partial class BurnViewModel : ObservableObject
                 + $"设备={device.DisplayName}；请求速度={selectedWriteSpeed.DisplayName}。\n");
             Progress<OpticalBurnProgress> progress = new(value =>
             {
-                if (progressRevision == _burnProgressRevision && IsBurnRunning)
-                    ApplyBurnProgress(value, mediaKind);
+                BurnStatusText = value.Message;
+                BurnProgressValue = Math.Clamp(value.Fraction * 100.0, 0.0, 100.0);
+                _shell.ReportDockJob(value.Message, BurnProgressValue);
             });
             OpticalBurnResult result = await _opticalDiscBurner.BurnAsync(
                 request,
                 progress,
-                burnToken);
+                _burnCancellation.Token);
             BurnProgressValue = 100;
             BurnStatusText = "刻录完成，可以取出光盘。";
+            _shell.CompleteDockJob("完成：流式刻录 " + contentDescription);
             _shell.AppendLog(
                 $"[{DateTime.Now:HH:mm:ss}] 流式刻录完成：{result.BytesWritten} 字节，"
                 + $"耗时 {result.Elapsed.TotalSeconds:F1} 秒"
                 + (result.ActualWriteSpeed is null
                     ? "。\n"
-                    : $"，设备设置速度={FormatBurnWriteSpeed(result.ActualWriteSpeed, mediaKind)}。\n"));
+                    : $"，实际速度={FormatBurnWriteSpeed(result.ActualWriteSpeed, mediaKind)}。\n"));
             ConfirmChecked = false;
             _shell.ShowToast("流式刻录完成", "流式刻录已经完成，可以取出光盘。", ToastKind.Success);
         }
-        catch (OperationCanceledException exception)
+        catch (OperationCanceledException)
         {
-            BurnStatusText = ownsBusyState
-                ? "已请求取消；光驱可能仍需一段时间才能停止。"
-                : "已取消刻录准备，尚未开始写入。";
-            _shell.AppendLog($"[{DateTime.Now:HH:mm:ss}] " + (ownsBusyState
-                ? "已取消流式刻录；当前盘片可能无法继续使用。\n"
-                : "已取消刻录准备，尚未开始写入。\n"));
-            if (exception.InnerException is not null)
-                _shell.AppendLog($"取消期间设备还报告了错误：{exception}\n");
+            BurnStatusText = "已请求取消；光驱可能仍需一段时间才能停止。";
+            _shell.AbortDockJob("已取消：流式刻录", expandLog: false);
+            _shell.AppendLog(
+                $"[{DateTime.Now:HH:mm:ss}] 已取消流式刻录；当前盘片可能无法继续使用。\n");
         }
         catch (Exception exception)
         {
             BurnStatusText = "刻录未完成，请查看错误信息。";
-            _shell.AppendLog($"[{DateTime.Now:HH:mm:ss}] 流式刻录失败：{exception}\n");
+            _shell.AbortDockJob("失败：流式刻录", expandLog: true);
+            _shell.AppendLog($"[{DateTime.Now:HH:mm:ss}] 流式刻录失败：{exception.Message}\n");
             _shell.ShowToast(
                 "流式刻录未完成",
                 exception.Message + "\n\n如果写入已经开始，当前盘片可能无法继续使用。",
@@ -792,17 +617,11 @@ public partial class BurnViewModel : ObservableObject
         }
         finally
         {
-            StopWriteRateMonitor();
-            _burnProgressRevision++;
-            CurrentWriteRateText = "—";
-            preparedImage?.Dispose();
             _burnCancellation?.Dispose();
             _burnCancellation = null;
-            _isFinalizingBurn = false;
             IsBurnRunning = false;
             InvalidateConfirmation();
             _isPreparingBurn = false;
-            CancelBurnCommand.NotifyCanExecuteChanged();
             if (ownsBusyState)
             {
                 _shell.SetBusy(false);
@@ -824,13 +643,16 @@ public partial class BurnViewModel : ObservableObject
         ArgumentNullException.ThrowIfNull(target);
         if (target.Parameters.Kind == CalibrationDiscKind.BluRay)
         {
-            BluRayIsoPlan plan = CalibrationViewModel.BluRayPlan(target);
-            if (plan.DrawingStartSector != target.Parameters.DrawingStartSector
-                || plan.DrawingEndSectorExclusive != (target.Parameters.DrawingEndSectorExclusive == 0
-                    ? target.Parameters.Sectors : target.Parameters.DrawingEndSectorExclusive))
-                throw new InvalidOperationException("标定记录的绘图布局不匹配，请重新创建标定图案。");
-            return CreateBluRayBurnRequest(plan, CalibrationViewModel.BluRayPatternMapping(target),
-                deviceId, writeSpeed);
+            BluRayDiscParameters disc = CalibrationViewModel.BluRayParameters(target.Parameters);
+            BluRayPatternRangeMapping mapping = CalibrationViewModel.BluRayPatternMapping(target);
+            return new OpticalBurnRequest(deviceId, OpticalBurnMediaKind.BluRayData, disc.ContentLength,
+                (output, token) => BluRayStreamingGenerator.GenerateToStream(
+                    output,
+                    new BluRayStreamingOptions(disc, 0, disc.TotalSectors),
+                    mapping,
+                    progress: null,
+                    cancellationToken: token),
+                writeSpeed);
         }
 
         if (target.Parameters.Kind == CalibrationDiscKind.Dvd)
@@ -842,9 +664,6 @@ public partial class BurnViewModel : ObservableObject
                     cancellationToken: token), writeSpeed);
         }
 
-        if (target.Parameters.Kind != CalibrationDiscKind.Cd)
-            throw new ArgumentOutOfRangeException(nameof(target), "Unknown calibration disc kind.");
-
         CdDiscParameters parameters = CalibrationViewModel.CdParameters(target);
         parameters.Validate();
         return new OpticalBurnRequest(deviceId, OpticalBurnMediaKind.CdAudio, parameters.TotalBytes,
@@ -852,33 +671,11 @@ public partial class BurnViewModel : ObservableObject
                 cdInterleave, cancellationToken: token, audioByteOrder: CdAudioByteOrder.LittleEndian), writeSpeed);
     }
 
-    internal static OpticalBurnRequest CreateBluRayBurnRequest(
-        BluRayIsoPlan plan,
-        IBluRayPayloadMapping mapping,
-        string deviceId,
-        OpticalWriteSpeed? writeSpeed)
-    {
-        ArgumentNullException.ThrowIfNull(plan);
-        ArgumentNullException.ThrowIfNull(mapping);
-        return new OpticalBurnRequest(deviceId, OpticalBurnMediaKind.BluRayData, plan.Disc.ContentLength,
-            (output, token) => BluRayIsoGenerator.GenerateToStream(output, plan, mapping,
-                cancellationToken: token), writeSpeed);
-    }
-
     private void CancelStreamBurn()
     {
-        if (_isFinalizingBurn) return;
-        BurnStatusText = IsBurnRunning
-            ? "正在请求停止刻录，请不要取出盘片…"
-            : "正在取消刻录准备…";
-        _burnCancellation?.Cancel();
         CancelBurnCommand.NotifyCanExecuteChanged();
-    }
-
-    private static string RequirePath(string raw, string message)
-    {
-        string value = raw.Trim();
-        return value.Length == 0 ? throw new ArgumentException(message) : value;
+        BurnStatusText = "正在请求停止刻录，请不要取出盘片…";
+        _burnCancellation?.Cancel();
     }
 
     private CdDiscParameters ReadCdGeneratedParameters()
@@ -891,6 +688,23 @@ public partial class BurnViewModel : ObservableObject
         return parameters;
     }
 
+    private BluRayDiscParameters ReadBluRayParameters()
+    {
+        long totalSectors = ParameterParser.ParsePositiveLong(_state.BdTotalSectors, "蓝光总扇区数");
+        if (totalSectors > uint.MaxValue)
+        {
+            throw new ArgumentOutOfRangeException("蓝光总扇区数", "总扇区数超出蓝光引擎支持范围。");
+        }
+
+        BluRayDiscParameters disc = new(
+            checked((uint)totalSectors),
+            1,
+            ParameterParser.ParsePositiveDouble(_state.BdInnerRadius, "蓝光内半径"),
+            ParameterParser.ParsePositiveDouble(_state.BdOuterRadius, "蓝光外半径"));
+        disc.Validate();
+        return disc;
+    }
+
     private DvdStreamingOptions ReadDvdStreamingOptions()
     {
         int totalSectors = ParameterParser.ParsePositiveInt(_state.DvdTotalSectors, "DVD 总扇区数");
@@ -900,57 +714,10 @@ public partial class BurnViewModel : ObservableObject
             ParameterParser.ParsePositiveDouble(_state.DvdOuterRadius, "DVD 外半径"),
             PitchLinear: ParameterParser.ParseDouble(_state.DvdPitchLinear, "DVD 轨距一次项"),
             PitchQuadratic: ParameterParser.ParseDouble(_state.DvdPitchQuadratic, "DVD 轨距二次项"),
-            PitchCubic: ParameterParser.ParseDouble(_state.DvdPitchCubic, "DVD 轨距三次项"));
+            PitchCubic: ParameterParser.ParseDouble(_state.DvdPitchCubic, "DVD 轨距三次项"),
+            Tone: _state.DvdTone);
         options.Validate();
         return options;
-    }
-
-    private RingImagePreparation.Request CreateCdImageRequest(string sourcePath, int outputSize)
-    {
-        RingImageLayoutOptions? options = null;
-        if (_state.IsCdRingMode)
-        {
-            double generatedInner = ParameterParser.ParsePositiveDouble(_state.CdInnerRadius, "CD 内半径");
-            double generatedOuter = ParameterParser.ParsePositiveDouble(_state.CdOuterRadius, "CD 外半径");
-            options = ParameterParser.CreateRingLayoutOptions(
-                CdDiscParameters.StandardImageOuterRadiusMm,
-                generatedInner,
-                generatedOuter,
-                _state.CdRingInnerMargin,
-                _state.CdRingOuterMargin,
-                outputSize);
-        }
-
-        return new RingImagePreparation.Request(
-            sourcePath,
-            options,
-            "cd",
-            _state.CdImageProcessingEnabled,
-            _state.CdGammaCorrectionEnabled);
-    }
-
-    private RingImagePreparation.Request CreateDvdImageRequest(string sourcePath, int outputSize)
-    {
-        RingImageLayoutOptions? options = null;
-        if (_state.IsDvdRingMode)
-        {
-            double generatedInner = ParameterParser.ParsePositiveDouble(_state.DvdInnerRadius, "DVD 内半径");
-            double generatedOuter = ParameterParser.ParsePositiveDouble(_state.DvdOuterRadius, "DVD 外半径");
-            options = ParameterParser.CreateRingLayoutOptions(
-                generatedOuter,
-                generatedInner,
-                generatedOuter,
-                _state.DvdRingInnerMargin,
-                _state.DvdRingOuterMargin,
-                outputSize);
-        }
-
-        return new RingImagePreparation.Request(
-            sourcePath,
-            options,
-            "dvd",
-            _state.DvdImageProcessingEnabled,
-            _state.DvdGammaCorrectionEnabled);
     }
 
     public sealed record BurnWriteSpeedOption(

@@ -201,6 +201,20 @@ ISO payload P = Q XOR sector scrambler byte
 
 每个payload码字都按其16个channel bits的盘面中心采样图片，再按上述固定区间分档，因此该模式不受`--constraint-step`或`--image-threshold`影响；`--image-threshold`仅控制`full/state-control`的二值目标。ID、IED、全零RSV、EDC、PI、PO和SYNC仍按标准生成；程序不展开619008个NRZI bits，但会用完整recording frames逐码字重放，精确传递最终EFMPlus state、DSV和pit/land到下一ECC Block。
 
+#### 影调抖动
+
+两个纹理本身只有黑白，但图片的中间调可以在每个payload字节上按比例混合它们：
+
+```powershell
+--tone-dither 1 --tone-levels 2 --tone-brightness 0
+```
+
+- `--tone-dither 0..1`：0 保持原来的 `--image-threshold` 硬阈值；1 按字节抖动阈值，使灰度按黑白码字的空间比例还原。
+- `--tone-levels`：DVD 只有两种纹理，只接受 2。
+- `--tone-brightness -64..64`：整体平移灰度。
+
+抖动相位由逻辑payload字节索引决定，与预览采样无关；`simulate` 读取 ISO 时只按 `0xA5/0x92` 分类，因此读回模拟自然反映抖动结果。缺省不传这些参数时输出与旧版逐字节一致。
+
 只需要尽快生成可刻录镜像、不需要输出最终EFMPlus边界时，可加`--fast-output true`。快速输出仍在相同的payload码字中心采样图片，并产生与普通dispersion模式相同的2048-byte sector；区别是它用预计算的32 KiB扰码掩码直接从`Q`反推ISO字节`P`，不构造Data Frame、EDC、PI、PO和Recording Frame，也不回放EFMPlus、DSV或pit/land状态。JSON中的`exactEccEfmReplay`会是`false`且`finalBoundary`为`null`。这不会省略刻录所需的数据：刻录机仍会从2048-byte sector自行生成这些派生字段。
 
 ```powershell
@@ -381,16 +395,16 @@ dotnet run --project src/DvdImageSolver --configuration Release -- simulate `
 
 采样位置取码字中心：生成端 `FastDispersionImageWriter` 按 `PayloadDirectChannelOffset + 8`（16 位码字的一半）把图片目标落在码字中心，读回端使用同一位置，两个方向的投影因此不会相差 8 个通道位（约 1 µm 轨道长度）。除此之外读回与生成共用同一套螺旋线、方向与扰码掩码，所以"生成时的参数"与"预览时的参数"一致时，读回图逐采样复现生成图。
 
-实时预览页在切换 ISO 时读取 sidecar 的 `imageMapping.totalSectors`、`innerRadiusMm`、`outerRadiusMm` 并载入标定几何：外部导入的镜像不会因为沿用上一次的盘片尺寸而被压成细环，用户之后的微调仍以这组参数为起点。
+预览工作区在切换 ISO 时读取 sidecar 的 `imageMapping.totalSectors`、`innerRadiusMm`、`outerRadiusMm` 并载入标定几何：外部导入的镜像不会因为沿用上一次的盘片尺寸而被压成细环，用户之后的微调仍以这组参数为起点。
 
-## 实时预览页的两种模式
+## 预览工作区的两种模式
 
 预览页的输入开关把上面两条路径都暴露出来，二者共用防抖、取消与导出动作：
 
-- **输入镜像**（读回模拟）调用 `simulate`，输入是已生成的 ISO，参数只有一套实测几何，看到的是镜像里真实写下的字节。
-- **输入原图**（标定预览，默认）调用 `calibrate`，输入是源图片，参数是生成/实测两套几何。它不读取 ISO，因此改参数后刷新快得多；代价是画面为源图在实测几何下的投影，不代表镜像里实际存在的码字——求解器误差与文件系统前缀都不会出现在其中。
+- **成品读回**（读回模拟，`simulate`）输入是已生成的 ISO，参数只有一套实测几何，看到的是镜像里真实写下的字节。
+- **设计投影**（标定预览，默认，`calibrate`）输入是源图片，参数是生成/实测两套几何。它不读取 ISO，因此改参数后刷新快得多；代价是画面为源图在实测几何下的投影，不代表镜像里实际存在的码字——求解器误差与文件系统前缀都不会出现在其中。
 
-标定预览沿用制作页的图片处理模式：打开环形复制时，预览先把源图片合成成与生成时相同的中间图再投影，因此两侧的图案一致。
+标定预览直接使用设计页合成图作为输入，与生成镜像的源相同，因此两侧的图案一致。
 
 ## 仅执行前向编码
 

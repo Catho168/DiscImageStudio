@@ -31,9 +31,11 @@ public static class CdTrackGenerator
         bool interleave,
         bool writeCue = true,
         Action<CdProgress>? progress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        ToneProfile? tone = null)
     {
         parameters.Validate();
+        ToneProfile effectiveTone = (tone ?? ToneProfile.LegacyBinary).Normalized();
         string sourceFullPath = Path.GetFullPath(imagePath);
         string outputFullPath = Path.GetFullPath(outputPath);
         string extension = Path.GetExtension(outputFullPath);
@@ -74,7 +76,8 @@ public static class CdTrackGenerator
             progress,
             cancellationToken,
             outputFullPath,
-            wave ? CdAudioByteOrder.LittleEndian : CdAudioByteOrder.BigEndian);
+            wave ? CdAudioByteOrder.LittleEndian : CdAudioByteOrder.BigEndian,
+            effectiveTone);
         file.Dispose();
         CdTrackMetadata.Save(
             outputFullPath,
@@ -87,7 +90,11 @@ public static class CdTrackGenerator
                 parameters.LinearVelocityMmPerSecond,
                 parameters.StartAngleRadians * 180.0 / Math.PI,
                 parameters.ImageOuterRadiusMm,
-                interleave));
+                interleave,
+                effectiveTone.DitherStrength,
+                effectiveTone.Levels,
+                effectiveTone.Brightness,
+                effectiveTone.SrgbLinearization));
         return wave && writeCue
             ? summary with { CueSheetPath = CdWaveFile.WriteCue(outputFullPath) }
             : summary;
@@ -102,6 +109,7 @@ public static class CdTrackGenerator
         CancellationToken cancellationToken = default,
         string outputDescription = "direct-burn-stream",
         CdAudioByteOrder audioByteOrder = CdAudioByteOrder.BigEndian,
+        ToneProfile? tone = null,
         bool useSimdSampling = true)
     {
         ArgumentNullException.ThrowIfNull(output);
@@ -125,6 +133,7 @@ public static class CdTrackGenerator
             cancellationToken,
             outputDescription,
             audioByteOrder,
+            (tone ?? ToneProfile.LegacyBinary).Normalized(),
             useSimdSampling && sampler.SupportsSimd ? sampler.SampleFour : null);
     }
 
@@ -217,7 +226,8 @@ public static class CdTrackGenerator
             progress,
             cancellationToken,
             outputDescription,
-            audioByteOrder);
+            audioByteOrder,
+            ToneProfile.LegacyBinary);
     }
 
     private static CdGenerationSummary GenerateSamplesToStream(
@@ -230,6 +240,7 @@ public static class CdTrackGenerator
         CancellationToken cancellationToken,
         string outputDescription,
         CdAudioByteOrder audioByteOrder,
+        ToneProfile tone,
         Func<long, uint>? sampleFour = null)
     {
         long totalBytes = parameters.TotalBytes;
@@ -261,7 +272,7 @@ public static class CdTrackGenerator
                 gray = (byte)packedSamples;
                 packedSamples >>= 8;
             }
-            byte value = GrayToPalette(gray);
+            byte value = CdToneMapping.Map(gray, tone, globalByte);
             if (cddaInterleaver is null)
             {
                 int sectorOffset = (int)(globalByte % CdDiscParameters.BytesPerSector);
@@ -313,24 +324,67 @@ public static class CdTrackGenerator
         int outputSize,
         int samplesPerSector,
         CancellationToken cancellationToken = default)
+        => PreviewWarp(
+            imagePath,
+            outputPath,
+            generated,
+            actual,
+            outputSize,
+            samplesPerSector,
+            ToneProfile.LegacyBinary,
+            cancellationToken);
+
+    public static void PreviewWarp(
+        string imagePath,
+        string outputPath,
+        CdDiscParameters generated,
+        CdDiscParameters actual,
+        int outputSize,
+        int samplesPerSector,
+        ToneProfile tone,
+        CancellationToken cancellationToken = default)
     {
         generated.Validate();
         actual.Validate();
         ValidatePreview(outputSize, samplesPerSector);
+        tone = tone.Normalized();
         RasterImage source = RasterImage.Load(Path.GetFullPath(imagePath));
+        CdImageSampler sampler = new(source, generated);
         GrayPreview preview = new(outputSize);
         long step = Math.Max(1, CdDiscParameters.BytesPerSector / samplesPerSector);
         long totalBytes = generated.TotalBytes;
+        long sampleNumber = 0;
+        uint packedSamples = 0;
+        long packedGroup = -1;
         for (long globalByte = 0; globalByte < totalBytes; globalByte += step)
         {
-            if ((globalByte & 0xFFFFF) == 0)
+            if ((sampleNumber & 0x3FFF) == 0)
             {
                 cancellationToken.ThrowIfCancellationRequested();
             }
 
-            byte gray = Sample(source, generated, globalByte);
-            byte level = BinaryGrayscale.Quantize(gray);
-            Splat(actual, outputSize, preview, globalByte, level);
+            byte gray;
+            if (sampler.SupportsSimd)
+            {
+                // Generation samples four consecutive bytes per lane; reuse that exact
+                // packed group so a sparse preview cannot land on a different side of a
+                // pixel boundary than the generated track did.
+                long group = globalByte & ~3L;
+                if (group != packedGroup)
+                {
+                    packedSamples = sampler.SampleFour(group);
+                    packedGroup = group;
+                }
+
+                gray = (byte)(packedSamples >> (int)((globalByte & 3) * 8));
+            }
+            else
+            {
+                gray = sampler.Sample(globalByte);
+            }
+
+            Splat(actual, outputSize, preview, globalByte, CdToneMapping.Map(gray, tone, globalByte));
+            sampleNumber++;
         }
 
         WritePng(Path.GetFullPath(outputPath), outputSize, preview.CreatePixels());
@@ -451,7 +505,7 @@ public static class CdTrackGenerator
             for (int index = first; index < bytesRead; index += byteStep)
             {
                 long globalByte = globalOffset + index;
-                Splat(actual, outputSize, preview, globalByte, PaletteToGray(buffer[index]));
+                Splat(actual, outputSize, preview, globalByte, buffer[index]);
             }
 
             globalOffset += bytesRead;
@@ -508,7 +562,7 @@ public static class CdTrackGenerator
                     continue;
                 }
 
-                Splat(actual, outputSize, preview, logical, PaletteToGray(buffer[local]));
+                Splat(actual, outputSize, preview, logical, buffer[local]);
             }
         }
     }
@@ -518,10 +572,13 @@ public static class CdTrackGenerator
         int outputSize,
         GrayPreview preview,
         long globalByte,
-        byte level)
+        byte paletteByte)
     {
         (double pixelX, double pixelY) = actual.ImagePointFromByte(globalByte, outputSize);
-        preview.Add((int)Math.Round(pixelX), (int)Math.Round(pixelY), level);
+        preview.Add(
+            (int)Math.Round(pixelX),
+            (int)Math.Round(pixelY),
+            CdToneMapping.DisplayGray(paletteByte));
     }
 
     private static byte Sample(
@@ -532,19 +589,6 @@ public static class CdTrackGenerator
         (double pixelX, double pixelY) = parameters.ImagePointFromByte(globalByte, source.Width);
         return source.GrayAt(pixelX, pixelY);
     }
-
-    private static byte GrayToPalette(byte gray)
-        => BinaryGrayscale.Quantize(gray) == 0 ? (byte)0x0D : (byte)0xAA;
-
-    private static byte PaletteToGray(byte value) => value switch
-    {
-        0x0D => 0,
-        // Retain readback of existing four-tone tracks; new tracks use only 0D/AA.
-        0x10 => 85,
-        0x63 => 170,
-        0xAA => 255,
-        _ => value,
-    };
 
     /// <summary>Source projections and track readback average every sample that lands in one pixel.</summary>
     private sealed class GrayPreview(int size)

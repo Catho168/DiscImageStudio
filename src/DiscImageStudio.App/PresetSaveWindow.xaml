@@ -1,0 +1,53 @@
+<Window x:Class="DiscImageStudio.PresetSaveWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:DiscImageStudio.Controls"
+        Title="保存为预设"
+        Width="480" SizeToContent="Height" MaxWidth="640"
+        WindowStartupLocation="CenterOwner"
+        WindowStyle="None" ResizeMode="NoResize"
+        Background="{StaticResource BackgroundBrush}"
+        FontFamily="{StaticResource AppFontFamily}"
+        UseLayoutRounding="True" SnapsToDevicePixels="True">
+    <WindowChrome.WindowChrome>
+        <WindowChrome GlassFrameThickness="0" CaptionHeight="32" CornerRadius="0"
+                      ResizeBorderThickness="0" UseAeroCaptionButtons="False" />
+    </WindowChrome.WindowChrome>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="32" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <controls:TitleBar Grid.Row="0" ProjectTitle="保存为预设" />
+
+        <Grid Grid.Row="1" Margin="28,20,28,24">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" Style="{StaticResource CardStyle}" Padding="20">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="预设名称" />
+                    <TextBox x:Name="NameBox" MaxLength="80" />
+                    <TextBlock Style="{StaticResource FieldLabel}" Margin="0,14,0,6" Text="注释（可选）" />
+                    <TextBox x:Name="CommentBox" MaxLength="200" />
+                </StackPanel>
+            </Border>
+
+            <Grid Grid.Row="1" HorizontalAlignment="Right" Margin="0,20,0,0" Grid.IsSharedSizeScope="True">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" SharedSizeGroup="DialogAction" />
+                    <ColumnDefinition Width="10" />
+                    <ColumnDefinition Width="Auto" SharedSizeGroup="DialogAction" />
+                </Grid.ColumnDefinitions>
+                <Button Grid.Column="0" Style="{StaticResource SecondaryButton}" Content="取消"
+                        Click="Cancel_Click" />
+                <Button Grid.Column="2" x:Name="SaveButton" Style="{StaticResource PrimaryButton}"
+                        Content="保存" Click="Save_Click" IsDefault="True" />
+            </Grid>
+        </Grid>
+    </Grid>
+</Window>

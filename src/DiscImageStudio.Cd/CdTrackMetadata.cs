@@ -18,7 +18,11 @@ public sealed record CdTrackMetadata(
     double LinearVelocityMmPerSecond,
     double StartAngleDegrees,
     double ImageOuterRadiusMm,
-    bool Interleaved)
+    bool Interleaved,
+    double ToneDitherStrength = 0,
+    int ToneLevels = 2,
+    double ToneBrightness = 0,
+    bool ToneSrgbLinearization = false)
 {
     internal const string FormatName = "cd-da-track-v1";
 

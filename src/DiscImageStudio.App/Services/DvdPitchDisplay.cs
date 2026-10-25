@@ -13,7 +13,6 @@ internal static class DvdPitchDisplay
         double scale = geometry.TrackPitchMm * 1000;
         string Number(double value) => ParameterNumberText.ForSummary(value, 10);
         return $"轨距 p(x) = {Number(scale)} + ({Number(scale * parameters.PitchLinear)})x"
-            + $" + ({Number(scale * parameters.PitchQuadratic)})x² + ({Number(scale * parameters.PitchCubic)})x³ μm"
-            + "\n常数项 a₀ 由总轨道长度自动计算；x = (r − 内半径) / (外半径 − 内半径)。";
+            + $" + ({Number(scale * parameters.PitchQuadratic)})x² + ({Number(scale * parameters.PitchCubic)})x³ μm";
     }
 }

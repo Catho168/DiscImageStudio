@@ -12,9 +12,9 @@ public class RevealPanel : ContentControl
         nameof(IsExpanded), typeof(bool), typeof(RevealPanel),
         new PropertyMetadata(false, static (sender, _) => ((RevealPanel)sender).UpdateExpansion()));
 
-    private static readonly Duration ExpandDuration = new(TimeSpan.FromMilliseconds(250));
-    private static readonly Duration CollapseDuration = new(TimeSpan.FromMilliseconds(200));
-    private static readonly IEasingFunction ExpandEase = new CubicEase { EasingMode = EasingMode.EaseOut };
+    private static readonly Duration ExpandDuration = Motion.Slow;
+    private static readonly Duration CollapseDuration = Motion.Base;
+    private static readonly IEasingFunction ExpandEase = Motion.EaseOut;
 
     public bool IsExpanded
     {
@@ -37,24 +37,39 @@ public class RevealPanel : ContentControl
         Loaded += (_, _) => UpdateExpansion();
     }
 
+    /// <summary>Last expansion state, or null before the first pass.</summary>
+    private bool? _lastExpanded;
+
+    /// <summary>Only a real expand/collapse animates. A first layout, a re-measure after a
+    /// resize, or a panel that opens already expanded jumps straight to its final state: an
+    /// opacity animation started there would fade in content the user did not ask to reveal,
+    /// and a headless render would sample it at an arbitrary progress.</summary>
     private void UpdateExpansion()
     {
-        double target = IsExpanded ? MeasureContentHeight() : 0;
+        bool expanded = IsExpanded;
+        double target = expanded ? MeasureContentHeight() : 0;
         double from = Height;
-        // Set the base value first so the panel is correct even if no composition
-        // tick ever samples the animation (headless renders, hidden pages).
+        double fromOpacity = Opacity;
+        bool animate = IsLoaded && _lastExpanded is { } previous && previous != expanded;
+        _lastExpanded = expanded;
+
+        // Set the base values first so the panel is correct even if no composition tick ever
+        // samples the animation (headless renders, hidden pages).
         BeginAnimation(HeightProperty, null);
         BeginAnimation(OpacityProperty, null);
         Height = target;
-        Opacity = IsExpanded ? 1 : 0;
-        DoubleAnimation heightAnimation = new(from, target, IsExpanded ? ExpandDuration : CollapseDuration)
+        Opacity = expanded ? 1 : 0;
+        if (!animate)
+        {
+            return;
+        }
+
+        DoubleAnimation heightAnimation = new(from, target, expanded ? ExpandDuration : CollapseDuration)
         {
             EasingFunction = ExpandEase,
         };
         BeginAnimation(HeightProperty, heightAnimation);
-        BeginAnimation(
-            OpacityProperty,
-            new DoubleAnimation(IsExpanded ? 0 : 1, IsExpanded ? 1 : 0, CollapseDuration));
+        BeginAnimation(OpacityProperty, new DoubleAnimation(fromOpacity, expanded ? 1 : 0, CollapseDuration));
     }
 
     private double MeasureContentHeight()

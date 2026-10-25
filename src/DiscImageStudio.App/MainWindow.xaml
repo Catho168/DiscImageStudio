@@ -6,6 +6,7 @@
         Title="Disc Image Studio"
         Width="1240" Height="780" MinWidth="720" MinHeight="560"
         WindowStartupLocation="CenterScreen"
+        WindowState="Maximized"
         WindowStyle="None" ResizeMode="CanResize"
         Background="{StaticResource BackgroundBrush}"
         FontFamily="{StaticResource AppFontFamily}"
@@ -21,7 +22,7 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <controls:TitleBar Grid.Row="0" />
+        <controls:TitleBar Grid.Row="0" ProjectTitle="{Binding ProjectTitleDisplay}" />
 
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
@@ -29,34 +30,126 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <!-- Sidebar -->
-            <Border x:Name="SidebarBorder" Grid.Column="0" Width="288" Background="{StaticResource BackgroundBrush}"
-                    BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,1,0" ClipToBounds="True">
+            <!-- Sidebar: the workspace switcher, visible exactly when a workspace shows (the
+                 home start screen owns the whole window). -->
+            <Border x:Name="SidebarBorder" Grid.Column="0" Width="{StaticResource SidebarWidth}"
+                    Background="{StaticResource BackgroundBrush}"
+                    BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,1,0" ClipToBounds="True"
+                    Visibility="Collapsed">
                 <Grid x:Name="SidebarGrid" Margin="24,0">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-                    <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                        <StackPanel x:Name="TopNavPanel" VerticalAlignment="Top" Margin="0,24,0,0">
-                            <controls:SideNavItem x:Name="NavHome" LabelText="主页" IconKind="House" />
-                            <controls:SideNavGroup x:Name="NavDiscGroup" LabelText="制作盘片" IconKind="Disc">
-                                <!-- Plain text rows by design: no icons next to the DVD/CD entries.
-                                     In the collapsed 72px bar they show their short label instead. -->
-                                <controls:SideNavItem x:Name="NavDvd" LabelText="DVD" Indent="22" LabelFontSize="15" />
-                                <controls:SideNavItem x:Name="NavCd" LabelText="CD" Indent="22" LabelFontSize="15" />
-                                <controls:SideNavItem x:Name="NavBluRay" LabelText="BD" Indent="22" LabelFontSize="15" ToolTip="蓝光模式" />
-                            </controls:SideNavGroup>
-                            <controls:SideNavItem x:Name="NavPreview" LabelText="实时预览" IconKind="Eye" />
-                            <controls:SideNavItem x:Name="NavCalibration" LabelText="辅助标定" IconKind="Target" />
-                            <controls:SideNavItem x:Name="NavBurn" LabelText="即时刻录" IconKind="Flame" />
-                        </StackPanel>
-                    </ScrollViewer>
-                    <StackPanel x:Name="BottomNavPanel" Grid.Row="1" VerticalAlignment="Bottom">
-                        <controls:SideNavItem x:Name="NavLog" LabelText="运行日志" IconKind="Terminal" />
-                        <controls:SideNavItem x:Name="NavAbout" LabelText="关于" IconKind="Info" />
+
+                    <StackPanel x:Name="TopNavPanel" Grid.Row="0" VerticalAlignment="Top" Margin="0,16,0,0">
+                        <!-- Project header: back-home button, name (click to edit settings),
+                             family badge and the unsaved mark. -->
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Button x:Name="BackHomeButton" Style="{StaticResource GhostButton}"
+                                    Width="32" Height="32" Padding="0" Focusable="False"
+                                    AutomationProperties.Name="返回主页" ToolTip="返回主页"
+                                    Command="{Binding BackHomeCommand}">
+                                <iconPacks:PackIconLucide Kind="ChevronLeft" Width="17" Height="17"
+                                                          Foreground="{StaticResource TextSecondaryBrush}" />
+                            </Button>
+                            <Grid x:Name="ProjectHeaderHost" Grid.Column="1" Margin="8,0,0,0">
+                                <Button x:Name="ProjectHeaderButton" Style="{StaticResource TileButton}"
+                                        Padding="6,2" Focusable="False"
+                                        ToolTip="工程设置"
+                                        Click="EditProject_Click">
+                                    <StackPanel>
+                                        <TextBlock x:Name="ProjectNameText" FontSize="14" FontWeight="Bold"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Foreground="{StaticResource TextPrimaryBrush}" />
+                                        <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                                            <Border Padding="5,1" CornerRadius="5"
+                                                    Background="{StaticResource Surface3Brush}">
+                                                <TextBlock x:Name="ProjectFamilyText"
+                                                           Style="{StaticResource BadgeText}" />
+                                            </Border>
+                                            <TextBlock x:Name="ProjectDirtyText" Text="未保存"
+                                                       Style="{StaticResource MicroText}"
+                                                       Foreground="{StaticResource WarningBrush}"
+                                                       Margin="6,0,0,0" Visibility="Collapsed" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Button>
+                                <!-- Applied-calibration acknowledgement: a card-like light band
+                                     sweeps the project header once, while a short "parameters
+                                     updated" tag fades in and out. Both are presentation only and
+                                     never take hit testing from the project button. -->
+                                <Border x:Name="ProjectUpdateShine" CornerRadius="8" ClipToBounds="True"
+                                        IsHitTestVisible="False" Opacity="0">
+                                    <Rectangle x:Name="ProjectUpdateShineBand" Width="96"
+                                               HorizontalAlignment="Left">
+                                        <Rectangle.Fill>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                                <GradientStop Color="#00FFFFFF" Offset="0" />
+                                                <GradientStop Color="#26FFFFFF" Offset="0.42" />
+                                                <GradientStop Color="#66FFFFFF" Offset="0.5" />
+                                                <GradientStop Color="#26FFFFFF" Offset="0.58" />
+                                                <GradientStop Color="#00FFFFFF" Offset="1" />
+                                            </LinearGradientBrush>
+                                        </Rectangle.Fill>
+                                        <Rectangle.RenderTransform>
+                                            <TransformGroup>
+                                                <SkewTransform AngleX="-18" />
+                                                <TranslateTransform x:Name="ProjectUpdateShineTranslate" />
+                                            </TransformGroup>
+                                        </Rectangle.RenderTransform>
+                                    </Rectangle>
+                                </Border>
+                                <Border x:Name="ProjectUpdateBadge" HorizontalAlignment="Right"
+                                        VerticalAlignment="Bottom" Margin="0,0,4,1"
+                                        Padding="6,2" CornerRadius="{StaticResource RadiusChip}"
+                                        Background="{StaticResource SuccessSoftBrush}"
+                                        BorderBrush="{StaticResource SuccessBrush}" BorderThickness="1"
+                                        IsHitTestVisible="False" Opacity="0">
+                                    <StackPanel Orientation="Horizontal">
+                                        <iconPacks:PackIconLucide Kind="Check" Width="10" Height="10"
+                                                                  VerticalAlignment="Center"
+                                                                  Foreground="{StaticResource SuccessBrush}" />
+                                        <TextBlock Text="参数已更新" Style="{StaticResource BadgeText}"
+                                                   Foreground="{StaticResource SuccessBrush}"
+                                                   VerticalAlignment="Center" Margin="4,0,0,0" />
+                                    </StackPanel>
+                                </Border>
+                                <!-- Saved acknowledgement: one green segment runs a single
+                                     lap around the header. The head follows a cubic Bezier
+                                     timing curve and the tail stretches with its speed, so the
+                                     stroke reads as a comet instead of a uniform ring. The
+                                     applied-calibration sweep above remains the louder signal. -->
+                                <controls:ProjectSaveTrail x:Name="ProjectSaveTrail"
+                                                           Stroke="{StaticResource SuccessBrush}"
+                                                           CornerRadius="8" />
+                            </Grid>
+                        </Grid>
+
+                        <!-- Icon-only rows keep the collapsed 72px bar a flat rail, matching
+                             the About entry below. -->
+                        <controls:SideNavItem x:Name="NavDesign" LabelText="设计"
+                                              IconKind="Palette" />
+                        <controls:SideNavItem x:Name="NavPreview" LabelText="预览"
+                                              IconKind="Eye" />
+                        <controls:SideNavItem x:Name="NavExport" LabelText="导出"
+                                              IconKind="FileDown" />
+                        <controls:SideNavItem x:Name="NavBurn" LabelText="刻录"
+                                              IconKind="Flame" />
+                        <controls:SideNavItem x:Name="NavCalibration" LabelText="标定"
+                                              IconKind="Crosshair" />
                     </StackPanel>
+
+                    <StackPanel x:Name="BottomNavPanel" Grid.Row="1" VerticalAlignment="Bottom">
+                        <controls:SideNavItem x:Name="NavAbout" LabelText="关于" IconKind="Info"
+                                              Activated="NavAbout_Activated" />
+                    </StackPanel>
+
                     <Button x:Name="SidebarCollapseToggle" Grid.Row="2" Height="40" Margin="0,8,0,16"
                             Style="{StaticResource GhostButton}" Padding="0" Focusable="False"
                             ToolTip="收起侧边栏" Click="SidebarCollapseToggle_Click">
@@ -72,15 +165,23 @@
                 </Grid>
             </Border>
 
-            <!-- Page host -->
-            <ContentControl x:Name="PageHost" Grid.Column="1" Focusable="False" />
+            <!-- Page host + the job dock. The dock belongs to the chrome: jobs report there
+                 instead of switching the visible workspace. -->
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <ContentControl x:Name="PageHost" Grid.Row="0" Focusable="False" />
+                <controls:JobDock x:Name="DockHost" Grid.Row="1" Focusable="False" />
+            </Grid>
         </Grid>
 
         <!-- Toasts: top-right, over pages and sidebar -->
         <controls:ToastHost Grid.Row="1" HorizontalAlignment="Right" VerticalAlignment="Top"
                             Margin="0,40,16,0" Panel.ZIndex="20" />
 
-        <!-- Burn confirmation modal overlay -->
+        <!-- Confirmation modal overlay (burn confirm + unsaved-changes dialog) -->
         <controls:ConfirmModal x:Name="BurnConfirmModal" Grid.Row="0" Grid.RowSpan="2"
                                Panel.ZIndex="30" />
     </Grid>

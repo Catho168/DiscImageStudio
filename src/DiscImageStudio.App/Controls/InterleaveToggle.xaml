@@ -1,0 +1,15 @@
+<UserControl x:Class="DiscImageStudio.Controls.InterleaveToggle"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:DiscImageStudio.Controls">
+    <!-- Shared CD-DA interleave switch. The label names the operation each site performs:
+         the export workspace switches generation ("启用 CD-DA 延迟交织"), the preview's
+         read-back switches the inverse operation ("逆交织"). Each site supplies the hint
+         for its own direction; the default points at the correlation between them. -->
+    <StackPanel Orientation="Horizontal">
+        <CheckBox x:Name="Toggle" VerticalAlignment="Center"
+                  Content="{Binding Label, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                  IsChecked="{Binding IsChecked, Mode=TwoWay, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+        <controls:HelpHint x:Name="HintSpot" Margin="8,0,0,0" VerticalAlignment="Center" />
+    </StackPanel>
+</UserControl>

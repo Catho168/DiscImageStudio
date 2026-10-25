@@ -28,10 +28,21 @@ public partial class CalibrationViewModel
     [ObservableProperty] private IReadOnlyList<Point[]> _photoBoundaryContours = [];
     [ObservableProperty] private IReadOnlyList<CalibrationTracePoint> _tracePoints = [];
     [ObservableProperty] private IReadOnlyList<Point[]> _crossPredictionContours = [];
+    /// <summary>Trace-point identities whose distance to the selected prediction exceeds the
+    /// noise allowance. They stay in the fit (robustly down-weighted) and are painted in the
+    /// warning colour so the user can fix the click instead of guessing at a mean error.</summary>
+    [ObservableProperty] private IReadOnlyList<int> _outlierTracePointIndices = [];
+    public bool HasOutlierPoints => OutlierTracePointIndices.Count > 0;
+    partial void OnOutlierTracePointIndicesChanged(IReadOnlyList<int> value)
+    {
+        OnPropertyChanged(nameof(HasOutlierPoints));
+        UpdateFitAssessment();
+    }
     [ObservableProperty] private int _selectedTraceArm;
-    [ObservableProperty] private string _photoStatus = "导入能看清实体外缘、中心孔和一条径向曲线的照片；盘片朝向不限。";
-    [ObservableProperty] private string _rectificationSummary = "拖动外缘与中心孔的控制点，使它们贴合实体边缘，再计算矫正。";
-    public string TraceSummary => $"已保留 {TracePoints.Count} 点 · 全部参与反推";
+    /// <summary>Outer/inner-edge deviations of the last rectification; empty until a fit
+    /// exists. This is the only line under 确认矫正.</summary>
+    [ObservableProperty] private string _rectificationSummary = string.Empty;
+    public string TraceSummary => $"已保留 {TracePoints.Count} 点 · 偏离点自动标红";
     public IReadOnlyList<PhotoDiscSize> PhysicalDiscSizeChoices { get; } =
         [new("标准光盘 · 12 cm", 60), new("小光盘 · 8 cm", 40)];
     [ObservableProperty] private PhotoDiscSize _selectedPhysicalDiscSize = new("标准光盘 · 12 cm", 60);
@@ -57,7 +68,6 @@ public partial class CalibrationViewModel
             IsPhotoStep = true;
             PreviewRectification = false;
             ContourConfirmed = false;
-            StatusText = "已返回照片矫正。修改边界或盘片规格后，原描线与拟合结果会清空。";
         }, () => !IsBusy && IsTraceStep);
         ClearTracesCommand = new RelayCommand(ClearTraces, () => !IsBusy && TracePoints.Count > 0);
         ClearSelectedTraceCommand = new RelayCommand(ClearTraces, () => !IsBusy && TracePoints.Count > 0);
@@ -69,7 +79,21 @@ public partial class CalibrationViewModel
 
     private bool CanSolveTrace() => CanUseTarget() && IsTraceStep && _photoTransform is not null && TracePoints.Count >= 6;
 
-    partial void OnIsPhotoStepChanged(bool value) => RefreshCommands();
+    // A new (or reset) picture always lands in boundary-editing view: the burn-pattern
+    // overlay belongs to inspecting the target, not the photo.
+    partial void OnPhotoImageChanged(BitmapSource? value) => ShowTargetPreview = false;
+
+    partial void OnIsPhotoStepChanged(bool value)
+    {
+        RefreshCommands();
+        ShowTargetPreview = false;
+        OnPropertyChanged(nameof(StepTwoState));
+        OnPropertyChanged(nameof(StepThreeState));
+        // The step column discloses one stage at a time: entering the trace step collapses
+        // the rectification card and vice versa.
+        StepTwoExpanded = IsPhotoStep;
+        StepThreeExpanded = IsTraceStep;
+    }
     partial void OnPreviewRectificationChanged(bool value) => RefreshPhotoCommands();
     partial void OnTracePointsChanged(IReadOnlyList<CalibrationTracePoint> value)
     {
@@ -83,7 +107,6 @@ public partial class CalibrationViewModel
         PhotoCanvasRadiusMm = value.OuterRadiusMm + 3;
         if (_restoringPhoto) return;
         InvalidatePhotoRectification();
-        PhotoStatus = "盘片规格已更改，请重新计算照片矫正。";
     }
 
     private void RefreshPhotoCommands()
@@ -102,8 +125,7 @@ public partial class CalibrationViewModel
         PhotoBoundaryPoints = []; PhotoBoundaryContours = [];
         TracePoints = []; CrossPredictionContours = [];
         IsRectificationReady = false; PreviewRectification = false; IsPhotoStep = true;
-        PhotoStatus = "导入照片后，先沿实体外缘和中心孔调整轮廓。照片不需要摆正，也不要求描黑。";
-        RectificationSummary = "矫正只依据光盘实体边缘，不会拉直刻录曲线。";
+        RectificationSummary = string.Empty;
         RefreshPhotoCommands();
     }
 
@@ -114,7 +136,7 @@ public partial class CalibrationViewModel
         IsRectificationReady = false; PreviewRectification = false; IsPhotoStep = true;
         PhotoBoundaryContours = []; TracePoints = [];
         InvalidateFit();
-        RectificationSummary = "轮廓已更改，请重新计算并检查矫正预览。";
+        RectificationSummary = string.Empty;
         RefreshCommands();
     }
 
@@ -138,8 +160,7 @@ public partial class CalibrationViewModel
             InvalidatePhotoRectification();
             PhotoImage = result.Image; _photoPng = result.Png;
             SetBoundaryPoints(result.Contours.Outer, result.Contours.Hole);
-            PhotoStatus = result.Contours.Message;
-            StatusText = "照片已导入。请把两组控制点拖到光盘实体外缘和中心孔边缘，然后计算矫正。";
+            _statusMessage = "照片已导入。请把两组控制点拖到光盘实体外缘和实体内缘，然后计算矫正。";
             RefreshCommands();
         });
     }
@@ -182,10 +203,10 @@ public partial class CalibrationViewModel
             _photoTransform = fit.Transform;
             RectifiedPhoto = corrected;
             PhotoBoundaryContours = BoundaryContours(fit.Transform, radius);
-            RectificationSummary = $"外缘偏差 {fit.OuterRmsPixels:0.0} 像素 · 中心孔偏差 {fit.HoleRmsPixels:0.0} 像素。请检查圆形边缘是否贴合；十字线保留实际弯曲。";
+            RectificationSummary = $"外缘偏差 {fit.OuterRmsPixels:0.0} 像素 · 内缘偏差 {fit.HoleRmsPixels:0.0} 像素";
             IsRectificationReady = true;
             PreviewRectification = true;
-            StatusText = "矫正预览已生成。检查盘面恢复正视效果后，确认并开始描线。";
+            _statusMessage = "矫正预览已生成。检查盘面恢复正视效果后，确认并开始描线。";
             RefreshPhotoCommands();
         });
     }
@@ -203,7 +224,6 @@ public partial class CalibrationViewModel
         if (!IsRectificationReady || _photoTransform is null || RectifiedPhoto is null) return;
         PreviewRectification = false;
         IsPhotoStep = false;
-        StatusText = "沿任意一条清楚的曲线从内向外打点，不必对应圆环。实体盘面内的点全部保留，生成时的内外半径不裁剪照片点；满 6 点可反推。";
         RefreshCommands();
     }
 
@@ -214,7 +234,6 @@ public partial class CalibrationViewModel
         double radius = Math.Sqrt(edit.XMm * edit.XMm + edit.YMm * edit.YMm);
         if (!edit.Remove && (radius < 7.5 || radius > SelectedPhysicalDiscSize.OuterRadiusMm))
         {
-            StatusText = "该点位于中心孔或实体盘片外，未加入曲线。请沿盘面上同一条可见曲线打点；原有点全部保留。";
             return;
         }
         var points = TracePoints.ToList();
@@ -311,11 +330,12 @@ public partial class CalibrationViewModel
                 TracePoints = photo.Traces.SelectMany(t => t.Points).Select((p, i) => new CalibrationTracePoint(0, i, p.X, p.Y))
                     .OrderBy(p => p.XMm * p.XMm + p.YMm * p.YMm).ToArray();
                 IsPhotoStep = !photo.RectificationConfirmed;
-                PhotoStatus = "已恢复保存的照片和边界控制点。";
-                RectificationSummary = IsRectificationReady ? "已根据保存的实体边缘恢复矫正。返回修改边界会清空原描线。" : "请检查边界后计算矫正。";
+                RectificationSummary = prepared.Fit is { } restoredFit
+                    ? $"外缘偏差 {restoredFit.OuterRmsPixels:0.0} 像素 · 内缘偏差 {restoredFit.HoleRmsPixels:0.0} 像素"
+                    : string.Empty;
             }
             _sessionPath = path; OutputPath = string.Empty;
-            StatusText = "已恢复标定图案、照片和曲线点，可继续编辑或重新反推。";
+            _statusMessage = "已恢复标定图案、照片和曲线点，可继续编辑或重新反推。";
             RefreshCommands();
         });
     }

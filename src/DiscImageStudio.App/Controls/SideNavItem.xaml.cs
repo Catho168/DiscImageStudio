@@ -36,18 +36,18 @@ public partial class SideNavItem : UserControl
     public static readonly RoutedEvent ActivatedEvent = EventManager.RegisterRoutedEvent(
         nameof(Activated), RoutingStrategy.Bubble, typeof(RoutedEventHandler), typeof(SideNavItem));
 
-    private static readonly Duration TransitionDuration = new(TimeSpan.FromMilliseconds(150));
-    private static readonly EasingFunctionBase TransitionEase = new CubicEase { EasingMode = EasingMode.EaseOut };
-    private static readonly Color ActiveTextColor = Color.FromRgb(0xFA, 0xFA, 0xFA);
-    private static readonly Color IdleTextColor = Color.FromRgb(0xA1, 0xA1, 0xAA);
-    // The idle background keeps the hover color's RGB with alpha 0 instead of
-    // Colors.Transparent (RGB white, alpha 0): a ColorAnimation interpolates every ARGB
-    // channel independently, so transparent->dark would pass ~50% white at ~50% alpha
-    // mid-flight and render a gray pop over the dark sidebar before settling darker,
-    // on enter and on leave alike. Fixed RGB makes the fade alpha-only and monotonic.
-    private static readonly Color ActiveBackgroundColor = Color.FromArgb(0xFF, 0x26, 0x26, 0x2B);
-    private static readonly Color HoverBackgroundColor = Color.FromArgb(0xFF, 0x1B, 0x1B, 0x1C);
-    private static readonly Color IdleBackgroundColor = Color.FromArgb(0x00, 0x1B, 0x1B, 0x1C);
+    private static readonly Duration TransitionDuration = Motion.Fast;
+    private static readonly IEasingFunction TransitionEase = Motion.EaseOut;
+
+    // Colors come from the theme tokens (TextPrimary/TextSecondary/Surface2/SurfaceHover) so
+    // the sidebar cannot drift from the shared palette; the idle background keeps the hover
+    // color's RGB at alpha 0 because a ColorAnimation interpolates every ARGB channel and
+    // transparent->dark would pass ~50% white mid-flight (see Motion/ThemeValues).
+    private readonly Color _activeTextColor;
+    private readonly Color _idleTextColor;
+    private readonly Color _activeBackgroundColor;
+    private readonly Color _hoverBackgroundColor;
+    private readonly Color _idleBackgroundColor;
 
     private readonly SolidColorBrush _textBrush;
     private readonly SolidColorBrush _backgroundBrush;
@@ -103,8 +103,13 @@ public partial class SideNavItem : UserControl
         // The ToolTip lives in its own popup visual tree, so FindAncestor back to this
         // UserControl cannot resolve there; hand it this item as its DataContext instead.
         NavToolTip.DataContext = this;
-        _textBrush = new SolidColorBrush(IdleTextColor);
-        _backgroundBrush = new SolidColorBrush(IdleBackgroundColor);
+        _activeTextColor = ThemeValues.Color("TextPrimaryColor", Color.FromRgb(0xFA, 0xFA, 0xFA));
+        _idleTextColor = ThemeValues.Color("TextSecondaryColor", Color.FromRgb(0xA1, 0xA1, 0xAA));
+        _activeBackgroundColor = ThemeValues.Color("Surface2Color", Color.FromRgb(0x26, 0x26, 0x2B));
+        _hoverBackgroundColor = ThemeValues.Color("SurfaceHoverColor", Color.FromRgb(0x1B, 0x1B, 0x1C));
+        _idleBackgroundColor = ThemeValues.WithAlpha(_hoverBackgroundColor, 0);
+        _textBrush = new SolidColorBrush(_idleTextColor);
+        _backgroundBrush = new SolidColorBrush(_idleBackgroundColor);
         Root.Background = _backgroundBrush;
         Icon.Foreground = _textBrush;
         LabelTextBlock.Foreground = _textBrush;
@@ -121,14 +126,14 @@ public partial class SideNavItem : UserControl
         bool hovering = IsMouseOver;
         AnimateBrush(
             _textBrush,
-            IsActive || hovering ? ActiveTextColor : IdleTextColor,
+            IsActive || hovering ? _activeTextColor : _idleTextColor,
             ref _textBrushTarget,
             animate);
         AnimateBrush(
             _backgroundBrush,
             IsActive
-                ? ActiveBackgroundColor
-                : hovering ? HoverBackgroundColor : IdleBackgroundColor,
+                ? _activeBackgroundColor
+                : hovering ? _hoverBackgroundColor : _idleBackgroundColor,
             ref _backgroundBrushTarget,
             animate);
 

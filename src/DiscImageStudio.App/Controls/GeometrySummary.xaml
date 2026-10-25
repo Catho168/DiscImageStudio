@@ -1,0 +1,38 @@
+<UserControl x:Class="DiscImageStudio.Controls.GeometrySummary"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:iconPacks="http://metro.mahapps.com/winfx/xaml/iconpacks">
+    <!-- Read-only view of a value group with a jump to its single owner. The button shares
+         the title row and the details get the full panel width: in a 280px side panel a
+         right-hand button column squeezed every summary into mid-word wraps. -->
+    <Border Background="{StaticResource Surface2Brush}" BorderBrush="{StaticResource DividerBrush}"
+            BorderThickness="1" CornerRadius="{StaticResource RadiusPanel}" Padding="12,10">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Grid Grid.Row="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <iconPacks:PackIconLucide Kind="Ruler" Width="15" Height="15" VerticalAlignment="Center"
+                                              Foreground="{StaticResource TextSecondaryBrush}" />
+                    <!-- Centered on the row: the row's height is the edit button's, and a
+                         stretched TextBlock would ride the top edge while the icon centers. -->
+                    <TextBlock x:Name="TitleText" Style="{StaticResource FieldLabel}" Margin="8,0,0,0"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <Button x:Name="EditButton" Grid.Column="1" Style="{StaticResource CompactButton}"
+                        VerticalAlignment="Center" Margin="12,0,0,0" />
+            </Grid>
+            <TextBlock x:Name="DetailsText" Grid.Row="1" Style="{StaticResource CompactText}" Margin="0,2,0,0" />
+            <TextBlock x:Name="PitchText" Grid.Row="2" Style="{StaticResource CompactHint}" Margin="0,4,0,0"
+                       Visibility="Collapsed" />
+        </Grid>
+    </Border>
+</UserControl>

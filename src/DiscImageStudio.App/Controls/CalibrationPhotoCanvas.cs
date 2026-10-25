@@ -29,13 +29,14 @@ public sealed class CalibrationPhotoCanvas : FrameworkElement
     public static readonly DependencyProperty BoundaryContoursProperty = DependencyProperty.Register(nameof(BoundaryContours), typeof(IReadOnlyList<Point[]>), typeof(CalibrationPhotoCanvas), new FrameworkPropertyMetadata(null, Render));
     public static readonly DependencyProperty TracePointsProperty = DependencyProperty.Register(nameof(TracePoints), typeof(IEnumerable<CalibrationTracePoint>), typeof(CalibrationPhotoCanvas), new FrameworkPropertyMetadata(null, Render, OnCollectionChanged));
     public static readonly DependencyProperty PredictionContoursProperty = DependencyProperty.Register(nameof(PredictionContours), typeof(IReadOnlyList<Point[]>), typeof(CalibrationPhotoCanvas), new FrameworkPropertyMetadata(null, Render));
+    public static readonly DependencyProperty OutlierTracePointIndicesProperty = DependencyProperty.Register(nameof(OutlierTracePointIndices), typeof(IReadOnlyList<int>), typeof(CalibrationPhotoCanvas), new FrameworkPropertyMetadata(null, Render));
     public static readonly DependencyProperty SelectedTraceArmProperty = DependencyProperty.Register(nameof(SelectedTraceArm), typeof(int), typeof(CalibrationPhotoCanvas), new FrameworkPropertyMetadata(0, Render | FrameworkPropertyMetadataOptions.BindsTwoWayByDefault));
     public static readonly DependencyProperty BoundaryEditedCommandProperty = DependencyProperty.Register(nameof(BoundaryEditedCommand), typeof(ICommand), typeof(CalibrationPhotoCanvas));
     public static readonly DependencyProperty TraceEditedCommandProperty = DependencyProperty.Register(nameof(TraceEditedCommand), typeof(ICommand), typeof(CalibrationPhotoCanvas));
     public static readonly DependencyProperty ShowPredictionProperty = DependencyProperty.Register(nameof(ShowPrediction), typeof(bool), typeof(CalibrationPhotoCanvas), new FrameworkPropertyMetadata(true, Render));
     private static readonly DependencyPropertyKey ViewDescriptionPropertyKey = DependencyProperty.RegisterReadOnly(nameof(ViewDescription), typeof(string), typeof(CalibrationPhotoCanvas), new PropertyMetadata("100%"));
     public static readonly DependencyProperty ViewDescriptionProperty = ViewDescriptionPropertyKey.DependencyProperty;
-    private static readonly DependencyPropertyKey SelectionDescriptionPropertyKey = DependencyProperty.RegisterReadOnly(nameof(SelectionDescription), typeof(string), typeof(CalibrationPhotoCanvas), new PropertyMetadata("先导入盘片照片，再修正外缘和中心孔轮廓。"));
+    private static readonly DependencyPropertyKey SelectionDescriptionPropertyKey = DependencyProperty.RegisterReadOnly(nameof(SelectionDescription), typeof(string), typeof(CalibrationPhotoCanvas), new PropertyMetadata("滚轮缩放，右键平移；拖动控制点贴合边缘。"));
     public static readonly DependencyProperty SelectionDescriptionProperty = SelectionDescriptionPropertyKey.DependencyProperty;
 
     public BitmapSource? Image { get => (BitmapSource?)GetValue(ImageProperty); set => SetValue(ImageProperty, value); }
@@ -49,6 +50,7 @@ public sealed class CalibrationPhotoCanvas : FrameworkElement
     public IReadOnlyList<Point[]>? BoundaryContours { get => (IReadOnlyList<Point[]>?)GetValue(BoundaryContoursProperty); set => SetValue(BoundaryContoursProperty, value); }
     public IEnumerable<CalibrationTracePoint>? TracePoints { get => (IEnumerable<CalibrationTracePoint>?)GetValue(TracePointsProperty); set => SetValue(TracePointsProperty, value); }
     public IReadOnlyList<Point[]>? PredictionContours { get => (IReadOnlyList<Point[]>?)GetValue(PredictionContoursProperty); set => SetValue(PredictionContoursProperty, value); }
+    public IReadOnlyList<int>? OutlierTracePointIndices { get => (IReadOnlyList<int>?)GetValue(OutlierTracePointIndicesProperty); set => SetValue(OutlierTracePointIndicesProperty, value); }
     public int SelectedTraceArm { get => (int)GetValue(SelectedTraceArmProperty); set => SetValue(SelectedTraceArmProperty, value); }
     public ICommand? BoundaryEditedCommand { get => (ICommand?)GetValue(BoundaryEditedCommandProperty); set => SetValue(BoundaryEditedCommandProperty, value); }
     public ICommand? TraceEditedCommand { get => (ICommand?)GetValue(TraceEditedCommandProperty); set => SetValue(TraceEditedCommandProperty, value); }
@@ -138,7 +140,7 @@ public sealed class CalibrationPhotoCanvas : FrameworkElement
             _selectedBoundary = (point.Boundary, point.Index);
             _dragOriginal = new Point(point.X, point.Y);
             SetValue(SelectionDescriptionPropertyKey, point.Boundary == CalibrationPhotoBoundaryKind.OuterEdge
-                ? "拖到盘片实体外缘；不要沿刻录区边界。" : "拖到中心孔边缘；不要沿透明塑料环。" );
+                ? "拖到盘片实体外缘；不要沿刻录区边界。" : "拖到实体内缘；不要沿透明塑料环。" );
         }
         else if (CanEditTrace)
         {
@@ -220,7 +222,7 @@ public sealed class CalibrationPhotoCanvas : FrameworkElement
     protected override void OnRender(DrawingContext dc)
     {
         base.OnRender(dc);
-        dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(19, 21, 26)), null, new Rect(RenderSize));
+        dc.DrawRectangle(DiscTheme.PhotoBackdrop, null, new Rect(RenderSize));
         var bitmap = ShowingTarget ? FallbackImage : Image;
         var bounds = WorldBounds;
         var viewBounds = new Rect(WorldToView(bounds.TopLeft), WorldToView(bounds.BottomRight));
@@ -231,21 +233,23 @@ public sealed class CalibrationPhotoCanvas : FrameworkElement
         else if (CanEditTrace)
         {
             if (ShowPrediction && PredictionContours is { } predictions)
-                for (int i = 0; i < predictions.Count; i++) DrawPath(dc, predictions[i], new Pen(Brushes.DarkOrange, 1.8), false);
+                for (int i = 0; i < predictions.Count; i++) DrawPath(dc, predictions[i], new Pen(DiscTheme.Prediction, 1.8), false);
             for (int arm = 0; arm < 4; arm++)
             {
                 // The VM orders samples along the curve. Index is a stable editing identity,
                 // so sorting by it would reconnect inserted samples in the wrong order.
                 var points = TracePoints?.Where(p => p.Arm == arm).ToArray() ?? [];
-                var brush = Brushes.Cyan;
+                var brush = DiscTheme.Trace;
                 var pen = new Pen(brush, 1.2) { DashStyle = DashStyles.Dot };
                 DrawPath(dc, points.Select(TraceDisplayPosition).ToArray(), pen, false);
                 foreach (var point in points)
                 {
                     bool selected = _selectedTrace == (point.Arm, point.Index);
+                    bool outlier = OutlierTracePointIndices?.Contains(point.Index) == true;
+                    Brush pointBrush = outlier ? DiscTheme.Outlier : brush;
                     var screen = WorldToView(TraceDisplayPosition(point));
-                    dc.DrawEllipse(brush, new Pen(Brushes.Black, 1.4), screen, selected ? 6 : 4, selected ? 6 : 4);
-                    if (selected) DrawText(dc, $"点 {point.Index + 1}", screen + new Vector(9, -16), brush, 12);
+                    dc.DrawEllipse(pointBrush, new Pen(DiscTheme.Outline, 1.4), screen, selected ? 6 : 4, selected ? 6 : 4);
+                    if (selected) DrawText(dc, $"点 {point.Index + 1}", screen + new Vector(9, -16), pointBrush, 12);
                 }
             }
         }
@@ -258,7 +262,7 @@ public sealed class CalibrationPhotoCanvas : FrameworkElement
     {
         foreach (var kind in new[] { CalibrationPhotoBoundaryKind.OuterEdge, CalibrationPhotoBoundaryKind.CenterHole })
         {
-            Brush brush = kind == CalibrationPhotoBoundaryKind.OuterEdge ? Brushes.DeepSkyBlue : Brushes.Orange;
+            Brush brush = kind == CalibrationPhotoBoundaryKind.OuterEdge ? DiscTheme.Edge : DiscTheme.HubOutline;
             var points = BoundaryPoints?.Where(p => p.Boundary == kind).OrderBy(p => p.Index).ToArray() ?? [];
             var outline = BoundaryContours?.ElementAtOrDefault((int)kind);
             if (_boundaryDrag?.Boundary == kind || outline is not { Length: > 2 })
@@ -268,7 +272,7 @@ public sealed class CalibrationPhotoCanvas : FrameworkElement
             {
                 bool selected = _selectedBoundary == (point.Boundary, point.Index);
                 var screen = WorldToView(BoundaryDisplayPosition(point));
-                dc.DrawEllipse(brush, new Pen(Brushes.Black, 1.2), screen, selected ? 6 : 4.5, selected ? 6 : 4.5);
+                dc.DrawEllipse(brush, new Pen(DiscTheme.Outline, 1.2), screen, selected ? 6 : 4.5, selected ? 6 : 4.5);
             }
         }
     }
@@ -277,7 +281,7 @@ public sealed class CalibrationPhotoCanvas : FrameworkElement
     {
         var center = WorldToView(new Point());
         double radius = Math.Min(bounds.Width, bounds.Height) * .44;
-        var pen = new Pen(Brushes.LightGray, 1.5);
+        var pen = new Pen(DiscTheme.Handle, 1.5);
         for (int i = 1; i <= 5; i++)
         {
             double viewRadius = (WorldToView(new Point(radius * i / 5, 0)) - center).Length;
@@ -308,16 +312,17 @@ public sealed class CalibrationPhotoCanvas : FrameworkElement
 
     private void DrawCaption(DrawingContext dc, string text)
     {
-        var label = new FormattedText(text, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
-            new Typeface("Microsoft YaHei UI"), 11, Brushes.LightGray, VisualTreeHelper.GetDpi(this).PixelsPerDip);
+        var label = Text(text, 11, DiscTheme.Handle);
         // A compact caption stays in the lower-left margin instead of covering the top disc edge.
         var bounds = new Rect(8, Math.Max(4, ActualHeight - label.Height - 12), label.Width + 12, label.Height + 6);
-        dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromArgb(220, 19, 21, 26)), null, bounds, 4, 4);
+        dc.DrawRoundedRectangle(DiscTheme.Caption, null, bounds, 4, 4);
         dc.DrawText(label, new Point(bounds.Left + 6, bounds.Top + 3));
     }
     private void DrawText(DrawingContext dc, string text, Point at, Brush brush, double size)
-        => dc.DrawText(new FormattedText(text, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
-            new Typeface("Microsoft YaHei UI"), size, brush, VisualTreeHelper.GetDpi(this).PixelsPerDip), at);
+        => dc.DrawText(Text(text, size, brush), at);
+    private FormattedText Text(string text, double size, Brush brush) =>
+        new(text, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
+            DiscTheme.Typeface, size, brush, VisualTreeHelper.GetDpi(this).PixelsPerDip);
     private Point BoundaryDisplayPosition(CalibrationPhotoBoundaryPoint point)
         => _boundaryDrag?.Boundary == point.Boundary && _boundaryDrag.Index == point.Index ? _dragPosition : new(point.X, point.Y);
     private Point TraceDisplayPosition(CalibrationTracePoint point)
@@ -331,7 +336,7 @@ public sealed class CalibrationPhotoCanvas : FrameworkElement
         UpdateTraceDescription();
     }
     private void UpdateTraceDescription() => SetValue(SelectionDescriptionPropertyKey,
-        _selectedTrace is { } point ? $"已选曲线上的点 {point.Index + 1} · 直接拖动修正，Delete 删除" : "点击照片上清晰的一条径向曲线，由内向外连续描点。" );
+        _selectedTrace is { } point ? $"已选曲线上的点 {point.Index + 1} · 直接拖动修正，Delete 删除" : "点击照片上同一条可见曲线，由内向外连续描点。" );
     private static void OnViewportChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var canvas = (CalibrationPhotoCanvas)d;
@@ -340,8 +345,8 @@ public sealed class CalibrationPhotoCanvas : FrameworkElement
         canvas._selectedBoundary = null;
         canvas.ResetView();
         canvas.SetValue(SelectionDescriptionPropertyKey, canvas.IsPhotoStep
-            ? "蓝点贴合盘片实体外缘，橙点贴合中心孔；滚轮放大，右键平移。"
-            : "沿同一条曲线的真实中心线由内向外描点；不必对准同心圈。" );
+            ? "滚轮缩放，右键平移；拖动控制点贴合边缘。"
+            : "滚轮缩放，右键平移；点击添加点，拖动已有点修正位置。" );
     }
     private static void OnCollectionChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {

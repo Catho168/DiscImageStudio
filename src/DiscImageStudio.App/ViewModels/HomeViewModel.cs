@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DiscImageStudio.BluRay;
 using DiscImageStudio.Cd;
+using DiscImageStudio.Core;
 using DiscImageStudio.Dvd;
 using DiscImageStudio.Services;
 using MahApps.Metro.IconPacks;
@@ -12,252 +13,129 @@ using MahApps.Metro.IconPacks;
 namespace DiscImageStudio.ViewModels;
 
 /// <summary>
-/// Start page: a welcome heading, an action bar (disc family plus New/Open), then quick-create
-/// preset tiles and the recent list. The disc-family flag is shared with the live preview page,
-/// so the action bar, the tiles and the rest of the shell agree.
+/// Start page, PR-style: a heading with New/Open, a template row (blank project plus the
+/// first presets of each disc family), then the recent-project cards. The page shows the
+/// home mode of the shell; all project actions run through the shell.
 /// </summary>
 public partial class HomeViewModel : ObservableObject
 {
-    private const int ThumbnailDecodeWidth = 320;
-    private const long ThumbnailMaxBytes = 64L * 1024 * 1024;
-
-    /// <summary>The catalog is user-editable and can grow without bound, while the reference
-    /// start screen keeps its quick-create row to a handful of curated cards. Only the first
-    /// few presets per family (the recommended ones by catalog order) get a card; every
-    /// preset stays selectable on the disc pages.</summary>
+    /// <summary>The catalog is user-editable and can grow without bound, while the start
+    /// screen keeps its template row to a handful of curated cards. Only the first presets
+    /// per family get a card; every preset stays available in the project dialog.</summary>
     private const int PresetsPerFamily = 2;
 
     private readonly ShellViewModel _shell;
     private readonly DiscParametersState _state;
-    private readonly RecentJobStore _recentStore;
+    private readonly RecentProjectStore _recentStore;
 
-    public HomeViewModel(ShellViewModel shell, DiscParametersState state, RecentJobStore recentStore)
+    public HomeViewModel(ShellViewModel shell, DiscParametersState state, RecentProjectStore recentStore)
     {
         _shell = shell;
         _state = state;
         _recentStore = recentStore;
-        NewCommand = new RelayCommand(NewJob, () => !_shell.IsBusy);
-        OpenCommand = new RelayCommand(OpenImage, () => !_shell.IsBusy);
-        CreateTileCommand = new RelayCommand<QuickCreateTile>(CreateFromTile, tile => tile is not null && !_shell.IsBusy);
-        OpenRecentCommand = new RelayCommand<RecentJobTile>(OpenRecent, tile => tile is not null && !_shell.IsBusy);
+        NewProjectCommand = new AsyncRelayCommand(
+            _ => _shell.NewProjectCommand.ExecuteAsync(null),
+            () => !_shell.IsBusy);
+        OpenProjectCommand = new AsyncRelayCommand(
+            _ => _shell.OpenProjectCommand.ExecuteAsync(null),
+            () => !_shell.IsBusy);
+        ContinueProjectCommand = new RelayCommand(
+            () => _shell.NavigateTo(Workspace.Design),
+            () => _shell.IsProjectOpen);
+        TemplateCommand = new AsyncRelayCommand<HomeTemplateTile>(CreateFromTemplate, _ => !_shell.IsBusy);
+        OpenRecentCommand = new AsyncRelayCommand<RecentProjectTile>(OpenRecent, _ => !_shell.IsBusy);
+        RemoveRecentCommand = new RelayCommand<RecentProjectTile>(RemoveRecent);
         ClearRecentsCommand = new RelayCommand(ClearRecents, () => HasRecents);
         _shell.BusyChanged += NotifyCommands;
+        _shell.PropertyChanged += Shell_PropertyChanged;
         _state.PropertyChanged += State_PropertyChanged;
-        _shell.LivePreview.PropertyChanged += LivePreview_PropertyChanged;
-        BuildTiles();
-        RefreshRecents();
+        BuildTemplates();
+        RefreshRecentProjects();
     }
 
-    public ObservableCollection<QuickCreateTile> Tiles { get; } = [];
+    public ObservableCollection<HomeTemplateTile> Templates { get; } = [];
 
-    public ObservableCollection<RecentJobTile> Recents { get; } = [];
+    public ObservableCollection<RecentProjectTile> Recents { get; } = [];
 
     public bool HasRecents => Recents.Count > 0;
 
-    /// <summary>Disc family of the action bar's New/Open actions; the same selection the live preview
-    /// page's disc-type selector owns.</summary>
-    public int SelectedDiscTypeIndex
-    {
-        get => _shell.LivePreview.SelectedDiscTypeIndex;
-        set => _shell.LivePreview.SelectedDiscTypeIndex = value;
-    }
+    /// <summary>True while a project is open and the user came back to the home page; the
+    /// page then offers a jump straight back into it.</summary>
+    public bool IsProjectOpen => _shell.IsProjectOpen;
 
-    public bool IsDvdSelected
-    {
-        get => _shell.LivePreview.IsDvdSelected;
-        set => _shell.LivePreview.IsDvdSelected = value;
-    }
+    public System.Windows.Visibility IsProjectOpenVisibility => _shell.IsProjectOpen
+        ? System.Windows.Visibility.Visible
+        : System.Windows.Visibility.Collapsed;
 
-    public bool IsBluRaySelected => SelectedDiscTypeIndex == 2;
+    public string CurrentProjectName => _shell.CurrentProject?.Name ?? string.Empty;
 
-    public RelayCommand NewCommand { get; }
+    public IAsyncRelayCommand NewProjectCommand { get; }
 
-    public RelayCommand OpenCommand { get; }
+    public IAsyncRelayCommand OpenProjectCommand { get; }
 
-    public RelayCommand<QuickCreateTile> CreateTileCommand { get; }
+    public RelayCommand ContinueProjectCommand { get; }
 
-    public RelayCommand<RecentJobTile> OpenRecentCommand { get; }
+    public IAsyncRelayCommand<HomeTemplateTile> TemplateCommand { get; }
+
+    public IAsyncRelayCommand<RecentProjectTile> OpenRecentCommand { get; }
+
+    public RelayCommand<RecentProjectTile> RemoveRecentCommand { get; }
 
     public RelayCommand ClearRecentsCommand { get; }
 
-    /// <summary>Opens the editable disc-preset JSON; owned by the shell so the start page
-    /// and the disc pages share one implementation.</summary>
-    public RelayCommand OpenPresetsJsonCommand => _shell.OpenPresetsJsonCommand;
-
-    /// <summary>Called by the shell once a generation job has succeeded.</summary>
-    internal void RecordJob(string discFamily, string sourceImagePath, string outputPath)
+    /// <summary>Called by the shell whenever the home page becomes visible or the recent
+    /// list changes underneath it.</summary>
+    internal void RefreshRecentProjects()
     {
-        _recentStore.Record(new RecentJobEntry(
-            discFamily,
-            sourceImagePath,
-            outputPath,
-            DateTimeOffset.Now));
-        RefreshRecents();
+        Dictionary<RecentProjectEntry, RecentProjectTile> loaded = Recents.ToDictionary(tile => tile.Entry);
+        Recents.Clear();
+        foreach (RecentProjectEntry entry in _recentStore.Load())
+        {
+            Recents.Add(loaded.TryGetValue(entry, out RecentProjectTile? tile)
+                ? tile
+                : RecentProjectTile.Create(entry));
+        }
+
+        OnPropertyChanged(nameof(HasRecents));
+        OnPropertyChanged(nameof(IsProjectOpen));
+        OnPropertyChanged(nameof(IsProjectOpenVisibility));
+        OnPropertyChanged(nameof(CurrentProjectName));
+        ContinueProjectCommand.NotifyCanExecuteChanged();
+        ClearRecentsCommand.NotifyCanExecuteChanged();
     }
 
     private void NotifyCommands()
     {
-        NewCommand.NotifyCanExecuteChanged();
-        OpenCommand.NotifyCanExecuteChanged();
-        CreateTileCommand.NotifyCanExecuteChanged();
+        NewProjectCommand.NotifyCanExecuteChanged();
+        OpenProjectCommand.NotifyCanExecuteChanged();
+        TemplateCommand.NotifyCanExecuteChanged();
         OpenRecentCommand.NotifyCanExecuteChanged();
+        ContinueProjectCommand.NotifyCanExecuteChanged();
     }
 
-    /// "新建": the recommended preset of the selected family, then its parameter page.
-    private void NewJob()
+    private void Shell_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (IsBluRaySelected)
+        if (e.PropertyName is nameof(ShellViewModel.IsProjectOpen) or nameof(ShellViewModel.CurrentProject))
         {
-            _shell.BluRay.ApplyDiscPreset(BluRayDiscPreset.BuiltIn[0]);
-            _shell.NavigateTo(ShellViewModel.BluRayTabIndex);
-        }
-        else if (IsDvdSelected)
-        {
-            _state.ApplyDvdDiscPreset(_state.DvdPresets[0]);
-            _shell.NavigateTo(ShellViewModel.DvdTabIndex);
-        }
-        else
-        {
-            _state.ApplyCdDiscPreset(_state.CdPresets[0]);
-            _shell.NavigateTo(ShellViewModel.CdTabIndex);
+            OnPropertyChanged(nameof(IsProjectOpen));
+            OnPropertyChanged(nameof(IsProjectOpenVisibility));
+            OnPropertyChanged(nameof(CurrentProjectName));
         }
     }
 
-    /// "打开": pick a source picture for the selected family, then its parameter page.
-    /// The shell pickers own the output/preview path prefill, so they are reused as-is.
-    private void OpenImage()
+    /// <summary>Preset cards follow the start-screen idiom: the caption is the disc family
+    /// and the preset's parenthetical becomes the detail line.</summary>
+    private void BuildTemplates()
     {
-        int discType = SelectedDiscTypeIndex;
-        bool opened = discType switch
-        {
-            2 => _shell.BluRay.BrowseImage(),
-            1 => _shell.BrowseDvdImage(),
-            _ => _shell.BrowseCdImage(),
-        };
-        if (opened)
-        {
-            NavigateToFamily(discType);
-        }
-    }
-
-    private void CreateFromTile(QuickCreateTile? tile)
-    {
-        if (tile is null)
-        {
-            return;
-        }
-
-        if (tile.PresetId is null)
-        {
-            // Custom size: keep the family and parameters the user already has, open the page.
-            NavigateToFamily(SelectedDiscTypeIndex);
-            return;
-        }
-
-        SelectedDiscTypeIndex = tile.DiscTypeIndex;
-        if (tile.IsBluRay)
-        {
-            _shell.BluRay.ApplyDiscPreset(
-                BluRayDiscPreset.BuiltIn.FirstOrDefault(value => value.Id == tile.PresetId) ?? BluRayDiscPreset.BuiltIn[0]);
-        }
-        else if (tile.IsDvd)
-        {
-            _state.ApplyDvdDiscPreset(
-                _state.DvdPresets.FirstOrDefault(value => value.Id == tile.PresetId) ?? DvdDiscPreset.Manual);
-        }
-        else
-        {
-            _state.ApplyCdDiscPreset(
-                _state.CdPresets.FirstOrDefault(value => value.Id == tile.PresetId) ?? CdDiscPreset.Manual);
-        }
-
-        NavigateToFamily(tile.DiscTypeIndex);
-    }
-
-    private void OpenRecent(RecentJobTile? tile)
-    {
-        if (tile is null)
-        {
-            return;
-        }
-
-        RecentJobEntry entry = tile.Entry;
-        if (!File.Exists(entry.SourceImagePath))
-        {
-            _shell.ShowToast(
-                "无法打开",
-                $"源图片已不存在：\n{entry.SourceImagePath}",
-                ToastKind.Warning);
-            return;
-        }
-
-        SelectedDiscTypeIndex = entry.DiscTypeIndex;
-        if (entry.IsBluRay)
-        {
-            _shell.BluRay.ImagePath = entry.SourceImagePath;
-            _shell.BluRay.ImageOutputPath = entry.OutputPath;
-            _shell.LivePreview.ImportBluRayIso(entry.OutputPath);
-        }
-        else if (entry.IsDvd)
-        {
-            _state.DvdImagePath = entry.SourceImagePath;
-            _state.DvdOutputPath = entry.OutputPath;
-        }
-        else
-        {
-            _state.CdImagePath = entry.SourceImagePath;
-            _state.CdOutputPath = entry.OutputPath;
-        }
-
-        NavigateToFamily(entry.DiscTypeIndex);
-    }
-
-    private void ClearRecents()
-    {
-        _recentStore.Clear();
-        RefreshRecents();
-    }
-
-    private void NavigateToFamily(int discTypeIndex)
-        => _shell.NavigateTo(discTypeIndex switch
-        {
-            2 => ShellViewModel.BluRayTabIndex,
-            1 => ShellViewModel.DvdTabIndex,
-            _ => ShellViewModel.CdTabIndex,
-        });
-
-    private void RefreshRecents()
-    {
-        // Reuse the cards that are already on screen: decoding thumbnails is the only real
-        // cost here, and every refresh after a job would otherwise redo the whole list.
-        Dictionary<RecentJobEntry, RecentJobTile> loaded = Recents.ToDictionary(tile => tile.Entry);
-        Recents.Clear();
-        foreach (RecentJobEntry entry in _recentStore.Load())
-        {
-            Recents.Add(loaded.TryGetValue(entry, out RecentJobTile? tile)
-                ? tile
-                : RecentJobTile.Create(entry, ThumbnailDecodeWidth, ThumbnailMaxBytes));
-        }
-
-        OnPropertyChanged(nameof(HasRecents));
-        ClearRecentsCommand.NotifyCanExecuteChanged();
-    }
-
-    /// <summary>
-    /// Preset cards follow the reference start screens: the caption is the disc family the card
-    /// creates, and the preset's parenthetical becomes the detail behind the hover text ("A4" and
-    /// "4.7 GB，推荐" instead of one long label). Presets without a parenthetical fall back to
-    /// their geometry.
-    /// </summary>
-    private void BuildTiles()
-    {
-        Tiles.Clear();
+        Templates.Clear();
+        Templates.Add(HomeTemplateTile.Blank);
         foreach (DvdDiscPreset preset in _state.DvdPresets.Where(value => !value.IsCustom).Take(PresetsPerFamily))
         {
             (string title, string detail) = SplitPresetName(
                 preset.DisplayName,
                 $"{preset.TotalSectors:N0} 扇区 · {preset.InnerRadiusMm:0.#}–{preset.OuterRadiusMm:0.#} mm");
-            Tiles.Add(new QuickCreateTile(title, "DVD", detail, PackIconLucideKind.Disc, RecentJobEntry.DvdFamily, preset.Id));
+            Templates.Add(new HomeTemplateTile(
+                preset.Id, title, detail, PackIconLucideKind.Disc, OpticalDiscFamily.Dvd, IsBlank: false));
         }
 
         foreach (CdDiscPreset preset in _state.CdPresets.Where(value => !value.IsCustom).Take(PresetsPerFamily))
@@ -265,26 +143,85 @@ public partial class HomeViewModel : ObservableObject
             (string title, string detail) = SplitPresetName(
                 preset.DisplayName,
                 $"{preset.Sectors:N0} 扇区 · {preset.InnerRadiusMm:0.#}–{preset.OuterRadiusMm:0.#} mm");
-            Tiles.Add(new QuickCreateTile(title, "CD", detail, PackIconLucideKind.Disc3, RecentJobEntry.CdFamily, preset.Id));
+            Templates.Add(new HomeTemplateTile(
+                preset.Id, title, detail, PackIconLucideKind.Disc3,
+                OpticalDiscFamily.CompactDisc, IsBlank: false));
         }
 
-        // Home is constructed before the BD page, so build cards from the static catalog.
-        foreach (BluRayDiscPreset preset in BluRayDiscPreset.BuiltIn.Take(PresetsPerFamily))
+        foreach (BluRayDiscPreset preset in _state.BluRayPresets.Where(value => !value.IsCustom).Take(PresetsPerFamily))
         {
-            BluRayDiscParameters parameters = preset.CreateParameters();
-            Tiles.Add(new QuickCreateTile(preset.DisplayName, "BD",
-                $"{preset.TotalSectors:N0} 扇区 · {parameters.InnerRadiusMm:0.#}–{parameters.OuterRadiusMm:0.#} mm",
-                PackIconLucideKind.Disc, RecentJobEntry.BluRayFamily, preset.Id));
+            BluRayDiscParameters geometry = preset.CreateParameters();
+            (string title, string detail) = SplitPresetName(
+                preset.DisplayName,
+                $"{geometry.TotalSectors:N0} 扇区 · {geometry.InnerRadiusMm:0.#}–{geometry.OuterRadiusMm:0.#} mm");
+            Templates.Add(new HomeTemplateTile(
+                preset.Id, title, detail, PackIconLucideKind.DiscAlbum,
+                OpticalDiscFamily.BluRay, IsBlank: false));
+        }
+    }
+
+    private void State_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        // The user can add or drop presets in the JSON while the app runs and reload them
+        // from the preview page; the template row follows the same catalog.
+        if (e.PropertyName is nameof(DiscParametersState.CdPresets)
+            or nameof(DiscParametersState.DvdPresets)
+            or nameof(DiscParametersState.BluRayPresets))
+        {
+            BuildTemplates();
+        }
+    }
+
+    private async Task CreateFromTemplate(HomeTemplateTile? tile)
+    {
+        if (tile is null || tile.IsBlank)
+        {
+            // The blank card opens the dialog with its default family; the dialog is where
+            // family and parameters are chosen either way.
+            await _shell.NewProjectCommand.ExecuteAsync(null);
+            return;
         }
 
-        // No family of its own: the card opens whichever family the action bar has selected.
-        Tiles.Add(new QuickCreateTile(
-            "自定义大小",
-            "设置扇区与半径",
-            "打开当前选中的光盘类型",
-            PackIconLucideKind.Ruler,
-            DiscFamily: string.Empty,
-            PresetId: null));
+        await _shell.RequestNewProjectFromTemplateAsync(tile.Family, tile.PresetId);
+    }
+
+    private async Task OpenRecent(RecentProjectTile? tile)
+    {
+        if (tile is null)
+        {
+            return;
+        }
+
+        RecentProjectEntry entry = tile.Entry;
+        if (!File.Exists(entry.ProjectPath))
+        {
+            _shell.ShowToast(
+                "无法打开工程",
+                $"工程文件已移动或删除：\n{entry.ProjectPath}",
+                ToastKind.Warning);
+            return;
+        }
+
+        await _shell.OpenProjectFromAsync(entry.ProjectPath);
+    }
+
+    /// <summary>Right-click removal: drops one entry from the recent list without touching
+    /// the project file itself.</summary>
+    private void RemoveRecent(RecentProjectTile? tile)
+    {
+        if (tile is null)
+        {
+            return;
+        }
+
+        _recentStore.Remove(tile.Entry.ProjectPath);
+        RefreshRecentProjects();
+    }
+
+    private void ClearRecents()
+    {
+        _recentStore.Clear();
+        RefreshRecentProjects();
     }
 
     private static (string Title, string Spec) SplitPresetName(string displayName, string fallbackSpec)
@@ -300,25 +237,5 @@ public partial class HomeViewModel : ObservableObject
         }
 
         return (displayName, fallbackSpec);
-    }
-
-    private void State_PropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        // The user can add or drop presets in the JSON while the app runs and reload them
-        // from the disc pages; the quick-create row follows the same catalog.
-        if (e.PropertyName is nameof(DiscParametersState.CdPresets) or nameof(DiscParametersState.DvdPresets))
-        {
-            BuildTiles();
-        }
-    }
-
-    private void LivePreview_PropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName == nameof(LivePreviewViewModel.SelectedDiscTypeIndex))
-        {
-            OnPropertyChanged(nameof(SelectedDiscTypeIndex));
-            OnPropertyChanged(nameof(IsDvdSelected));
-            OnPropertyChanged(nameof(IsBluRaySelected));
-        }
     }
 }

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 4,
   "fallbackLanguage": "zh-CN",
   "cdPresets": [
     {
@@ -83,6 +83,26 @@
       "channelBitLengthNm": 133.3,
       "displayNameResourceKey": "DiscPreset_Dvd80Mm_DisplayName",
       "descriptionResourceKey": "DiscPreset_Dvd80Mm_Description"
+    }
+  ],
+  "bluRayPresets": [
+    {
+      "id": "bd-r-sl-25gb",
+      "displayName": "BD-R 单层 25 GB（推荐）",
+      "description": "标准单层 BD-R 数据区：24–58 mm，共 12,219,392 个扇区。",
+      "totalSectors": 12219392,
+      "innerRadiusMm": 24.0,
+      "outerRadiusMm": 58.0,
+      "invertMapping": false
+    },
+    {
+      "id": "bd-r-ritek-10x",
+      "displayName": "铼德 BD-R 10x（实测）",
+      "description": "实测参数：内半径 23.988221 mm、外半径 58.023235 mm、12,219,392 扇区。",
+      "totalSectors": 12219392,
+      "innerRadiusMm": 23.98822105616562,
+      "outerRadiusMm": 58.023234731100764,
+      "invertMapping": false
     }
   ]
 }

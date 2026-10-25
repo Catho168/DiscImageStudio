@@ -36,6 +36,8 @@ internal static class CdBinaryTests
     {
         foreach ((byte encoded, byte luminance) in new (byte, byte)[] { (0x10, 85), (0x63, 170) })
         {
+            Require(CdToneMapping.DisplayGray(encoded) == luminance,
+                $"display mapping for 0x{encoded:X2} is {CdToneMapping.DisplayGray(encoded)}");
             string track = Path.Combine(directory, $"legacy-{encoded:X2}.raw");
             string preview = Path.Combine(directory, $"legacy-{encoded:X2}.png");
             File.WriteAllBytes(track, Enumerable.Repeat(encoded, checked((int)parameters.TotalBytes)).ToArray());

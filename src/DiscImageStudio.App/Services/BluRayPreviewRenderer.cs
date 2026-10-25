@@ -4,6 +4,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using DiscImageStudio.BluRay;
 using DiscImageStudio.BluRay.Encoding;
+using DiscImageStudio.Core;
 
 namespace DiscImageStudio.Services;
 
@@ -19,10 +20,40 @@ public static class BluRayPreviewRenderer
     private static readonly Lazy<PayloadCell[]> PayloadCells = new(CreatePayloadCells);
     private static readonly Lazy<byte[][]> ScramblerBasis = new(CreateScramblerBasis);
 
+    /// <summary>Projects the source picture through one disc geometry and the current tone
+    /// and polarity: the design-side preview. The tone profile is already applied to the
+    /// raster; the only remaining step is the 128 threshold and 3T/6T swap.</summary>
+    public static void RenderProjection(string sourcePath, string outputPath,
+        BluRayDiscParameters disc, int outputSize, bool invert, ToneProfile? tone,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(disc);
+        disc.Validate();
+        Validate(disc, outputSize);
+        cancellationToken.ThrowIfCancellationRequested();
+        BluRayGray8Raster source = BluRayImageLoader.Load(sourcePath, tone, cancellationToken);
+        BluRayTrackGeometry geometry = new(disc);
+        PixelProjection projection = new(disc, outputSize);
+        byte[] pixels = new byte[checked(outputSize * outputSize * 4)];
+        for (int y = 0; y < outputSize; y++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            for (int x = 0; x < outputSize; x++)
+            {
+                if (!projection.TryGetSector(x, y, out double sector)) continue;
+                BluRayTrackPoint point = geometry.AtSector(sector);
+                bool dark = source.SampleDiscPoint(point.Xmm, point.Ymm, disc.OuterRadiusMm) < 128;
+                SetPixel(pixels, (y * outputSize) + x, dark != invert ? (byte)0 : (byte)255);
+            }
+        }
+
+        WritePng(outputPath, outputSize, pixels, cancellationToken);
+    }
+
     public static void RenderCalibration(string sourcePath, string outputPath,
         BluRayDiscParameters generated, BluRayDiscParameters actual,
         uint drawingStartSector, uint drawingEndSectorExclusive, int outputSize,
-        bool invert, CancellationToken cancellationToken = default)
+        bool invert, CancellationToken cancellationToken = default, ToneProfile? tone = null)
     {
         ArgumentNullException.ThrowIfNull(generated);
         generated.Validate();
@@ -30,7 +61,7 @@ public static class BluRayPreviewRenderer
         if (drawingStartSector >= drawingEndSectorExclusive || drawingEndSectorExclusive > generated.TotalSectors)
             throw new ArgumentOutOfRangeException(nameof(drawingEndSectorExclusive), "The drawing range must lie inside the generated disc.");
         cancellationToken.ThrowIfCancellationRequested();
-        BluRayGray8Raster source = BluRayImageLoader.Load(sourcePath, cancellationToken);
+        BluRayGray8Raster source = BluRayImageLoader.Load(sourcePath, tone, cancellationToken);
         BluRayTrackGeometry sourceGeometry = new(generated);
         PixelProjection projection = new(actual, outputSize);
         byte[] pixels = new byte[checked(outputSize * outputSize * 4)];

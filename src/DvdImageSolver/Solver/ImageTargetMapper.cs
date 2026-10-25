@@ -15,7 +15,8 @@ public sealed record ImageMappingOptions(
     int SampleEveryChannelBits = 1,
     double PitchLinear = 0,
     double PitchQuadratic = 0,
-    double PitchCubic = 0);
+    double PitchCubic = 0,
+    ToneProfile? Tone = null);
 
 public sealed record ImageMappingSummary(
     string? SourceImage,
@@ -39,7 +40,8 @@ public sealed record ImageMappingSummary(
     double BlockEndTrackTurns,
     double PitchLinear = 0,
     double PitchQuadratic = 0,
-    double PitchCubic = 0)
+    double PitchCubic = 0,
+    ToneProfile? Tone = null)
 {
     public double PitchLinearMicrometres => TrackPitchMicrometres * PitchLinear;
     public double PitchQuadraticMicrometres => TrackPitchMicrometres * PitchQuadratic;
@@ -102,9 +104,13 @@ internal static class ImageTargetMapper
             PixelSample sample = SampleAt(bitIndex + 0.5);
             if (sample.Alpha >= options.AlphaThreshold)
             {
-                targets[bitIndex] = sample.Luminance < options.LuminanceThreshold
-                    ? (sbyte)0
-                    : (sbyte)1;
+                targets[bitIndex] = DvdToneMapping.UseWhite(
+                    sample.Luminance,
+                    options.LuminanceThreshold,
+                    options.Tone,
+                    checked((long)(firstGlobalBit + (ulong)bitIndex)))
+                    ? (sbyte)1
+                    : (sbyte)0;
             }
         }
 
@@ -118,13 +124,18 @@ internal static class ImageTargetMapper
             PixelSample sample = SampleAt(wordCenter);
             if (sample.Alpha >= options.AlphaThreshold)
             {
-                channelWordTargets[wordIndex] = sample.Luminance < options.LuminanceThreshold
-                    ? (sbyte)0
-                    : (sbyte)16;
+                bool white = DvdToneMapping.UseWhite(
+                    sample.Luminance,
+                    options.LuminanceThreshold,
+                    options.Tone,
+                    checked((long)(firstGlobalBit + (ulong)(wordIndex * 16 + 8))));
+                channelWordTargets[wordIndex] = white ? (sbyte)16 : (sbyte)0;
                 PixelSample grayscaleSample = image.HasBinaryGrayscalePalette
                     ? SampleAt(wordCenter, preserveDiscreteGrayscale: true)
                     : sample;
-                grayscaleTargets[wordIndex] = (sbyte)BinaryGrayscale.GetLevelIndex(grayscaleSample.Luminance);
+                grayscaleTargets[wordIndex] = options.Tone is { IsLegacyBinary: false }
+                    ? (sbyte)(white ? 1 : 0)
+                    : (sbyte)BinaryGrayscale.GetLevelIndex(grayscaleSample.Luminance);
             }
         }
 
@@ -154,7 +165,8 @@ internal static class ImageTargetMapper
             spiral.AngleAtRadius(blockEndRadius) / (2 * Math.PI),
             options.PitchLinear,
             options.PitchQuadratic,
-            options.PitchCubic);
+            options.PitchCubic,
+            options.Tone);
         return ImageConstraint.Create(targets, summary, channelWordTargets, grayscaleTargets);
     }
 

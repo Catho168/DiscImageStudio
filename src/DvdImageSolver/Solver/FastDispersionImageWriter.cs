@@ -311,10 +311,12 @@ public static class FastDispersionImageWriter
             {
                 // Payload slots are not uniformly spaced across headers/SYNC/ECC.
                 // Use the original physical centre of every lane, including group boundaries.
+                long toneIndexBase = checked((((long)lba + sector) * DvdEccBlockEncoder.PayloadBytesPerSector));
                 for (int byteIndex = 0; byteIndex < sectorPayload.Length; byteIndex += 4)
                 {
                     sampler.SampleFour(blockFirstGlobalBit,
-                        PayloadChannelCenters.AsSpan(payloadOffset + byteIndex, 4), samples);
+                        PayloadChannelCenters.AsSpan(payloadOffset + byteIndex, 4), samples,
+                        toneIndexBase + byteIndex);
                     for (int lane = 0; lane < 4; lane++)
                     {
                         PayloadTarget sample = samples[lane];
@@ -329,8 +331,10 @@ public static class FastDispersionImageWriter
             for (int byteIndex = 0; byteIndex < sectorPayload.Length; byteIndex++)
             {
                 int payloadIndex = payloadOffset + byteIndex;
+                long toneIndex = checked((((long)lba + sector) * DvdEccBlockEncoder.PayloadBytesPerSector) + byteIndex);
                 PayloadTarget sample = sampler.SampleGlobalChannelBit(
-                    blockFirstGlobalBit + checked((ulong)PayloadChannelCenters[payloadIndex]));
+                    blockFirstGlobalBit + checked((ulong)PayloadChannelCenters[payloadIndex]),
+                    toneIndex);
                 if (sample.Alpha < options.ImageMapping.AlphaThreshold)
                 {
                     continue;
@@ -463,7 +467,7 @@ public static class FastDispersionImageWriter
             _direction = options.Clockwise ? -1.0 : 1.0;
         }
 
-        internal PayloadTarget SampleGlobalChannelBit(ulong globalChannelBit)
+        internal PayloadTarget SampleGlobalChannelBit(ulong globalChannelBit, long toneIndex)
         {
             double arcLengthMm = (globalChannelBit + 0.0) * _bitLengthMm;
             // The shared geometry keeps the constant-pitch Newton shortcut and
@@ -484,10 +488,24 @@ public static class FastDispersionImageWriter
             PixelSample sample = _sampleGray is not null
                 ? new PixelSample(_sampleGray(xMm, -yMm), 255)
                 : _image!.SampleDisc(xMm, yMm, _options.OuterRadiusMm, preserveDiscreteGrayscale: true);
-            return new PayloadTarget(DvdGrayscalePalette.GetScrambledByte(sample.Luminance), sample.Alpha);
+            return new PayloadTarget(ScrambledForLuminance(sample.Luminance, toneIndex), sample.Alpha);
         }
 
-        internal void SampleFour(ulong blockFirstGlobalBit, ReadOnlySpan<int> centres, Span<PayloadTarget> samples)
+        private byte ScrambledForLuminance(byte luminance, long toneIndex)
+        {
+            if (_options.Tone is { IsLegacyBinary: false } tone)
+            {
+                return DvdToneMapping.UseWhite(
+                    luminance, _options.LuminanceThreshold, tone, toneIndex)
+                    ? DvdGrayscalePalette.WhiteScrambledByte
+                    : DvdGrayscalePalette.BlackScrambledByte;
+            }
+
+            return DvdGrayscalePalette.GetScrambledByte(luminance);
+        }
+
+        internal void SampleFour(ulong blockFirstGlobalBit, ReadOnlySpan<int> centres,
+            Span<PayloadTarget> samples, long toneIndexBase)
         {
             Vector256<double> bits = Vector256.Create(
                 (double)(blockFirstGlobalBit + (ulong)centres[0]),
@@ -509,7 +527,8 @@ public static class FastDispersionImageWriter
                     double radiusMm = radius.GetElement(lane);
                     PixelSample sample = _image.SampleDisc(radiusMm * Math.Cos(polarAngle),
                         radiusMm * Math.Sin(polarAngle), _options.OuterRadiusMm, preserveDiscreteGrayscale: true);
-                    samples[lane] = new PayloadTarget(DvdGrayscalePalette.GetScrambledByte(sample.Luminance), sample.Alpha);
+                    samples[lane] = new PayloadTarget(
+                        ScrambledForLuminance(sample.Luminance, toneIndexBase + lane), sample.Alpha);
                 }
                 return;
             }
@@ -518,7 +537,8 @@ public static class FastDispersionImageWriter
             if (!Vector256.LessThanOrEqualAll(Vector256.Abs(angle), Vector256.Create(1_000_000d)))
             {
                 for (int lane = 0; lane < 4; lane++)
-                    samples[lane] = SampleGlobalChannelBit(blockFirstGlobalBit + (ulong)centres[lane]);
+                    samples[lane] = SampleGlobalChannelBit(
+                        blockFirstGlobalBit + (ulong)centres[lane], toneIndexBase + lane);
                 return;
             }
             (Vector256<double> sin, Vector256<double> cos) = Vector256.SinCos(angle);
@@ -528,9 +548,11 @@ public static class FastDispersionImageWriter
             {
                 if (_image.TrySampleBinaryDisc(x.GetElement(lane), y.GetElement(lane),
                     _options.OuterRadiusMm, out PixelSample sample))
-                    samples[lane] = new PayloadTarget(DvdGrayscalePalette.GetScrambledByte(sample.Luminance), sample.Alpha);
+                    samples[lane] = new PayloadTarget(
+                        ScrambledForLuminance(sample.Luminance, toneIndexBase + lane), sample.Alpha);
                 else
-                    samples[lane] = SampleGlobalChannelBit(blockFirstGlobalBit + (ulong)centres[lane]);
+                    samples[lane] = SampleGlobalChannelBit(
+                        blockFirstGlobalBit + (ulong)centres[lane], toneIndexBase + lane);
             }
         }
     }

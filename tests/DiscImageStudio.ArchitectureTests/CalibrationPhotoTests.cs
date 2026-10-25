@@ -121,8 +121,8 @@ internal static class CalibrationPhotoTests
                 "rectification bilinearly samples the projective source coordinate with the preview's Y-down pixel-centre convention");
         }
         CalibrationPhotoContours contours = CalibrationPhotoService.SuggestContours(source);
-        Require(contours.Outer.Count == 8 && contours.Hole.Count == 8 && contours.Message.Contains("尚未", StringComparison.Ordinal),
-            "initial boundary handles are clearly disclosed as unconfirmed suggestions");
+        Require(contours.Outer.Count == 8 && contours.Hole.Count == 8,
+            "initial boundary handles provide both editable contours");
         Require(contours.Outer.Concat(contours.Hole).All(p => p.X >= 0 && p.Y >= 0
                 && p.X < source.PixelWidth && p.Y < source.PixelHeight), "initial handles stay inside the source image");
         string directory = Path.Combine(Path.GetTempPath(), $"disc-calibration-photo-{Guid.NewGuid():N}");

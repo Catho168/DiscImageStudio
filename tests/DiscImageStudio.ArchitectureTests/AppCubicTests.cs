@@ -17,7 +17,7 @@ internal static class AppCubicTests
         Require(state.DvdPitchLinear == "0.12" && state.DvdPitchQuadratic == "-0.08"
             && state.DvdPitchCubic == "0.04", "preset applies the three coefficients");
         Require(state.DvdPitchSummary.Contains("x²") && state.DvdPitchSummary.Contains("x³ μm")
-            && state.DvdPitchSummary.Contains("a₀"), "generation displays the full dimensional polynomial and constrained constant");
+            && !state.DvdPitchSummary.Contains("a₀"), "generation displays the dimensional polynomial without the constant footnote");
         List<string?> changed = [];
         state.PropertyChanged += (_, args) => changed.Add(args.PropertyName);
         state.DvdPitchCubic = "0.06";
@@ -40,7 +40,8 @@ internal static class AppCubicTests
             DvdDiscPresetDefinition definition = new(preset.Id, preset.DisplayName, preset.Description,
                 preset.TotalSectors, preset.InnerRadiusMm, preset.OuterRadiusMm,
                 PitchLinear: preset.PitchLinear, PitchQuadratic: preset.PitchQuadratic, PitchCubic: preset.PitchCubic);
-            DiscPresetJsonStore.Save(path, new(DiscPresetJsonStore.CurrentSchemaVersion, [], [definition]));
+            DiscPresetJsonStore.Save(path, new(
+                DiscPresetJsonStore.CurrentSchemaVersion, [], [definition], BluRayPresets: []));
             Require(DiscPresetJsonStore.Load(path).DvdPresets.Single() == definition,
                 "preset JSON round-trips all cubic coefficients");
             string legacy = File.ReadAllText(path);
@@ -67,7 +68,7 @@ internal static class AppCubicTests
             foreach (string file in Directory.EnumerateFiles(directory)) File.Delete(file);
             Directory.Delete(directory);
         }
-        Console.WriteLine("app-cubic: passed (presets, UI invalidation, complete polynomial, calibration snapshots)");
+        Console.WriteLine("app-cubic: passed (presets, UI invalidation, dimensional polynomial, calibration snapshots)");
     }
 
     private static void Require(bool condition, string message)

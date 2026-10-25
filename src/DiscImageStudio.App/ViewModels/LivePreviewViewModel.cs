@@ -2,7 +2,9 @@ using System.IO;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using DiscImageStudio.BluRay;
 using DiscImageStudio.Cd;
+using DiscImageStudio.Core;
 using DiscImageStudio.Dvd;
 using DiscImageStudio.Imaging;
 using DiscImageStudio.Services;
@@ -18,7 +20,7 @@ namespace DiscImageStudio.ViewModels;
 ///   Rendering never touches the multi-hundred-megabyte artifact, which is what makes parameter
 ///   iteration cheap; the price is that the picture is a projection of the source, not a
 ///   read-back of the bytes that were actually written.
-/// - Read-back simulation: the input is the generated burn artifact (CD track, DVD or BD ISO,
+/// - Read-back simulation: the input is the generated burn artifact (CD track or DVD ISO,
 ///   matching the cdimage calibration model), so the picture shows what the disc really
 ///   carries. One parameter set describes the measured disc geometry.
 public partial class LivePreviewViewModel : ObservableObject
@@ -29,6 +31,27 @@ public partial class LivePreviewViewModel : ObservableObject
 
     /// <summary>Exposed for the view's two-way bindings to the shared parameters.</summary>
     public DiscParametersState State => _state;
+
+    /// <summary>The parameter panel. It is a lens over both disc families, so the family switch
+    /// re-points it instead of swapping in a second copy of the panel.</summary>
+    public PreviewInspectorViewModel Inspector { get; }
+
+    /// <summary>Workspace navigation for the page header's "下一步" action.</summary>
+    public IRelayCommand<Workspace> NavigateCommand => _shell.NavigateCommand;
+
+    /// <summary>Family chip in the page header.</summary>
+    public string DiscFamilyLabel => SelectedFamily switch
+    {
+        OpticalDiscFamily.Dvd => "DVD",
+        OpticalDiscFamily.BluRay => "BD",
+        _ => "CD",
+    };
+
+    /// <summary>Opens the project settings dialog, which owns the generation geometry. The
+    /// preview shows that geometry read-only and links here instead of editing it a second
+    /// time.</summary>
+    public IAsyncRelayCommand EditGeometryCommand => _shell.EditProjectCommand;
+
     private CancellationTokenSource? _livePreviewCancellation;
     private bool _livePreviewRefreshRunning;
     private bool _livePreviewRefreshPending;
@@ -43,20 +66,18 @@ public partial class LivePreviewViewModel : ObservableObject
     private bool _downloadablePreview;
     private string? _calibratedTrackPath;
     private string? _calibratedIsoPath;
+    private string? _calibratedBluRayPath;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsCdSelected), nameof(IsDvdSelected), nameof(IsBluRaySelected))]
-    private int _selectedDiscTypeIndex;
+    [NotifyPropertyChangedFor(nameof(DiscFamilyLabel), nameof(IsDvdSelected), nameof(IsCdSelected),
+        nameof(IsBluRaySelected))]
+    private OpticalDiscFamily _selectedFamily = OpticalDiscFamily.CompactDisc;
 
-    public bool IsCdSelected => SelectedDiscTypeIndex == 0;
+    public bool IsCdSelected => SelectedFamily == OpticalDiscFamily.CompactDisc;
 
-    public bool IsDvdSelected
-    {
-        get => SelectedDiscTypeIndex == 1;
-        set => SelectedDiscTypeIndex = value ? 1 : 0;
-    }
+    public bool IsDvdSelected => SelectedFamily == OpticalDiscFamily.Dvd;
 
-    public bool IsBluRaySelected => SelectedDiscTypeIndex == 2;
+    public bool IsBluRaySelected => SelectedFamily == OpticalDiscFamily.BluRay;
 
     /// <summary>False renders the generated artifact (read-back simulation), true renders the
     /// source picture through the generated/measured parameter pair.</summary>
@@ -75,10 +96,7 @@ public partial class LivePreviewViewModel : ObservableObject
     }
 
     [ObservableProperty]
-    private string _headingText = "实时预览";
-
-    [ObservableProperty]
-    private string _resultPreviewTitle = "实时预览 - CD";
+    private string _resultPreviewTitle = "预览 - CD";
 
     [ObservableProperty]
     private string _resultPreviewPath = string.Empty;
@@ -99,6 +117,7 @@ public partial class LivePreviewViewModel : ObservableObject
     {
         _shell = shell;
         _state = state;
+        Inspector = new PreviewInspectorViewModel(shell, state);
         _state.PropertyChanged += State_PropertyChanged;
         _livePreviewTimer = new DispatcherTimer
         {
@@ -120,22 +139,10 @@ public partial class LivePreviewViewModel : ObservableObject
     /// <summary>Writes the current preview next to the picture it was derived from.</summary>
     public RelayCommand DownloadPreviewCommand { get; }
 
-    /// <summary>Shared browsing commands, identical to the CD/DVD page pickers.</summary>
-    public RelayCommand BrowseCdImageCommand => _shell.BrowseCdImageCommand;
-
-    public RelayCommand BrowseDvdImageCommand => _shell.BrowseDvdImageCommand;
-
-    /// <summary>Picks the generated artifact to read back, matching the CD/DVD page pickers.</summary>
+    /// <summary>Picks the generated artifact to read back, matching the export page's pickers.</summary>
     public RelayCommand BrowseCdTrackCommand => _shell.BrowseCdTrackCommand;
 
     public RelayCommand BrowseDvdIsoCommand => _shell.BrowseDvdIsoCommand;
-
-    /// <summary>Shared with the disc-production pages: the preset catalog actions. The
-    /// calibration panels edit the same generation geometry a preset writes, so the catalog
-    /// has to be reachable without leaving the page.</summary>
-    public RelayCommand OpenPresetsJsonCommand => _shell.OpenPresetsJsonCommand;
-
-    public RelayCommand ReloadPresetsCommand => _shell.ReloadPresetsCommand;
 
     /// <summary>
     /// Switching to another artifact adopts the geometry it was generated with, so an imported
@@ -147,19 +154,81 @@ public partial class LivePreviewViewModel : ObservableObject
         {
             AdoptTrackMetadata(_state.CdTrackPath.Trim());
             DownloadPreviewCommand.NotifyCanExecuteChanged();
+            RaiseEmptyStateAction();
         }
         else if (e.PropertyName == nameof(DiscParametersState.DvdIsoPath))
         {
             AdoptIsoMetadata(_state.DvdIsoPath.Trim());
             DownloadPreviewCommand.NotifyCanExecuteChanged();
+            RaiseEmptyStateAction();
+        }
+        else if (e.PropertyName == nameof(DiscParametersState.BdIsoPath))
+        {
+            AdoptBluRayMetadata(_state.BdIsoPath.Trim());
+            DownloadPreviewCommand.NotifyCanExecuteChanged();
+            RaiseEmptyStateAction();
         }
         else if (e.PropertyName is nameof(DiscParametersState.CdImagePath)
-            or nameof(DiscParametersState.DvdImagePath))
+            or nameof(DiscParametersState.DvdImagePath)
+            or nameof(DiscParametersState.BdImagePath))
         {
             // The calibration preview exports next to its source picture, so editing that path
             // can change whether the export has a destination at all.
             DownloadPreviewCommand.NotifyCanExecuteChanged();
+            RaiseEmptyStateAction();
         }
+    }
+
+    // ---- Monitor empty state: the placeholder plus the one jump that fills the gap ----
+
+    /// <summary>The workspace that can produce what the empty monitor is waiting for, or null
+    /// once there is nothing to wait for (a result is showing, or the input exists but the
+    /// picture is held back by something a jump cannot fix, like an invalid parameter).</summary>
+    public Workspace? EmptyStateActionWorkspace
+    {
+        get
+        {
+            if (HasResultImage)
+            {
+                return null;
+            }
+
+            if (IsCalibrationPreview)
+            {
+                string imagePath = SelectedFamily switch
+                {
+                    OpticalDiscFamily.Dvd => _state.DvdImagePath,
+                    OpticalDiscFamily.BluRay => _state.BdImagePath,
+                    _ => _state.CdImagePath,
+                };
+                imagePath = imagePath.Trim();
+                return imagePath.Length == 0 || !File.Exists(imagePath) ? Workspace.Design : null;
+            }
+
+            string artifactPath = SelectedFamily switch
+            {
+                OpticalDiscFamily.Dvd => _state.DvdIsoPath,
+                OpticalDiscFamily.BluRay => _state.BdIsoPath,
+                _ => _state.CdTrackPath,
+            };
+            artifactPath = artifactPath.Trim();
+            return artifactPath.Length == 0 || !File.Exists(artifactPath) ? Workspace.Export : null;
+        }
+    }
+
+    /// <summary>Empty label when no jump applies, which keeps the empty-state card's action
+    /// hidden instead of navigating to a null workspace.</summary>
+    public string EmptyStateActionLabel => EmptyStateActionWorkspace switch
+    {
+        Workspace.Design => "前往设计",
+        Workspace.Export => "前往导出",
+        _ => string.Empty,
+    };
+
+    private void RaiseEmptyStateAction()
+    {
+        OnPropertyChanged(nameof(EmptyStateActionWorkspace));
+        OnPropertyChanged(nameof(EmptyStateActionLabel));
     }
 
     private void AdoptTrackMetadata(string trackPath)
@@ -181,10 +250,19 @@ public partial class LivePreviewViewModel : ObservableObject
         string sectors = metadata.Sectors.ToString(System.Globalization.CultureInfo.InvariantCulture);
         string innerRadius = FormatNumber(metadata.InnerRadiusMm);
         string outerRadius = FormatNumber(metadata.OuterRadiusMm);
+        ToneProfile tone = new ToneProfile(
+            metadata.ToneDitherStrength,
+            metadata.ToneLevels,
+            metadata.ToneBrightness,
+            metadata.ToneSrgbLinearization).Normalized();
         if (state.CdSectors.Trim() == sectors
             && state.CdInnerRadius.Trim() == innerRadius
             && state.CdOuterRadius.Trim() == outerRadius
-            && state.CdInterleave == metadata.Interleaved)
+            && state.CdInterleave == metadata.Interleaved
+            && state.ToneDitherStrength == tone.DitherStrength
+            && state.ToneLevels == tone.Levels
+            && state.ToneBrightness == tone.Brightness
+            && state.ToneSrgbLinearization == tone.SrgbLinearization)
         {
             return;
         }
@@ -193,9 +271,14 @@ public partial class LivePreviewViewModel : ObservableObject
         state.CdInnerRadius = innerRadius;
         state.CdOuterRadius = outerRadius;
         state.CdInterleave = metadata.Interleaved;
+        state.ToneDitherStrength = tone.DitherStrength;
+        state.ToneLevels = tone.Levels;
+        state.ToneBrightness = tone.Brightness;
+        state.ToneSrgbLinearization = tone.SrgbLinearization;
         _shell.AppendLog(
             $"[{DateTime.Now:HH:mm:ss}] 已按 {System.IO.Path.GetFileName(trackPath)} 的生成参数载入标定几何："
-            + $"r0={innerRadius} mm, r1={outerRadius} mm, {sectors} 扇区，交织={metadata.Interleaved}。\n");
+            + $"r0={innerRadius} mm, r1={outerRadius} mm, {sectors} 扇区，交织={metadata.Interleaved}，"
+            + $"影调={tone.Levels} 级/{tone.DitherStrength * 100:0}% 抖动。\n");
     }
 
     private void AdoptIsoMetadata(string isoPath)
@@ -239,11 +322,58 @@ public partial class LivePreviewViewModel : ObservableObject
             + $"r0={innerRadius} mm, r1={outerRadius} mm, {totalSectors} 总扇区；{state.DvdPitchSummary}\n");
     }
 
-    private static string FormatNumber(double value)
-        => ParameterNumberText.ForInput(value);
+    /// <summary>The BD sidecar restores the geometry, drawing range and mapping polarity used
+    /// to produce the ISO. Without it the current project geometry stays in place and the
+    /// projection still works, but the file may have been made with different parameters.</summary>
+    private void AdoptBluRayMetadata(string isoPath)
+    {
+        if (isoPath.Length == 0
+            || string.Equals(isoPath, _calibratedBluRayPath, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
 
-    /// <summary>Disc-type radio semantics: clear the stale canvas and reschedule.</summary>
-    partial void OnSelectedDiscTypeIndexChanged(int value)
+        _calibratedBluRayPath = isoPath;
+        BluRayIsoMetadata? metadata = BluRayIsoMetadata.TryLoad(isoPath);
+        if (metadata is null)
+        {
+            _shell.AppendLog(
+                $"[{DateTime.Now:HH:mm:ss}] {System.IO.Path.GetFileName(isoPath)} 没有可用的蓝光 sidecar，"
+                + "预览继续使用当前工程几何。\n");
+            return;
+        }
+
+        DiscParametersState state = _state;
+        string sectors = metadata.TotalSectors.ToString(
+            System.Globalization.CultureInfo.InvariantCulture);
+        string innerRadius = FormatNumber(metadata.InnerRadiusMm);
+        string outerRadius = FormatNumber(metadata.OuterRadiusMm);
+        state.BdTotalSectors = sectors;
+        state.BdInnerRadius = innerRadius;
+        state.BdOuterRadius = outerRadius;
+        state.BdActualInnerRadius = innerRadius;
+        state.BdActualOuterRadius = outerRadius;
+        state.BdInvertMapping = metadata.InvertMapping;
+        state.BdDrawingStartSector = metadata.DrawingStartSector.ToString(
+            System.Globalization.CultureInfo.InvariantCulture);
+        state.BdDrawingEndSectorExclusive = metadata.DrawingEndSectorExclusive.ToString(
+            System.Globalization.CultureInfo.InvariantCulture);
+        state.ToneDitherStrength = metadata.Tone.DitherStrength;
+        state.ToneLevels = ToneProfile.TwoLevels;
+        state.ToneBrightness = metadata.Tone.Brightness;
+        state.ToneSrgbLinearization = metadata.Tone.SrgbLinearization;
+        _shell.AppendLog(
+            $"[{DateTime.Now:HH:mm:ss}] 已按 {System.IO.Path.GetFileName(isoPath)} 的 sidecar 载入几何："
+            + $"r0={innerRadius} mm, r1={outerRadius} mm, {sectors} 扇区，"
+            + $"绘图 {metadata.DrawingStartSector}..{metadata.DrawingEndSectorExclusive - 1}，"
+            + $"极性={(metadata.InvertMapping ? "反转 3T/6T" : "标准 3T/6T")}。\n");
+    }
+
+    private static string FormatNumber(double value)
+        => value.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>Disc-type selection: clear the stale canvas and reschedule.</summary>
+    partial void OnSelectedFamilyChanged(OpticalDiscFamily value)
     {
         if (_suppressDiscTypeAutoUpdate)
         {
@@ -255,15 +385,12 @@ public partial class LivePreviewViewModel : ObservableObject
     }
 
     /// <summary>Configures the disc type without clearing the canvas (snapshot entry point).</summary>
-    internal void SetDiscType(bool dvd, bool clearResult)
-        => SetDiscType(dvd ? 1 : 0, clearResult);
-
-    internal void SetDiscType(int discTypeIndex, bool clearResult)
+    internal void SetDiscType(OpticalDiscFamily family, bool clearResult)
     {
         _suppressDiscTypeAutoUpdate = true;
         try
         {
-            SelectedDiscTypeIndex = discTypeIndex;
+            SelectedFamily = family;
         }
         finally
         {
@@ -272,6 +399,9 @@ public partial class LivePreviewViewModel : ObservableObject
 
         UpdateMode(clearResult);
     }
+
+    internal void SetDiscType(bool dvd, bool clearResult)
+        => SetDiscType(dvd ? OpticalDiscFamily.Dvd : OpticalDiscFamily.CompactDisc, clearResult);
 
     /// <summary>Preview-mode semantics: the input changes, so the stale canvas goes and the
     /// new pipeline runs.</summary>
@@ -310,13 +440,22 @@ public partial class LivePreviewViewModel : ObservableObject
 
     internal void UpdateMode(bool clearResult)
     {
-        string discName = IsBluRaySelected ? "BD" : IsDvdSelected ? "DVD" : "CD";
+        // The inspector is a lens over both families; every mode change routes through here, so
+        // this is where it is re-pointed.
+        Inspector.SetFamily(SelectedFamily);
+        string discName = DiscFamilyLabel;
         string inputName = IsCalibrationPreview
             ? $"{discName} 源图片"
-            : IsBluRaySelected ? "生成的 BD ISO" : IsDvdSelected ? "生成的 DVD ISO" : "生成的 CD 音轨";
-        ResultPreviewTitle = $"实时预览 - {discName}";
+            : SelectedFamily switch
+            {
+                OpticalDiscFamily.Dvd => "生成的 DVD ISO",
+                OpticalDiscFamily.BluRay => "生成的蓝光 ISO",
+                _ => "生成的 CD 音轨",
+            };
+        ResultPreviewTitle = $"预览 - {discName}";
         ResultPreviewPlaceholderText = $"请先选择 {inputName}。";
         StatusText = $"等待 {inputName}";
+        RaiseEmptyStateAction();
 
         if (!clearResult)
         {
@@ -330,7 +469,7 @@ public partial class LivePreviewViewModel : ObservableObject
         DownloadPreviewCommand.NotifyCanExecuteChanged();
         string? previousPath = _lastLivePreviewPath;
         _lastLivePreviewPath = null;
-        RingImagePreparation.TryDeleteTemporaryFile(previousPath);
+        TempFiles.TryDeleteTemporaryFile(previousPath);
     }
 
     internal void Schedule()
@@ -371,17 +510,17 @@ public partial class LivePreviewViewModel : ObservableObject
             {
                 _livePreviewRefreshPending = false;
                 int revision = _livePreviewRevision;
-                if (IsBluRaySelected)
+                switch (SelectedFamily)
                 {
-                    await RefreshBluRayAsync(revision);
-                }
-                else if (IsDvdSelected)
-                {
-                    await RefreshDvdAsync(revision);
-                }
-                else
-                {
-                    await RefreshCdAsync(revision);
+                    case OpticalDiscFamily.Dvd:
+                        await RefreshDvdAsync(revision);
+                        break;
+                    case OpticalDiscFamily.BluRay:
+                        await RefreshBluRayAsync(revision);
+                        break;
+                    default:
+                        await RefreshCdAsync(revision);
+                        break;
                 }
 
                 if (revision != _livePreviewRevision)
@@ -435,9 +574,9 @@ public partial class LivePreviewViewModel : ObservableObject
         }
 
         bool deinterleave = _state.CdInterleave;
-        Directory.CreateDirectory(RingImagePreparation.LivePreviewDirectory);
+        Directory.CreateDirectory(TempFiles.LivePreviewDirectory);
         string outputPath = Path.Combine(
-            RingImagePreparation.LivePreviewDirectory,
+            TempFiles.LivePreviewDirectory,
             $"cd-live-preview-{revision}.png");
         StatusText = $"正在刷新 {outputSize} px 实时预览…";
         bool keepOutput = false;
@@ -461,7 +600,7 @@ public partial class LivePreviewViewModel : ObservableObject
                 return;
             }
 
-            PublishPreview(outputPath, trackPath, "实时预览 - CD");
+            PublishPreview(outputPath, trackPath, "预览 - CD");
             keepOutput = true;
             StatusText = $"已实时更新 · 读回模拟 · {(deinterleave ? "逆交织" : "纯音轨")}"
                 + $" · {outputSize} px · 每扇区 {samplesPerSector} 个采样";
@@ -478,7 +617,7 @@ public partial class LivePreviewViewModel : ObservableObject
         {
             if (!keepOutput)
             {
-                RingImagePreparation.TryDeleteTemporaryFile(outputPath);
+                TempFiles.TryDeleteTemporaryFile(outputPath);
             }
         }
     }
@@ -494,7 +633,7 @@ public partial class LivePreviewViewModel : ObservableObject
                 out CdDiscParameters actual,
                 out int outputSize,
                 out int samplesPerSector,
-                out RingImageLayoutOptions? ringLayout,
+                out ToneProfile tone,
                 out string message))
         {
             StatusText = message;
@@ -506,33 +645,24 @@ public partial class LivePreviewViewModel : ObservableObject
             return;
         }
 
-        Directory.CreateDirectory(RingImagePreparation.LivePreviewDirectory);
+        Directory.CreateDirectory(TempFiles.LivePreviewDirectory);
         string outputPath = Path.Combine(
-            RingImagePreparation.LivePreviewDirectory,
+            TempFiles.LivePreviewDirectory,
             $"cd-live-warp-{revision}.png");
         StatusText = $"正在刷新 {outputSize} px 标定预览…";
-        bool imageProcessingEnabled = _state.CdImageProcessingEnabled;
-        bool gammaCorrectionEnabled = _state.CdGammaCorrectionEnabled;
         bool keepOutput = false;
         try
         {
             await StaWorker.RunAsync(() =>
             {
-                using RingImagePreparation.PreparedImage preparedImage = RingImagePreparation.PrepareImage(
-                        imagePath,
-                        ringLayout,
-                        "cd-live-warp",
-                        imageProcessingEnabled,
-                        gammaCorrectionEnabled,
-                        cancellationToken,
-                        writeLog: false);
                 CdTrackGenerator.PreviewWarp(
-                    preparedImage.Path,
+                    imagePath,
                     outputPath,
                     generated,
                     actual,
                     outputSize,
                     samplesPerSector,
+                    tone,
                     cancellationToken);
                 return 0;
             });
@@ -542,9 +672,10 @@ public partial class LivePreviewViewModel : ObservableObject
                 return;
             }
 
-            PublishPreview(outputPath, imagePath, "实时预览 - CD");
+            PublishPreview(outputPath, imagePath, "预览 - CD");
             keepOutput = true;
-            StatusText = $"已实时更新 · 标定预览 · 黑白二阶 · {outputSize} px"
+            StatusText = $"已实时更新 · 标定预览 · 灰度 {tone.Levels} 级"
+                + $" · 抖动 {tone.DitherStrength * 100:0}% · {outputSize} px"
                 + $" · 每扇区 {samplesPerSector} 个采样";
         }
         catch (OperationCanceledException)
@@ -559,7 +690,7 @@ public partial class LivePreviewViewModel : ObservableObject
         {
             if (!keepOutput)
             {
-                RingImagePreparation.TryDeleteTemporaryFile(outputPath);
+                TempFiles.TryDeleteTemporaryFile(outputPath);
             }
         }
     }
@@ -585,9 +716,9 @@ public partial class LivePreviewViewModel : ObservableObject
     /// bytes and splats them under the measured disc geometry.</summary>
     private async Task RefreshDvdReadbackAsync(int revision, CancellationToken cancellationToken)
     {
-        Directory.CreateDirectory(RingImagePreparation.LivePreviewDirectory);
+        Directory.CreateDirectory(TempFiles.LivePreviewDirectory);
         string outputPath = Path.Combine(
-            RingImagePreparation.LivePreviewDirectory,
+            TempFiles.LivePreviewDirectory,
             $"dvd-live-preview-{revision}.png");
         string summaryJsonPath = outputPath + ".json";
         if (!TryBuildDvdCommand(
@@ -623,7 +754,7 @@ public partial class LivePreviewViewModel : ObservableObject
                 return;
             }
 
-            PublishPreview(outputPath, isoPath, "实时预览 - DVD");
+            PublishPreview(outputPath, isoPath, "预览 - DVD");
             keepOutput = true;
             StatusText = $"已实时更新 · 读回模拟 · CW · {outputSize} px · 每扇区 {samplesPerSector} 个采样";
         }
@@ -640,7 +771,7 @@ public partial class LivePreviewViewModel : ObservableObject
             TryDeleteFile(summaryJsonPath);
             if (!keepOutput)
             {
-                RingImagePreparation.TryDeleteTemporaryFile(outputPath);
+                TempFiles.TryDeleteTemporaryFile(outputPath);
             }
         }
     }
@@ -649,9 +780,9 @@ public partial class LivePreviewViewModel : ObservableObject
     /// generated radii and projects it onto the measured ones.</summary>
     private async Task RefreshDvdCalibrationAsync(int revision, CancellationToken cancellationToken)
     {
-        Directory.CreateDirectory(RingImagePreparation.LivePreviewDirectory);
+        Directory.CreateDirectory(TempFiles.LivePreviewDirectory);
         string outputPath = Path.Combine(
-            RingImagePreparation.LivePreviewDirectory,
+            TempFiles.LivePreviewDirectory,
             $"dvd-live-warp-{revision}.png");
         string summaryJsonPath = outputPath + ".json";
         if (!TryBuildDvdCalibrateCommand(
@@ -660,7 +791,6 @@ public partial class LivePreviewViewModel : ObservableObject
                 out string[] arguments,
                 out int outputSize,
                 out int samplesPerSector,
-                out RingImageLayoutOptions? ringLayout,
                 out string message))
         {
             StatusText = message;
@@ -673,25 +803,10 @@ public partial class LivePreviewViewModel : ObservableObject
         }
 
         StatusText = $"正在刷新 {outputSize} px DVD 标定预览…";
-        bool imageProcessingEnabled = _state.DvdImageProcessingEnabled;
-        bool gammaCorrectionEnabled = _state.DvdGammaCorrectionEnabled;
         bool keepOutput = false;
         try
         {
-            int exitCode = await StaWorker.RunAsync(() =>
-            {
-                using RingImagePreparation.PreparedImage preparedImage = RingImagePreparation.PrepareImage(
-                        imagePath,
-                        ringLayout,
-                        "dvd-live-warp",
-                        imageProcessingEnabled,
-                        gammaCorrectionEnabled,
-                        cancellationToken,
-                        writeLog: false);
-                string[] effectiveArguments = (string[])arguments.Clone();
-                SetOptionValue(effectiveArguments, "--image", preparedImage.Path);
-                return UnifiedCommandRunner.Run(effectiveArguments);
-            });
+            int exitCode = await StaWorker.RunAsync(() => UnifiedCommandRunner.Run(arguments));
             if (exitCode != 0)
             {
                 throw new InvalidOperationException("DVD 标定预览引擎未能完成渲染。");
@@ -703,9 +818,10 @@ public partial class LivePreviewViewModel : ObservableObject
                 return;
             }
 
-            PublishPreview(outputPath, imagePath, "实时预览 - DVD");
+            PublishPreview(outputPath, imagePath, "预览 - DVD");
             keepOutput = true;
-            StatusText = $"已实时更新 · 标定预览 · 黑白二阶 · CW · {outputSize} px · 每扇区 {samplesPerSector} 个采样";
+            StatusText = $"已实时更新 · 标定预览 · CW · 抖动 {_state.DvdTone.DitherStrength * 100:0}%"
+                + $" · {outputSize} px · 每扇区 {samplesPerSector} 个采样";
         }
         catch (OperationCanceledException)
         {
@@ -720,9 +836,238 @@ public partial class LivePreviewViewModel : ObservableObject
             TryDeleteFile(summaryJsonPath);
             if (!keepOutput)
             {
-                RingImagePreparation.TryDeleteTemporaryFile(outputPath);
+                TempFiles.TryDeleteTemporaryFile(outputPath);
             }
         }
+    }
+
+    private async Task RefreshBluRayAsync(int revision)
+    {
+        _livePreviewCancellation?.Cancel();
+        _livePreviewCancellation?.Dispose();
+        CancellationTokenSource cancellation = new();
+        _livePreviewCancellation = cancellation;
+
+        if (IsCalibrationPreview)
+        {
+            await RefreshBluRayProjectionAsync(revision, cancellation.Token);
+        }
+        else
+        {
+            await RefreshBluRayReadbackAsync(revision, cancellation.Token);
+        }
+    }
+
+    /// <summary>Design projection: the source picture is quantized once by the tone profile,
+    /// laid out at the generated geometry and projected onto the measured one. Polarity is
+    /// part of the generation model, so this side of the preview applies it.</summary>
+    private async Task RefreshBluRayProjectionAsync(int revision, CancellationToken cancellationToken)
+    {
+        string imagePath = _state.BdImagePath.Trim();
+        if (imagePath.Length == 0 || !File.Exists(imagePath))
+        {
+            string message = imagePath.Length == 0
+                ? "请先在设计页导入图片，合成图会自动填入。"
+                : "蓝光源图片不存在。";
+            StatusText = message;
+            if (!HasResultImage)
+            {
+                ResultPreviewPlaceholderText = message;
+            }
+
+            return;
+        }
+
+        BluRayDiscParameters generated, actual;
+        int outputSize;
+        ToneProfile tone;
+        bool invert;
+        BluRayIsoPlan plan;
+        try
+        {
+            generated = ReadBluRayDisc(_state.BdTotalSectors, _state.BdInnerRadius, _state.BdOuterRadius);
+            actual = ReadBluRayDisc(_state.BdTotalSectors,
+                _state.BdActualInnerRadius, _state.BdActualOuterRadius);
+            outputSize = Math.Clamp(
+                ParameterParser.ParsePositiveInt(_state.BdPreviewSize, "预览尺寸"), 64, 8192);
+            tone = _state.BluRayTone;
+            invert = _state.BdInvertMapping;
+            string dataDirectory = _state.BdDataDirectory.Trim();
+            long sidecarStart = ParameterParser.ParseNonNegativeLong(_state.BdDrawingStartSector, "绘图起始扇区");
+            long sidecarEnd = ParameterParser.ParseNonNegativeLong(_state.BdDrawingEndSectorExclusive, "绘图结束扇区");
+            plan = sidecarEnd > sidecarStart && sidecarEnd <= generated.TotalSectors
+                ? BluRayIsoGenerator.PrepareRaw(generated, checked((uint)sidecarStart), checked((uint)sidecarEnd))
+                : BluRayIsoGenerator.PrepareDrawing(
+                    generated,
+                    dataDirectory.Length == 0 ? null : dataDirectory,
+                    string.IsNullOrWhiteSpace(_state.BdVolumeLabel) ? "BD_IMAGE" : _state.BdVolumeLabel.Trim());
+        }
+        catch (Exception exception) when (exception is FormatException
+                                              or OverflowException
+                                              or ArgumentException
+                                              or InvalidOperationException
+                                              or IOException)
+        {
+            StatusText = exception.Message;
+            if (!HasResultImage)
+            {
+                ResultPreviewPlaceholderText = exception.Message;
+            }
+
+            return;
+        }
+
+        Directory.CreateDirectory(TempFiles.LivePreviewDirectory);
+        string outputPath = Path.Combine(
+            TempFiles.LivePreviewDirectory,
+            $"bd-live-projection-{revision}.png");
+        StatusText = $"正在刷新 {outputSize} px 蓝光设计投影…";
+        bool keepOutput = false;
+        try
+        {
+            await StaWorker.RunAsync(() =>
+            {
+                BluRayPreviewRenderer.RenderCalibration(
+                    imagePath,
+                    outputPath,
+                    generated,
+                    actual,
+                    plan.DrawingStartSector,
+                    plan.DrawingEndSectorExclusive,
+                    outputSize,
+                    invert,
+                    cancellationToken,
+                    tone);
+                return 0;
+            });
+            cancellationToken.ThrowIfCancellationRequested();
+            if (revision != _livePreviewRevision)
+            {
+                return;
+            }
+
+            PublishPreview(outputPath, imagePath, "预览 - BD");
+            keepOutput = true;
+            StatusText = $"已实时更新 · 设计投影 · 3T/6T 类别图"
+                + $" · {(invert ? "反转 3T/6T" : "标准 3T/6T")}"
+                + $" · {(tone.SrgbLinearization ? "sRGB 线性化 · " : string.Empty)}{outputSize} px";
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception exception)
+        {
+            StatusText = $"实时预览失败：{exception.Message}";
+            _shell.AppendLog($"[{DateTime.Now:HH:mm:ss}] 蓝光实时预览失败：{exception}\n");
+        }
+        finally
+        {
+            if (!keepOutput)
+            {
+                TempFiles.TryDeleteTemporaryFile(outputPath);
+            }
+        }
+    }
+
+    /// <summary>Finished-artifact read-back: classify the ISO's payload bytes as AA/44 and
+    /// splat them under the measured geometry. Polarity is not applied again: the preview
+    /// shows the bytes on the disc, which is a 3T/6T class map rather than reflectance.</summary>
+    private async Task RefreshBluRayReadbackAsync(int revision, CancellationToken cancellationToken)
+    {
+        string isoPath = _state.BdIsoPath.Trim();
+        if (isoPath.Length == 0 || !File.Exists(isoPath))
+        {
+            string message = isoPath.Length == 0
+                ? "请先选择生成的蓝光 ISO（导出页生成后自动填入）。"
+                : "蓝光 ISO 文件不存在。";
+            StatusText = message;
+            if (!HasResultImage)
+            {
+                ResultPreviewPlaceholderText = message;
+            }
+
+            return;
+        }
+
+        BluRayDiscParameters actual;
+        int outputSize;
+        try
+        {
+            actual = ReadBluRayDisc(_state.BdTotalSectors,
+                _state.BdActualInnerRadius, _state.BdActualOuterRadius);
+            outputSize = Math.Clamp(
+                ParameterParser.ParsePositiveInt(_state.BdPreviewSize, "预览尺寸"), 64, 8192);
+        }
+        catch (Exception exception) when (exception is FormatException
+                                              or OverflowException
+                                              or ArgumentException)
+        {
+            StatusText = exception.Message;
+            if (!HasResultImage)
+            {
+                ResultPreviewPlaceholderText = exception.Message;
+            }
+
+            return;
+        }
+
+        Directory.CreateDirectory(TempFiles.LivePreviewDirectory);
+        string outputPath = Path.Combine(
+            TempFiles.LivePreviewDirectory,
+            $"bd-live-readback-{revision}.png");
+        StatusText = $"正在刷新 {outputSize} px 蓝光成品读回…";
+        bool keepOutput = false;
+        try
+        {
+            await StaWorker.RunAsync(() =>
+            {
+                BluRayPreviewRenderer.RenderReadback(
+                    isoPath, outputPath, actual, outputSize, cancellationToken);
+                return 0;
+            });
+            cancellationToken.ThrowIfCancellationRequested();
+            if (revision != _livePreviewRevision)
+            {
+                return;
+            }
+
+            PublishPreview(outputPath, isoPath, "预览 - BD");
+            keepOutput = true;
+            StatusText = $"已实时更新 · 成品读回 · 3T/6T 类别图（非反射亮度） · {outputSize} px";
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception exception)
+        {
+            StatusText = $"实时预览失败：{exception.Message}";
+            _shell.AppendLog($"[{DateTime.Now:HH:mm:ss}] 蓝光成品读回失败：{exception}\n");
+        }
+        finally
+        {
+            if (!keepOutput)
+            {
+                TempFiles.TryDeleteTemporaryFile(outputPath);
+            }
+        }
+    }
+
+    private static BluRayDiscParameters ReadBluRayDisc(
+        string sectorsText, string innerText, string outerText)
+    {
+        long sectors = ParameterParser.ParsePositiveLong(sectorsText, "蓝光总扇区数");
+        if (sectors > uint.MaxValue)
+        {
+            throw new ArgumentOutOfRangeException("蓝光总扇区数", "总扇区数超出蓝光引擎支持范围。");
+        }
+
+        BluRayDiscParameters disc = new(
+            checked((uint)sectors),
+            1,
+            ParameterParser.ParsePositiveDouble(innerText, "蓝光内半径"),
+            ParameterParser.ParsePositiveDouble(outerText, "蓝光外半径"));
+        disc.Validate();
+        return disc;
     }
 
     /// <summary>Adopts a rendered preview as the canvas content and the export source, and
@@ -736,8 +1081,7 @@ public partial class LivePreviewViewModel : ObservableObject
         _isLivePreviewReady = true;
         ResultPreviewTitle = title;
         ResultPreviewPath = Path.GetFileName(inputPath);
-        DownloadPreviewCommand.NotifyCanExecuteChanged();
-        RingImagePreparation.TryDeleteTemporaryFile(previousPath);
+        TempFiles.TryDeleteTemporaryFile(previousPath);
     }
 
     private bool TryReadCdSettings(
@@ -753,7 +1097,7 @@ public partial class LivePreviewViewModel : ObservableObject
         samplesPerSector = 0;
         if (trackPath.Length == 0)
         {
-            message = "请先选择生成的 CD 音轨（制作页生成后自动填入）。";
+            message = "请先选择生成的 CD 音轨（导出页生成后自动填入）。";
             return false;
         }
 
@@ -772,8 +1116,10 @@ public partial class LivePreviewViewModel : ObservableObject
                 sectors);
             parameters.Validate();
 
-            outputSize = ParameterParser.ParsePreviewSize(_state.CdPreviewSize);
-            samplesPerSector = ParameterParser.ParsePreviewSamples(_state.CdSamplesPerSector, CdDiscParameters.BytesPerSector);
+            int configuredSize = ParameterParser.ParsePositiveInt(_state.CdPreviewSize, "预览尺寸");
+            int configuredSamples = ParameterParser.ParsePositiveInt(_state.CdSamplesPerSector, "每扇区采样");
+            outputSize = Math.Clamp(configuredSize, 256, 1600);
+            samplesPerSector = Math.Clamp(configuredSamples, 1, 32);
 
             message = string.Empty;
             return true;
@@ -796,7 +1142,7 @@ public partial class LivePreviewViewModel : ObservableObject
         out CdDiscParameters actual,
         out int outputSize,
         out int samplesPerSector,
-        out RingImageLayoutOptions? ringLayout,
+        out ToneProfile tone,
         out string message)
     {
         imagePath = _state.CdImagePath.Trim();
@@ -804,10 +1150,10 @@ public partial class LivePreviewViewModel : ObservableObject
         actual = null!;
         outputSize = 0;
         samplesPerSector = 0;
-        ringLayout = null;
+        tone = _state.Tone;
         if (imagePath.Length == 0)
         {
-            message = "请先选择 CD 源图片（制作页的源图片将自动同步）。";
+            message = "请先在设计页导入图片，合成图会自动填入。";
             return false;
         }
 
@@ -831,23 +1177,10 @@ public partial class LivePreviewViewModel : ObservableObject
             generated.Validate();
             actual.Validate();
 
-            outputSize = ParameterParser.ParsePreviewSize(_state.CdPreviewSize);
-            samplesPerSector = ParameterParser.ParsePreviewSamples(_state.CdSamplesPerSector, CdDiscParameters.BytesPerSector);
-
-            // The projection must start from the picture the generator would consume, so the
-            // production page's image processing mode applies here unchanged.
-            if (_state.CdImageProcessingModeIndex == 1)
-            {
-                ringLayout = ParameterParser.CreateRingLayoutOptions(
-                    CdDiscParameters.StandardImageOuterRadiusMm,
-                    generated.InnerRadiusMm,
-                    generated.OuterRadiusMm,
-                    _state.CdRingInnerMargin,
-                    _state.CdRingOuterMargin,
-                    _state.CdImageProcessingEnabled
-                        ? RingImageQuality.GenerationSize
-                        : Math.Max(RingImageQuality.LivePreviewSize, outputSize));
-            }
+            int configuredSize = ParameterParser.ParsePositiveInt(_state.CdPreviewSize, "预览尺寸");
+            int configuredSamples = ParameterParser.ParsePositiveInt(_state.CdSamplesPerSector, "每扇区采样");
+            outputSize = Math.Clamp(configuredSize, 256, 1600);
+            samplesPerSector = Math.Clamp(configuredSamples, 1, 32);
 
             message = string.Empty;
             return true;
@@ -873,7 +1206,7 @@ public partial class LivePreviewViewModel : ObservableObject
         samplesPerSector = 0;
         if (isoPath.Length == 0)
         {
-            message = "请先选择生成的 DVD ISO（制作页生成后自动填入）。";
+            message = "请先选择生成的 DVD ISO（导出页生成后自动填入）。";
             return false;
         }
 
@@ -898,8 +1231,14 @@ public partial class LivePreviewViewModel : ObservableObject
                 throw new ArgumentOutOfRangeException("半径", "内半径必须小于外半径。");
             }
 
-            outputSize = ParameterParser.ParsePreviewSize(_state.DvdPreviewSize);
-            samplesPerSector = ParameterParser.ParsePreviewSamples(_state.DvdSamplesPerSector, 2048);
+            outputSize = Math.Clamp(
+                ParameterParser.ParsePositiveInt(_state.DvdPreviewSize, "预览尺寸"),
+                256,
+                1600);
+            samplesPerSector = Math.Clamp(
+                ParameterParser.ParsePositiveInt(_state.DvdSamplesPerSector, "每扇区采样"),
+                1,
+                16);
 
             // The simulate command falls back to the ISO's solve sidecar JSON for the
             // drawing range, so the app only passes the measured calibration geometry.
@@ -940,17 +1279,15 @@ public partial class LivePreviewViewModel : ObservableObject
         out string[] arguments,
         out int outputSize,
         out int samplesPerSector,
-        out RingImageLayoutOptions? ringLayout,
         out string message)
     {
         imagePath = _state.DvdImagePath.Trim();
         arguments = [];
         outputSize = 0;
         samplesPerSector = 0;
-        ringLayout = null;
         if (imagePath.Length == 0)
         {
-            message = "请先选择 DVD 源图片（制作页的源图片将自动同步）。";
+            message = "请先在设计页导入图片，合成图会自动填入。";
             return false;
         }
 
@@ -977,22 +1314,17 @@ public partial class LivePreviewViewModel : ObservableObject
                 throw new ArgumentOutOfRangeException("半径", "内半径必须小于外半径。");
             }
 
-            outputSize = ParameterParser.ParsePreviewSize(_state.DvdPreviewSize);
-            samplesPerSector = ParameterParser.ParsePreviewSamples(_state.DvdSamplesPerSector, 2048);
-            if (_state.DvdImageProcessingModeIndex == 1)
-            {
-                ringLayout = ParameterParser.CreateRingLayoutOptions(
-                    generatedOuter,
-                    generatedInner,
-                    generatedOuter,
-                    _state.DvdRingInnerMargin,
-                    _state.DvdRingOuterMargin,
-                    _state.DvdImageProcessingEnabled
-                        ? RingImageQuality.GenerationSize
-                        : Math.Max(RingImageQuality.LivePreviewSize, outputSize));
-            }
+            outputSize = Math.Clamp(
+                ParameterParser.ParsePositiveInt(_state.DvdPreviewSize, "预览尺寸"),
+                256,
+                1600);
+            samplesPerSector = Math.Clamp(
+                ParameterParser.ParsePositiveInt(_state.DvdSamplesPerSector, "每扇区采样"),
+                1,
+                16);
 
             string totalSectors = totalSectorsValue.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            ToneProfile tone = _state.DvdTone;
             arguments =
             [
                 "calibrate",
@@ -1013,6 +1345,9 @@ public partial class LivePreviewViewModel : ObservableObject
                 "--spiral-direction", "cw",
                 "--image-threshold", "128",
                 "--alpha-threshold", "1",
+                "--tone-dither", tone.DitherStrength.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+                "--tone-levels", "2",
+                "--tone-brightness", tone.Brightness.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
                 "--preview-size", outputSize.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 "--samples-per-sector", samplesPerSector.ToString(System.Globalization.CultureInfo.InvariantCulture),
             ];
@@ -1024,22 +1359,6 @@ public partial class LivePreviewViewModel : ObservableObject
             message = exception.Message;
             return false;
         }
-    }
-
-    /// <summary>Replaces an option's value so the ring-composed intermediate replaces the
-    /// source picture the command was validated with.</summary>
-    private static void SetOptionValue(string[] arguments, string option, string value)
-    {
-        for (int index = 0; index + 1 < arguments.Length; index++)
-        {
-            if (arguments[index].Equals(option, StringComparison.OrdinalIgnoreCase))
-            {
-                arguments[index + 1] = value;
-                return;
-            }
-        }
-
-        throw new ArgumentException($"Missing command option {option}.", nameof(arguments));
     }
 
     private static void TryDeleteFile(string path)
@@ -1098,14 +1417,17 @@ public partial class LivePreviewViewModel : ObservableObject
 
     internal void OnWindowClosed()
     {
-        _shell.BluRay.PropertyChanged -= BluRay_PropertyChanged;
         _livePreviewTimer.Stop();
         _livePreviewCancellation?.Cancel();
         _livePreviewCancellation?.Dispose();
-        RingImagePreparation.TryDeleteTemporaryFile(_lastLivePreviewPath);
+        TempFiles.TryDeleteTemporaryFile(_lastLivePreviewPath);
     }
 
-    partial void OnHasResultImageChanged(bool value) => DownloadPreviewCommand.NotifyCanExecuteChanged();
+    partial void OnHasResultImageChanged(bool value)
+    {
+        DownloadPreviewCommand.NotifyCanExecuteChanged();
+        RaiseEmptyStateAction();
+    }
 
     private bool CanDownloadPreview()
         => HasResultImage && _downloadablePreview && PreviewArtifactDirectory() is not null;
@@ -1150,17 +1472,12 @@ public partial class LivePreviewViewModel : ObservableObject
     /// source picture being projected.</summary>
     private string PreviewInputPath()
     {
-        if (IsBluRaySelected)
+        return SelectedFamily switch
         {
-            return (IsCalibrationPreview ? BluRay.ImagePath : BluRayIsoPath).Trim();
-        }
-
-        if (IsDvdSelected)
-        {
-            return (IsCalibrationPreview ? _state.DvdImagePath : _state.DvdIsoPath).Trim();
-        }
-
-        return (IsCalibrationPreview ? _state.CdImagePath : _state.CdTrackPath).Trim();
+            OpticalDiscFamily.Dvd => (IsCalibrationPreview ? _state.DvdImagePath : _state.DvdIsoPath).Trim(),
+            OpticalDiscFamily.BluRay => (IsCalibrationPreview ? _state.BdImagePath : _state.BdIsoPath).Trim(),
+            _ => (IsCalibrationPreview ? _state.CdImagePath : _state.CdTrackPath).Trim(),
+        };
     }
 
     /// <summary>Folder holding that picture, or null when unknown.</summary>

@@ -6,7 +6,8 @@ public sealed record CalibrationObservation(
 public sealed record CalibrationFitOptions(
     CalibrationParameters? SearchCenter = null, double RadiusRangeMm = 0.02,
     double HuberDeltaMm = 0.8, int MaxCandidates = 8,
-    bool FitDvdPitch = true, double PitchCoefficientRange = 0.05)
+    bool FitDvdPitch = true, double PitchCoefficientRange = 0.05,
+    bool AdaptiveRobustScale = false, bool? AutoRange = null)
 {
     public void Validate(CalibrationTarget target)
     {
@@ -19,8 +20,12 @@ public sealed record CalibrationFitOptions(
     }
 }
 
+/// <summary>MaxErrorMm is the largest single-point curve distance and OutlierCount counts
+/// points beyond three robust scales; both let the UI name why a fit is not applicable
+/// instead of showing one averaged number.</summary>
 public sealed record CalibrationFitCandidate(
-    CalibrationParameters Parameters, double RotationRadians, double RmsErrorMm, double RobustCost = 0);
+    CalibrationParameters Parameters, double RotationRadians, double RmsErrorMm, double RobustCost = 0,
+    double MaxErrorMm = 0, int OutlierCount = 0);
 
 public sealed record CalibrationFitResult(
     bool Succeeded, CalibrationParameters? BestParameters, double RotationRadians,
@@ -31,6 +36,10 @@ public sealed record CalibrationFitResult(
 
     // Coordinate observations do not record the number of turns along visible edges.
     public bool RequiresShapeConfirmation => Succeeded;
+
+    /// <summary>True when the best parameters sit on the searched radius box. The caller can
+    /// re-run with a wider box instead of presenting a clamped answer as a measurement.</summary>
+    public bool BoundaryLimited { get; init; }
 }
 
 /// <summary>Fits one physical track model to all observed features; features are never warped independently.</summary>

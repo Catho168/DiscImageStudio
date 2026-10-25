@@ -18,7 +18,8 @@ public sealed record DvdStreamingOptions(
     int FastParallelism = 0,
     double PitchLinear = 0,
     double PitchQuadratic = 0,
-    double PitchCubic = 0)
+    double PitchCubic = 0,
+    ToneProfile? Tone = null)
 {
     /// <summary>Physical channel-bit length of the DVD scheme; the UI no longer exposes it.</summary>
     public const double StandardChannelBitLengthNm = 133.3;
@@ -29,6 +30,16 @@ public sealed record DvdStreamingOptions(
     public void Validate()
     {
         DvdTrackGeometry.ValidatePitchCoefficients(PitchLinear, PitchQuadratic, PitchCubic);
+        if (Tone is { } tone)
+        {
+            tone.Validate();
+            if (!tone.IsDvdCompatible)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(Tone),
+                    "DVD dispersion uses two textures; tone levels must be 2.");
+            }
+        }
         if (TotalSectors == 0 || TotalSectors % DvdEccBlockEncoder.SectorCount != 0)
         {
             throw new ArgumentOutOfRangeException(
@@ -302,7 +313,8 @@ public static class DvdStreamingGenerator
             SampleEveryChannelBits: 1,
             PitchLinear: options.PitchLinear,
             PitchQuadratic: options.PitchQuadratic,
-            PitchCubic: options.PitchCubic);
+            PitchCubic: options.PitchCubic,
+            Tone: options.Tone);
         return new MultiBlockSolveOptions(
             startLba,
             fillSectors,

@@ -27,6 +27,23 @@ public sealed class BluRayIsoPlan
         DrawingEndRadiusMm = disc.OuterRadiusMm;
     }
 
+    internal BluRayIsoPlan(BluRayDiscParameters disc, uint drawingStartSector, uint drawingEndSectorExclusive)
+    {
+        disc.Validate();
+        if (drawingStartSector >= drawingEndSectorExclusive
+            || drawingEndSectorExclusive > disc.TotalSectors)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(drawingEndSectorExclusive), "The drawing range must lie inside the disc.");
+        }
+
+        Disc = disc;
+        DrawingStartSector = drawingStartSector;
+        DrawingEndSectorExclusive = drawingEndSectorExclusive;
+        DrawingStartRadiusMm = new BluRayTrackGeometry(disc).AtSector(drawingStartSector).RadiusMm;
+        DrawingEndRadiusMm = new BluRayTrackGeometry(disc).AtSector(drawingEndSectorExclusive).RadiusMm;
+    }
+
     internal UdfImageWriter.LayoutPlan Filesystem => _filesystem
         ?? throw new InvalidOperationException("This drawing plan has no filesystem.");
     public bool HasFileSystem => _filesystem is not null;
@@ -34,6 +51,8 @@ public sealed class BluRayIsoPlan
     public uint TotalSectors => Disc.TotalSectors;
     public long ContentLength => Disc.ContentLength;
     public string? DataDirectory => _filesystem?.SourceDirectory is { Length: > 0 } source ? source : null;
+    public string? VolumeLabel => _filesystem?.VolumeLabel;
+    public DateTimeOffset? UdfTimestamp => _filesystem?.Timestamp;
     public int FileCount => _filesystem?.FileCount ?? 0;
     public int DirectoryCount => _filesystem?.DirectoryCount ?? 0;
     public long FileBytes => _filesystem?.FileBytes ?? 0;
@@ -49,6 +68,12 @@ public static class BluRayIsoGenerator
 {
     /// <summary>Draws every user-data sector when no directory is selected. Selecting
     /// a directory keeps a mountable UDF volume, including for an empty directory.</summary>
+    /// <summary>A saved drawing range without a filesystem, used by calibration records and
+    /// sidecar-driven previews.</summary>
+    public static BluRayIsoPlan PrepareRaw(BluRayDiscParameters disc,
+        uint drawingStartSector, uint drawingEndSectorExclusive)
+        => new(disc, drawingStartSector, drawingEndSectorExclusive);
+
     public static BluRayIsoPlan PrepareDrawing(BluRayDiscParameters disc, string? dataDirectory = null,
         string volumeLabel = "BD_IMAGE", DateTimeOffset? timestamp = null)
     {

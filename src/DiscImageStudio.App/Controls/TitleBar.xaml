@@ -6,6 +6,8 @@
             <Image Source="{StaticResource AppIconSource}" Width="16" Height="16" Margin="0,0,8,0" />
             <TextBlock Text="Disc Image Studio" FontSize="12"
                        Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" />
+            <TextBlock x:Name="ProjectTitleText" FontSize="12" Margin="8,0,0,0" Visibility="Collapsed"
+                       Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" />
         </StackPanel>
 
         <StackPanel x:Name="WindowButtons" Orientation="Horizontal" HorizontalAlignment="Right"
@@ -15,7 +17,7 @@
                 <Button.Template>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="Hot" Background="Transparent">
-                            <Path Data="{StaticResource WinMinimizeIcon}" Stroke="White" StrokeThickness="1"
+                            <Path Data="{StaticResource WinMinimizeIcon}" Stroke="{StaticResource TextPrimaryBrush}" StrokeThickness="1"
                                   Width="10" Height="1" Stretch="None" />
                         </Border>
                         <ControlTemplate.Triggers>
@@ -35,9 +37,9 @@
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="Hot" Background="Transparent">
                             <Grid Width="10" Height="10">
-                                <Path x:Name="MaximizeGlyph" Data="{StaticResource WinMaximizeIcon}" Stroke="White"
+                                <Path x:Name="MaximizeGlyph" Data="{StaticResource WinMaximizeIcon}" Stroke="{StaticResource TextPrimaryBrush}"
                                       StrokeThickness="1" Stretch="None" />
-                                <Path x:Name="RestoreGlyph" Data="{StaticResource WinRestoreIcon}" Stroke="White"
+                                <Path x:Name="RestoreGlyph" Data="{StaticResource WinRestoreIcon}" Stroke="{StaticResource TextPrimaryBrush}"
                                       StrokeThickness="1" Stretch="None" Visibility="Collapsed" />
                             </Grid>
                         </Border>
@@ -56,12 +58,12 @@
                 <Button.Template>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="Hot" Background="Transparent">
-                            <Path Data="{StaticResource WinCloseIcon}" Stroke="White" StrokeThickness="1"
+                            <Path Data="{StaticResource WinCloseIcon}" Stroke="{StaticResource TextPrimaryBrush}" StrokeThickness="1"
                                   Width="10" Height="10" Stretch="None" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Hot" Property="Background" Value="#E6C42B1C" />
+                                <Setter TargetName="Hot" Property="Background" Value="{StaticResource CloseHotSoftBrush}" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="Hot" Property="Background" Value="{StaticResource CloseHotBrush}" />

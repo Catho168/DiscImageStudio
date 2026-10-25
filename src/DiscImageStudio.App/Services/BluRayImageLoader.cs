@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using DiscImageStudio.BluRay;
+using DiscImageStudio.Core;
 
 namespace DiscImageStudio.Services;
 
@@ -12,9 +13,16 @@ public static class BluRayImageLoader
     private const long MaxPixels = 64L * 1024 * 1024;
 
     /// <summary>Uses encoded-space Rec. 709 weights and composites straight alpha over
-    /// white. The conversion preserves source dimensions and performs no thresholding,
-    /// dithering, ICC conversion or optical-reflectance calibration.</summary>
+    /// white. Without a tone profile the conversion preserves source dimensions and performs
+    /// no thresholding, dithering, ICC conversion or optical-reflectance calibration.
+    /// A tone profile is applied here, at source resolution: BD payload positions are far
+    /// denser than any practical raster, so dithering per byte is neither needed nor
+    /// reproducible.</summary>
     public static BluRayGray8Raster Load(string path, CancellationToken cancellationToken = default)
+        => Load(path, tone: null, cancellationToken);
+
+    public static BluRayGray8Raster Load(string path, ToneProfile? tone,
+        CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         cancellationToken.ThrowIfCancellationRequested();
@@ -39,6 +47,20 @@ public static class BluRayImageLoader
                 gray[pixel] = (byte)((weighted * alpha + 2_550_000 * (255 - alpha) + 1_275_000) / 2_550_000);
             }
         }
+
+        if (tone is { IsLegacyBinary: false } effective)
+        {
+            for (int pixel = 0; pixel < gray.Length; pixel++)
+            {
+                if ((pixel & 0xFFFF) == 0)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+
+                gray[pixel] = effective.UseWhite(gray[pixel], pixel) ? (byte)255 : (byte)0;
+            }
+        }
+
         cancellationToken.ThrowIfCancellationRequested();
         return new(width, height, gray);
     }
@@ -69,12 +91,13 @@ public static class BluRayImageLoader
     }
 
     public static BluRayImagePayloadMapping CreateMapping(string path, BluRayDiscParameters disc,
-        IBluRayLuminanceMapping mapping, CancellationToken cancellationToken = default)
+        IBluRayLuminanceMapping mapping, CancellationToken cancellationToken = default,
+        ToneProfile? tone = null)
     {
         // Validate the unresolved strategy before loading any source file.
         ArgumentNullException.ThrowIfNull(mapping);
         ArgumentNullException.ThrowIfNull(disc);
         disc.Validate();
-        return new(disc, Load(path, cancellationToken), mapping);
+        return new(disc, Load(path, tone, cancellationToken), mapping);
     }
 }
