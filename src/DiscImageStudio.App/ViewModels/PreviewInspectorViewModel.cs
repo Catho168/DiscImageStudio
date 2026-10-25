@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
+using DiscImageStudio.Core;
 
 namespace DiscImageStudio.ViewModels;
 
@@ -16,7 +17,7 @@ public class PreviewInspectorViewModel : ObservableObject
 {
     private readonly ShellViewModel _shell;
     private readonly DiscParametersState _state;
-    private bool _isDvd;
+    private OpticalDiscFamily _family = OpticalDiscFamily.CompactDisc;
 
     public PreviewInspectorViewModel(ShellViewModel shell, DiscParametersState state)
     {
@@ -28,20 +29,25 @@ public class PreviewInspectorViewModel : ObservableObject
     /// <summary>The shared parameters, for the rows the panel edits directly (interleave).</summary>
     public DiscParametersState State => _state;
 
-    public bool IsDvd => _isDvd;
+    public bool IsCd => _family == OpticalDiscFamily.CompactDisc;
 
-    public bool IsCd => !_isDvd;
+    public bool IsDvd => _family == OpticalDiscFamily.Dvd;
+
+    public bool IsBluRay => _family == OpticalDiscFamily.BluRay;
+
+    /// <summary>BD payload positions are sampled directly, so there is no per-sector knob.</summary>
+    public bool HasSamplesPerSector => !IsBluRay;
 
     /// <summary>Re-points every row at the given family. Called by the preview view model when
     /// its family switch changes.</summary>
-    internal void SetFamily(bool dvd)
+    internal void SetFamily(OpticalDiscFamily family)
     {
-        if (_isDvd == dvd)
+        if (_family == family)
         {
             return;
         }
 
-        _isDvd = dvd;
+        _family = family;
         foreach (string name in ProjectedProperties)
         {
             OnPropertyChanged(name);
@@ -50,27 +56,48 @@ public class PreviewInspectorViewModel : ObservableObject
 
     // ---- Read-back mode: the generated artifact is the input ----
 
-    public string ArtifactLabel => _isDvd ? "生成的 DVD ISO" : "生成的 CD 音轨";
+    public string ArtifactLabel => _family switch
+    {
+        OpticalDiscFamily.Dvd => "生成的 DVD ISO",
+        OpticalDiscFamily.BluRay => "生成的蓝光 ISO",
+        _ => "生成的 CD 音轨",
+    };
 
-    public string ArtifactHint => _isDvd
-        ? "可直接粘贴或浏览已生成的 ISO 镜像。"
-        : "可直接粘贴或浏览已生成的音轨。";
+    public string ArtifactHint => _family switch
+    {
+        OpticalDiscFamily.Dvd => "可直接粘贴或浏览已生成的 ISO 镜像。",
+        OpticalDiscFamily.BluRay => "可直接粘贴或浏览已生成的 ISO；同名 sidecar 会带回几何与影调。",
+        _ => "可直接粘贴或浏览已生成的音轨。",
+    };
 
-    public ICommand BrowseArtifactCommand =>
-        _isDvd ? _shell.BrowseDvdIsoCommand : _shell.BrowseCdTrackCommand;
+    public ICommand BrowseArtifactCommand => _family switch
+    {
+        OpticalDiscFamily.Dvd => _shell.BrowseDvdIsoCommand,
+        OpticalDiscFamily.BluRay => _shell.BrowseBluRayIsoCommand,
+        _ => _shell.BrowseCdTrackCommand,
+    };
 
     public string ArtifactPath
     {
-        get => _isDvd ? _state.DvdIsoPath : _state.CdTrackPath;
+        get => _family switch
+        {
+            OpticalDiscFamily.Dvd => _state.DvdIsoPath,
+            OpticalDiscFamily.BluRay => _state.BdIsoPath,
+            _ => _state.CdTrackPath,
+        };
         set
         {
-            if (_isDvd)
+            switch (_family)
             {
-                _state.DvdIsoPath = value;
-            }
-            else
-            {
-                _state.CdTrackPath = value;
+                case OpticalDiscFamily.Dvd:
+                    _state.DvdIsoPath = value;
+                    break;
+                case OpticalDiscFamily.BluRay:
+                    _state.BdIsoPath = value;
+                    break;
+                default:
+                    _state.CdTrackPath = value;
+                    break;
             }
         }
     }
@@ -83,32 +110,50 @@ public class PreviewInspectorViewModel : ObservableObject
 
     public string MeasuredInnerRadius
     {
-        get => _isDvd ? _state.DvdActualInnerRadius : _state.CdActualInnerRadius;
+        get => _family switch
+        {
+            OpticalDiscFamily.Dvd => _state.DvdActualInnerRadius,
+            OpticalDiscFamily.BluRay => _state.BdActualInnerRadius,
+            _ => _state.CdActualInnerRadius,
+        };
         set
         {
-            if (_isDvd)
+            switch (_family)
             {
-                _state.DvdActualInnerRadius = value;
-            }
-            else
-            {
-                _state.CdActualInnerRadius = value;
+                case OpticalDiscFamily.Dvd:
+                    _state.DvdActualInnerRadius = value;
+                    break;
+                case OpticalDiscFamily.BluRay:
+                    _state.BdActualInnerRadius = value;
+                    break;
+                default:
+                    _state.CdActualInnerRadius = value;
+                    break;
             }
         }
     }
 
     public string MeasuredOuterRadius
     {
-        get => _isDvd ? _state.DvdActualOuterRadius : _state.CdActualOuterRadius;
+        get => _family switch
+        {
+            OpticalDiscFamily.Dvd => _state.DvdActualOuterRadius,
+            OpticalDiscFamily.BluRay => _state.BdActualOuterRadius,
+            _ => _state.CdActualOuterRadius,
+        };
         set
         {
-            if (_isDvd)
+            switch (_family)
             {
-                _state.DvdActualOuterRadius = value;
-            }
-            else
-            {
-                _state.CdActualOuterRadius = value;
+                case OpticalDiscFamily.Dvd:
+                    _state.DvdActualOuterRadius = value;
+                    break;
+                case OpticalDiscFamily.BluRay:
+                    _state.BdActualOuterRadius = value;
+                    break;
+                default:
+                    _state.CdActualOuterRadius = value;
+                    break;
             }
         }
     }
@@ -137,32 +182,49 @@ public class PreviewInspectorViewModel : ObservableObject
 
     public string PreviewSize
     {
-        get => _isDvd ? _state.DvdPreviewSize : _state.CdPreviewSize;
+        get => _family switch
+        {
+            OpticalDiscFamily.Dvd => _state.DvdPreviewSize,
+            OpticalDiscFamily.BluRay => _state.BdPreviewSize,
+            _ => _state.CdPreviewSize,
+        };
         set
         {
-            if (_isDvd)
+            switch (_family)
             {
-                _state.DvdPreviewSize = value;
-            }
-            else
-            {
-                _state.CdPreviewSize = value;
+                case OpticalDiscFamily.Dvd:
+                    _state.DvdPreviewSize = value;
+                    break;
+                case OpticalDiscFamily.BluRay:
+                    _state.BdPreviewSize = value;
+                    break;
+                default:
+                    _state.CdPreviewSize = value;
+                    break;
             }
         }
     }
 
     public string SamplesPerSector
     {
-        get => _isDvd ? _state.DvdSamplesPerSector : _state.CdSamplesPerSector;
+        get => _family switch
+        {
+            OpticalDiscFamily.Dvd => _state.DvdSamplesPerSector,
+            OpticalDiscFamily.BluRay => string.Empty,
+            _ => _state.CdSamplesPerSector,
+        };
         set
         {
-            if (_isDvd)
+            switch (_family)
             {
-                _state.DvdSamplesPerSector = value;
-            }
-            else
-            {
-                _state.CdSamplesPerSector = value;
+                case OpticalDiscFamily.Dvd:
+                    _state.DvdSamplesPerSector = value;
+                    break;
+                case OpticalDiscFamily.BluRay:
+                    break;
+                default:
+                    _state.CdSamplesPerSector = value;
+                    break;
             }
         }
     }
@@ -173,6 +235,8 @@ public class PreviewInspectorViewModel : ObservableObject
     [
         nameof(IsDvd),
         nameof(IsCd),
+        nameof(IsBluRay),
+        nameof(HasSamplesPerSector),
         nameof(ArtifactLabel),
         nameof(ArtifactHint),
         nameof(BrowseArtifactCommand),
@@ -197,14 +261,17 @@ public class PreviewInspectorViewModel : ObservableObject
         {
             case nameof(DiscParametersState.CdTrackPath):
             case nameof(DiscParametersState.DvdIsoPath):
+            case nameof(DiscParametersState.BdIsoPath):
                 Raise(nameof(ArtifactPath));
                 break;
             case nameof(DiscParametersState.CdActualInnerRadius):
             case nameof(DiscParametersState.DvdActualInnerRadius):
+            case nameof(DiscParametersState.BdActualInnerRadius):
                 Raise(nameof(MeasuredInnerRadius));
                 break;
             case nameof(DiscParametersState.CdActualOuterRadius):
             case nameof(DiscParametersState.DvdActualOuterRadius):
+            case nameof(DiscParametersState.BdActualOuterRadius):
                 Raise(nameof(MeasuredOuterRadius));
                 break;
             case nameof(DiscParametersState.DvdActualPitchLinear):
@@ -221,6 +288,7 @@ public class PreviewInspectorViewModel : ObservableObject
                 break;
             case nameof(DiscParametersState.CdPreviewSize):
             case nameof(DiscParametersState.DvdPreviewSize):
+            case nameof(DiscParametersState.BdPreviewSize):
                 Raise(nameof(PreviewSize));
                 break;
             case nameof(DiscParametersState.CdSamplesPerSector):

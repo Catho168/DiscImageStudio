@@ -53,7 +53,7 @@ public static class BluRayPreviewRenderer
     public static void RenderCalibration(string sourcePath, string outputPath,
         BluRayDiscParameters generated, BluRayDiscParameters actual,
         uint drawingStartSector, uint drawingEndSectorExclusive, int outputSize,
-        bool invert, CancellationToken cancellationToken = default)
+        bool invert, CancellationToken cancellationToken = default, ToneProfile? tone = null)
     {
         ArgumentNullException.ThrowIfNull(generated);
         generated.Validate();
@@ -61,7 +61,7 @@ public static class BluRayPreviewRenderer
         if (drawingStartSector >= drawingEndSectorExclusive || drawingEndSectorExclusive > generated.TotalSectors)
             throw new ArgumentOutOfRangeException(nameof(drawingEndSectorExclusive), "The drawing range must lie inside the generated disc.");
         cancellationToken.ThrowIfCancellationRequested();
-        BluRayGray8Raster source = BluRayImageLoader.Load(sourcePath, cancellationToken);
+        BluRayGray8Raster source = BluRayImageLoader.Load(sourcePath, tone, cancellationToken);
         BluRayTrackGeometry sourceGeometry = new(generated);
         PixelProjection projection = new(actual, outputSize);
         byte[] pixels = new byte[checked(outputSize * outputSize * 4)];

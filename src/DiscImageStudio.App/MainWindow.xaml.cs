@@ -168,33 +168,49 @@ public partial class MainWindow : Window
 
         if (!string.IsNullOrWhiteSpace(liveInputPath))
         {
-            bool dvd = string.Equals(liveDisc, "dvd", StringComparison.OrdinalIgnoreCase);
+            OpticalDiscFamily family = liveDisc?.ToLowerInvariant() switch
+            {
+                "dvd" => OpticalDiscFamily.Dvd,
+                "bd" or "bluray" or "blu-ray" => OpticalDiscFamily.BluRay,
+                _ => OpticalDiscFamily.CompactDisc,
+            };
             // Omitting --live-mode keeps the page default (source picture); scripts probe the
             // other mode by naming it.
             bool calibration = liveMode is null
                 || string.Equals(liveMode, "calibrate", StringComparison.OrdinalIgnoreCase);
-            _shell.LivePreview.SetDiscType(dvd, clearResult: false);
+            _shell.LivePreview.SetDiscType(family, clearResult: false);
             _shell.LivePreview.SetPreviewMode(calibration, clearResult: false);
 
             string fullInput = Path.GetFullPath(liveInputPath);
             if (calibration)
             {
-                if (dvd)
+                switch (family)
                 {
-                    _shell.State.DvdImagePath = fullInput;
+                    case OpticalDiscFamily.Dvd:
+                        _shell.State.DvdImagePath = fullInput;
+                        break;
+                    case OpticalDiscFamily.BluRay:
+                        _shell.State.BdImagePath = fullInput;
+                        break;
+                    default:
+                        _shell.State.CdImagePath = fullInput;
+                        break;
                 }
-                else
-                {
-                    _shell.State.CdImagePath = fullInput;
-                }
-            }
-            else if (dvd)
-            {
-                _shell.State.DvdIsoPath = fullInput;
             }
             else
             {
-                _shell.State.CdTrackPath = fullInput;
+                switch (family)
+                {
+                    case OpticalDiscFamily.Dvd:
+                        _shell.State.DvdIsoPath = fullInput;
+                        break;
+                    case OpticalDiscFamily.BluRay:
+                        _shell.State.BdIsoPath = fullInput;
+                        break;
+                    default:
+                        _shell.State.CdTrackPath = fullInput;
+                        break;
+                }
             }
 
             _shell.SelectWorkspace(Workspace.Preview);

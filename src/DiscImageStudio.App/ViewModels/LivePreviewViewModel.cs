@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using DiscImageStudio.BluRay;
 using DiscImageStudio.Cd;
 using DiscImageStudio.Core;
 using DiscImageStudio.Dvd;
@@ -39,7 +40,12 @@ public partial class LivePreviewViewModel : ObservableObject
     public IRelayCommand<Workspace> NavigateCommand => _shell.NavigateCommand;
 
     /// <summary>Family chip in the page header.</summary>
-    public string DiscFamilyLabel => IsDvdSelected ? "DVD" : "CD";
+    public string DiscFamilyLabel => SelectedFamily switch
+    {
+        OpticalDiscFamily.Dvd => "DVD",
+        OpticalDiscFamily.BluRay => "BD",
+        _ => "CD",
+    };
 
     /// <summary>Opens the project settings dialog, which owns the generation geometry. The
     /// preview shows that geometry read-only and links here instead of editing it a second
@@ -60,10 +66,18 @@ public partial class LivePreviewViewModel : ObservableObject
     private bool _downloadablePreview;
     private string? _calibratedTrackPath;
     private string? _calibratedIsoPath;
+    private string? _calibratedBluRayPath;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(DiscFamilyLabel))]
-    private bool _isDvdSelected;
+    [NotifyPropertyChangedFor(nameof(DiscFamilyLabel), nameof(IsDvdSelected), nameof(IsCdSelected),
+        nameof(IsBluRaySelected))]
+    private OpticalDiscFamily _selectedFamily = OpticalDiscFamily.CompactDisc;
+
+    public bool IsCdSelected => SelectedFamily == OpticalDiscFamily.CompactDisc;
+
+    public bool IsDvdSelected => SelectedFamily == OpticalDiscFamily.Dvd;
+
+    public bool IsBluRaySelected => SelectedFamily == OpticalDiscFamily.BluRay;
 
     /// <summary>False renders the generated artifact (read-back simulation), true renders the
     /// source picture through the generated/measured parameter pair.</summary>
@@ -148,8 +162,15 @@ public partial class LivePreviewViewModel : ObservableObject
             DownloadPreviewCommand.NotifyCanExecuteChanged();
             RaiseEmptyStateAction();
         }
+        else if (e.PropertyName == nameof(DiscParametersState.BdIsoPath))
+        {
+            AdoptBluRayMetadata(_state.BdIsoPath.Trim());
+            DownloadPreviewCommand.NotifyCanExecuteChanged();
+            RaiseEmptyStateAction();
+        }
         else if (e.PropertyName is nameof(DiscParametersState.CdImagePath)
-            or nameof(DiscParametersState.DvdImagePath))
+            or nameof(DiscParametersState.DvdImagePath)
+            or nameof(DiscParametersState.BdImagePath))
         {
             // The calibration preview exports next to its source picture, so editing that path
             // can change whether the export has a destination at all.
@@ -174,11 +195,23 @@ public partial class LivePreviewViewModel : ObservableObject
 
             if (IsCalibrationPreview)
             {
-                string imagePath = (IsDvdSelected ? _state.DvdImagePath : _state.CdImagePath).Trim();
+                string imagePath = SelectedFamily switch
+                {
+                    OpticalDiscFamily.Dvd => _state.DvdImagePath,
+                    OpticalDiscFamily.BluRay => _state.BdImagePath,
+                    _ => _state.CdImagePath,
+                };
+                imagePath = imagePath.Trim();
                 return imagePath.Length == 0 || !File.Exists(imagePath) ? Workspace.Design : null;
             }
 
-            string artifactPath = (IsDvdSelected ? _state.DvdIsoPath : _state.CdTrackPath).Trim();
+            string artifactPath = SelectedFamily switch
+            {
+                OpticalDiscFamily.Dvd => _state.DvdIsoPath,
+                OpticalDiscFamily.BluRay => _state.BdIsoPath,
+                _ => _state.CdTrackPath,
+            };
+            artifactPath = artifactPath.Trim();
             return artifactPath.Length == 0 || !File.Exists(artifactPath) ? Workspace.Export : null;
         }
     }
@@ -289,11 +322,54 @@ public partial class LivePreviewViewModel : ObservableObject
             + $"r0={innerRadius} mm, r1={outerRadius} mm, {totalSectors} 总扇区；{state.DvdPitchSummary}\n");
     }
 
+    /// <summary>The BD sidecar restores the geometry, drawing range and mapping polarity used
+    /// to produce the ISO. Without it the current project geometry stays in place and the
+    /// projection still works, but the file may have been made with different parameters.</summary>
+    private void AdoptBluRayMetadata(string isoPath)
+    {
+        if (isoPath.Length == 0
+            || string.Equals(isoPath, _calibratedBluRayPath, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _calibratedBluRayPath = isoPath;
+        BluRayIsoMetadata? metadata = BluRayIsoMetadata.TryLoad(isoPath);
+        if (metadata is null)
+        {
+            _shell.AppendLog(
+                $"[{DateTime.Now:HH:mm:ss}] {System.IO.Path.GetFileName(isoPath)} 没有可用的蓝光 sidecar，"
+                + "预览继续使用当前工程几何。\n");
+            return;
+        }
+
+        DiscParametersState state = _state;
+        string sectors = metadata.TotalSectors.ToString(
+            System.Globalization.CultureInfo.InvariantCulture);
+        string innerRadius = FormatNumber(metadata.InnerRadiusMm);
+        string outerRadius = FormatNumber(metadata.OuterRadiusMm);
+        state.BdTotalSectors = sectors;
+        state.BdInnerRadius = innerRadius;
+        state.BdOuterRadius = outerRadius;
+        state.BdActualInnerRadius = innerRadius;
+        state.BdActualOuterRadius = outerRadius;
+        state.BdInvertMapping = metadata.InvertMapping;
+        state.ToneDitherStrength = metadata.Tone.DitherStrength;
+        state.ToneLevels = ToneProfile.TwoLevels;
+        state.ToneBrightness = metadata.Tone.Brightness;
+        state.ToneSrgbLinearization = metadata.Tone.SrgbLinearization;
+        _shell.AppendLog(
+            $"[{DateTime.Now:HH:mm:ss}] 已按 {System.IO.Path.GetFileName(isoPath)} 的 sidecar 载入几何："
+            + $"r0={innerRadius} mm, r1={outerRadius} mm, {sectors} 扇区，"
+            + $"绘图 {metadata.DrawingStartSector}..{metadata.DrawingEndSectorExclusive - 1}，"
+            + $"极性={(metadata.InvertMapping ? "反转 3T/6T" : "标准 3T/6T")}。\n");
+    }
+
     private static string FormatNumber(double value)
         => value.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
 
-    /// <summary>Disc-type radio semantics: clear the stale canvas and reschedule.</summary>
-    partial void OnIsDvdSelectedChanged(bool value)
+    /// <summary>Disc-type selection: clear the stale canvas and reschedule.</summary>
+    partial void OnSelectedFamilyChanged(OpticalDiscFamily value)
     {
         if (_suppressDiscTypeAutoUpdate)
         {
@@ -305,15 +381,12 @@ public partial class LivePreviewViewModel : ObservableObject
     }
 
     /// <summary>Configures the disc type without clearing the canvas (snapshot entry point).</summary>
-    internal void SetDiscType(Core.OpticalDiscFamily family, bool clearResult)
-        => SetDiscType(family == Core.OpticalDiscFamily.Dvd, clearResult);
-
-    internal void SetDiscType(bool dvd, bool clearResult)
+    internal void SetDiscType(OpticalDiscFamily family, bool clearResult)
     {
         _suppressDiscTypeAutoUpdate = true;
         try
         {
-            IsDvdSelected = dvd;
+            SelectedFamily = family;
         }
         finally
         {
@@ -322,6 +395,9 @@ public partial class LivePreviewViewModel : ObservableObject
 
         UpdateMode(clearResult);
     }
+
+    internal void SetDiscType(bool dvd, bool clearResult)
+        => SetDiscType(dvd ? OpticalDiscFamily.Dvd : OpticalDiscFamily.CompactDisc, clearResult);
 
     /// <summary>Preview-mode semantics: the input changes, so the stale canvas goes and the
     /// new pipeline runs.</summary>
@@ -362,11 +438,16 @@ public partial class LivePreviewViewModel : ObservableObject
     {
         // The inspector is a lens over both families; every mode change routes through here, so
         // this is where it is re-pointed.
-        Inspector.SetFamily(IsDvdSelected);
-        string discName = IsDvdSelected ? "DVD" : "CD";
+        Inspector.SetFamily(SelectedFamily);
+        string discName = DiscFamilyLabel;
         string inputName = IsCalibrationPreview
             ? $"{discName} 源图片"
-            : IsDvdSelected ? "生成的 DVD ISO" : "生成的 CD 音轨";
+            : SelectedFamily switch
+            {
+                OpticalDiscFamily.Dvd => "生成的 DVD ISO",
+                OpticalDiscFamily.BluRay => "生成的蓝光 ISO",
+                _ => "生成的 CD 音轨",
+            };
         ResultPreviewTitle = $"预览 - {discName}";
         ResultPreviewPlaceholderText = $"请先选择 {inputName}。";
         StatusText = $"等待 {inputName}";
@@ -425,13 +506,17 @@ public partial class LivePreviewViewModel : ObservableObject
             {
                 _livePreviewRefreshPending = false;
                 int revision = _livePreviewRevision;
-                if (IsDvdSelected)
+                switch (SelectedFamily)
                 {
-                    await RefreshDvdAsync(revision);
-                }
-                else
-                {
-                    await RefreshCdAsync(revision);
+                    case OpticalDiscFamily.Dvd:
+                        await RefreshDvdAsync(revision);
+                        break;
+                    case OpticalDiscFamily.BluRay:
+                        await RefreshBluRayAsync(revision);
+                        break;
+                    default:
+                        await RefreshCdAsync(revision);
+                        break;
                 }
 
                 if (revision != _livePreviewRevision)
@@ -750,6 +835,231 @@ public partial class LivePreviewViewModel : ObservableObject
                 TempFiles.TryDeleteTemporaryFile(outputPath);
             }
         }
+    }
+
+    private async Task RefreshBluRayAsync(int revision)
+    {
+        _livePreviewCancellation?.Cancel();
+        _livePreviewCancellation?.Dispose();
+        CancellationTokenSource cancellation = new();
+        _livePreviewCancellation = cancellation;
+
+        if (IsCalibrationPreview)
+        {
+            await RefreshBluRayProjectionAsync(revision, cancellation.Token);
+        }
+        else
+        {
+            await RefreshBluRayReadbackAsync(revision, cancellation.Token);
+        }
+    }
+
+    /// <summary>Design projection: the source picture is quantized once by the tone profile,
+    /// laid out at the generated geometry and projected onto the measured one. Polarity is
+    /// part of the generation model, so this side of the preview applies it.</summary>
+    private async Task RefreshBluRayProjectionAsync(int revision, CancellationToken cancellationToken)
+    {
+        string imagePath = _state.BdImagePath.Trim();
+        if (imagePath.Length == 0 || !File.Exists(imagePath))
+        {
+            string message = imagePath.Length == 0
+                ? "请先在设计页导入图片，合成图会自动填入。"
+                : "蓝光源图片不存在。";
+            StatusText = message;
+            if (!HasResultImage)
+            {
+                ResultPreviewPlaceholderText = message;
+            }
+
+            return;
+        }
+
+        BluRayDiscParameters generated, actual;
+        int outputSize;
+        ToneProfile tone;
+        bool invert;
+        BluRayIsoPlan plan;
+        try
+        {
+            generated = ReadBluRayDisc(_state.BdTotalSectors, _state.BdInnerRadius, _state.BdOuterRadius);
+            actual = ReadBluRayDisc(_state.BdTotalSectors,
+                _state.BdActualInnerRadius, _state.BdActualOuterRadius);
+            outputSize = Math.Clamp(
+                ParameterParser.ParsePositiveInt(_state.BdPreviewSize, "预览尺寸"), 64, 8192);
+            tone = _state.BluRayTone;
+            invert = _state.BdInvertMapping;
+            string dataDirectory = _state.BdDataDirectory.Trim();
+            plan = BluRayIsoGenerator.PrepareDrawing(
+                generated,
+                dataDirectory.Length == 0 ? null : dataDirectory,
+                string.IsNullOrWhiteSpace(_state.BdVolumeLabel) ? "BD_IMAGE" : _state.BdVolumeLabel.Trim());
+        }
+        catch (Exception exception) when (exception is FormatException
+                                              or OverflowException
+                                              or ArgumentException
+                                              or InvalidOperationException
+                                              or IOException)
+        {
+            StatusText = exception.Message;
+            if (!HasResultImage)
+            {
+                ResultPreviewPlaceholderText = exception.Message;
+            }
+
+            return;
+        }
+
+        Directory.CreateDirectory(TempFiles.LivePreviewDirectory);
+        string outputPath = Path.Combine(
+            TempFiles.LivePreviewDirectory,
+            $"bd-live-projection-{revision}.png");
+        StatusText = $"正在刷新 {outputSize} px 蓝光设计投影…";
+        bool keepOutput = false;
+        try
+        {
+            await StaWorker.RunAsync(() =>
+            {
+                BluRayPreviewRenderer.RenderCalibration(
+                    imagePath,
+                    outputPath,
+                    generated,
+                    actual,
+                    plan.DrawingStartSector,
+                    plan.DrawingEndSectorExclusive,
+                    outputSize,
+                    invert,
+                    cancellationToken,
+                    tone);
+                return 0;
+            });
+            cancellationToken.ThrowIfCancellationRequested();
+            if (revision != _livePreviewRevision)
+            {
+                return;
+            }
+
+            PublishPreview(outputPath, imagePath, "预览 - BD");
+            keepOutput = true;
+            StatusText = $"已实时更新 · 设计投影 · 3T/6T 类别图"
+                + $" · {(invert ? "反转 3T/6T" : "标准 3T/6T")}"
+                + $" · {(tone.SrgbLinearization ? "sRGB 线性化 · " : string.Empty)}{outputSize} px";
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception exception)
+        {
+            StatusText = $"实时预览失败：{exception.Message}";
+            _shell.AppendLog($"[{DateTime.Now:HH:mm:ss}] 蓝光实时预览失败：{exception}\n");
+        }
+        finally
+        {
+            if (!keepOutput)
+            {
+                TempFiles.TryDeleteTemporaryFile(outputPath);
+            }
+        }
+    }
+
+    /// <summary>Finished-artifact read-back: classify the ISO's payload bytes as AA/44 and
+    /// splat them under the measured geometry. Polarity is not applied again: the preview
+    /// shows the bytes on the disc, which is a 3T/6T class map rather than reflectance.</summary>
+    private async Task RefreshBluRayReadbackAsync(int revision, CancellationToken cancellationToken)
+    {
+        string isoPath = _state.BdIsoPath.Trim();
+        if (isoPath.Length == 0 || !File.Exists(isoPath))
+        {
+            string message = isoPath.Length == 0
+                ? "请先选择生成的蓝光 ISO（导出页生成后自动填入）。"
+                : "蓝光 ISO 文件不存在。";
+            StatusText = message;
+            if (!HasResultImage)
+            {
+                ResultPreviewPlaceholderText = message;
+            }
+
+            return;
+        }
+
+        BluRayDiscParameters actual;
+        int outputSize;
+        try
+        {
+            actual = ReadBluRayDisc(_state.BdTotalSectors,
+                _state.BdActualInnerRadius, _state.BdActualOuterRadius);
+            outputSize = Math.Clamp(
+                ParameterParser.ParsePositiveInt(_state.BdPreviewSize, "预览尺寸"), 64, 8192);
+        }
+        catch (Exception exception) when (exception is FormatException
+                                              or OverflowException
+                                              or ArgumentException)
+        {
+            StatusText = exception.Message;
+            if (!HasResultImage)
+            {
+                ResultPreviewPlaceholderText = exception.Message;
+            }
+
+            return;
+        }
+
+        Directory.CreateDirectory(TempFiles.LivePreviewDirectory);
+        string outputPath = Path.Combine(
+            TempFiles.LivePreviewDirectory,
+            $"bd-live-readback-{revision}.png");
+        StatusText = $"正在刷新 {outputSize} px 蓝光成品读回…";
+        bool keepOutput = false;
+        try
+        {
+            await StaWorker.RunAsync(() =>
+            {
+                BluRayPreviewRenderer.RenderReadback(
+                    isoPath, outputPath, actual, outputSize, cancellationToken);
+                return 0;
+            });
+            cancellationToken.ThrowIfCancellationRequested();
+            if (revision != _livePreviewRevision)
+            {
+                return;
+            }
+
+            PublishPreview(outputPath, isoPath, "预览 - BD");
+            keepOutput = true;
+            StatusText = $"已实时更新 · 成品读回 · 3T/6T 类别图（非反射亮度） · {outputSize} px";
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception exception)
+        {
+            StatusText = $"实时预览失败：{exception.Message}";
+            _shell.AppendLog($"[{DateTime.Now:HH:mm:ss}] 蓝光成品读回失败：{exception}\n");
+        }
+        finally
+        {
+            if (!keepOutput)
+            {
+                TempFiles.TryDeleteTemporaryFile(outputPath);
+            }
+        }
+    }
+
+    private static BluRayDiscParameters ReadBluRayDisc(
+        string sectorsText, string innerText, string outerText)
+    {
+        long sectors = ParameterParser.ParsePositiveLong(sectorsText, "蓝光总扇区数");
+        if (sectors > uint.MaxValue)
+        {
+            throw new ArgumentOutOfRangeException("蓝光总扇区数", "总扇区数超出蓝光引擎支持范围。");
+        }
+
+        BluRayDiscParameters disc = new(
+            checked((uint)sectors),
+            1,
+            ParameterParser.ParsePositiveDouble(innerText, "蓝光内半径"),
+            ParameterParser.ParsePositiveDouble(outerText, "蓝光外半径"));
+        disc.Validate();
+        return disc;
     }
 
     /// <summary>Adopts a rendered preview as the canvas content and the export source, and
@@ -1154,12 +1464,12 @@ public partial class LivePreviewViewModel : ObservableObject
     /// source picture being projected.</summary>
     private string PreviewInputPath()
     {
-        if (IsDvdSelected)
+        return SelectedFamily switch
         {
-            return (IsCalibrationPreview ? _state.DvdImagePath : _state.DvdIsoPath).Trim();
-        }
-
-        return (IsCalibrationPreview ? _state.CdImagePath : _state.CdTrackPath).Trim();
+            OpticalDiscFamily.Dvd => (IsCalibrationPreview ? _state.DvdImagePath : _state.DvdIsoPath).Trim(),
+            OpticalDiscFamily.BluRay => (IsCalibrationPreview ? _state.BdImagePath : _state.BdIsoPath).Trim(),
+            _ => (IsCalibrationPreview ? _state.CdImagePath : _state.CdTrackPath).Trim(),
+        };
     }
 
     /// <summary>Folder holding that picture, or null when unknown.</summary>

@@ -54,6 +54,7 @@ public partial class ShellViewModel : ObservableObject
         ClearLogCommand = new RelayCommand(ClearLog, () => HasLogContent);
         BrowseCdTrackCommand = new RelayCommand(() => BrowseCdTrack(), () => !IsBusy);
         BrowseDvdIsoCommand = new RelayCommand(() => BrowseDvdIso(), () => !IsBusy);
+        BrowseBluRayIsoCommand = new RelayCommand(() => BrowseBluRayIso(), () => !IsBusy);
         NewProjectCommand = new AsyncRelayCommand(() => RequestNewProjectAsync(null, null), () => !IsBusy);
         OpenProjectCommand = new AsyncRelayCommand(OpenProjectAsync, () => !IsBusy);
         EditProjectCommand = new AsyncRelayCommand(EditProjectAsync, () => !IsBusy && IsProjectOpen);
@@ -271,6 +272,9 @@ public partial class ShellViewModel : ObservableObject
 
     /// <summary>Live preview page: picks the generated DVD ISO to simulate.</summary>
     public RelayCommand BrowseDvdIsoCommand { get; }
+
+    /// <summary>Live preview page: picks the generated BD ISO to read back.</summary>
+    public RelayCommand BrowseBluRayIsoCommand { get; }
 
     public IAsyncRelayCommand NewProjectCommand { get; }
 
@@ -911,6 +915,19 @@ public partial class ShellViewModel : ObservableObject
         return true;
     }
 
+    /// <summary>Browse for the generated BD ISO used by the live read-back preview.</summary>
+    internal bool BrowseBluRayIso()
+    {
+        string? picked = Dialogs?.PickOpen("选择生成的蓝光 ISO", "ISO 镜像|*.iso|所有文件|*.*");
+        if (picked is null)
+        {
+            return false;
+        }
+
+        State.BdIsoPath = picked;
+        return true;
+    }
+
     /// <summary>Hands a file or folder to the system default handler (Explorer for folders).
     /// The path travels as the FileName, so no shell command string is ever built.</summary>
     private static void OpenWithSystemHandler(string path)
@@ -1061,6 +1078,7 @@ public partial class ShellViewModel : ObservableObject
         // construct one directly); the null-conditional keeps those paths alive.
         BrowseCdTrackCommand?.NotifyCanExecuteChanged();
         BrowseDvdIsoCommand?.NotifyCanExecuteChanged();
+        BrowseBluRayIsoCommand?.NotifyCanExecuteChanged();
         NewProjectCommand?.NotifyCanExecuteChanged();
         OpenProjectCommand?.NotifyCanExecuteChanged();
         EditProjectCommand?.NotifyCanExecuteChanged();

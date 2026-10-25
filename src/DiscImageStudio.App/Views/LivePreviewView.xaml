@@ -136,14 +136,17 @@
                                                         <TextBox Style="{StaticResource CompactTextBox}"
                                                                  Text="{Binding Inspector.PreviewSize, UpdateSourceTrigger=PropertyChanged}" />
                                                     </StackPanel>
-                                                    <StackPanel Grid.Column="2">
-                                                        <TextBlock Style="{StaticResource FieldLabel}" Text="每扇区采样" />
-                                                        <TextBox Style="{StaticResource CompactTextBox}"
-                                                                 Text="{Binding Inspector.SamplesPerSector, UpdateSourceTrigger=PropertyChanged}" />
-                                                    </StackPanel>
+                                                    <controls:VisibilityGate Grid.Column="2"
+                                                        IsOpen="{Binding Inspector.HasSamplesPerSector}">
+                                                        <StackPanel>
+                                                            <TextBlock Style="{StaticResource FieldLabel}" Text="每扇区采样" />
+                                                            <TextBox Style="{StaticResource CompactTextBox}"
+                                                                     Text="{Binding Inspector.SamplesPerSector, UpdateSourceTrigger=PropertyChanged}" />
+                                                        </StackPanel>
+                                                    </controls:VisibilityGate>
                                                 </Grid>
                                                 <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,8"
-                                                           Text="尺寸越大投影越细，刷新越慢。" />
+                                                           Text="尺寸越大投影越细，刷新越慢。蓝光按每个负载字节的位置采样，没有每扇区采样。" />
                                             </StackPanel>
                                         </Expander>
                                     </StackPanel>
@@ -172,6 +175,11 @@
                                                                        IsChecked="{Binding Inspector.State.CdInterleave}"
                                                                        Hint="若音轨生成时启用了延迟交织，勾选后按相同设置读回；外部音轨按制作时的选择设置。"
                                                                        Margin="0,12,0,0" />
+                                        </controls:VisibilityGate>
+                                        <controls:VisibilityGate IsOpen="{Binding Inspector.IsBluRay}">
+                                            <TextBlock Style="{StaticResource HintText}" Margin="0,12,0,0"
+                                                       TextWrapping="Wrap"
+                                                       Text="读回显示 AA/44 负载字节类别：黑为 3T、白为 6T、灰为其他字节，不是反射亮度。极性问题请看的设计投影。" />
                                         </controls:VisibilityGate>
                                     </StackPanel>
                                 </controls:VisibilityGate>
