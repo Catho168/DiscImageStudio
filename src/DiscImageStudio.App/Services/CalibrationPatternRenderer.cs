@@ -1,6 +1,7 @@
 using System.IO;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using DiscImageStudio.Core;
 using DiscImageStudio.Core.Calibration;
 
 namespace DiscImageStudio.Services;
@@ -28,7 +29,11 @@ internal static class CalibrationPatternRenderer
                 if (r2 >= bounds.InnerRadiusMm * bounds.InnerRadiusMm - 1e-10 && r2 <= bounds.OuterRadiusMm * bounds.OuterRadiusMm + 1e-10)
                 {
                     CalibrationPoint? p = inverse is null ? new(xm, ym) : inverse(new(xm, ym));
-                    if (p is not null) value = target.Sample(p.X, p.Y);
+                    if (p is not null)
+                    {
+                        byte sampled = target.Sample(p.X, p.Y);
+                        value = BinaryGrayscale.Quantize(sampled);
+                    }
                 }
                 pixels[y * size + x] = value;
             }
@@ -44,8 +49,8 @@ internal static class CalibrationPatternRenderer
         const int size = CalibrationReferencePattern.PixelSize;
         byte[] pixels = CalibrationReferencePattern.ReadGrayPixels();
         CalibrationParameters parameters = target.Parameters;
-        double inner2 = parameters.InnerRadiusMm * parameters.InnerRadiusMm;
-        double outer2 = parameters.OuterRadiusMm * parameters.OuterRadiusMm;
+        double inner2 = target.DrawingInnerRadiusMm * target.DrawingInnerRadiusMm;
+        double outer2 = target.DrawingOuterRadiusMm * target.DrawingOuterRadiusMm;
         Parallel.For(0, size, new ParallelOptions { CancellationToken = cancellationToken }, y =>
         {
             for (int x = 0; x < size; x++)

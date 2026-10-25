@@ -77,4 +77,4 @@ dotnet run --project tests/DiscImageStudio.ArchitectureTests --configuration Rel
 
 ## 许可证
 
-在仓库补上正式 `LICENSE` 之前，版权授权以 [LICENSE-NOTICE.md](LICENSE-NOTICE.md) 为准：公开可见不等于授权复制、修改或再发布。提交贡献时请注意，并在需要时与项目所有者确认。
+项目采用 [GNU GPL v3.0 or later](LICENSE)（`GPL-3.0-or-later`）。提交贡献即表示你有权提交相关内容，并同意按该许可授权该贡献。引入第三方代码、字体或图片时，请保留原作者与许可证并确认与项目分发方式兼容，补充 [第三方声明](THIRD-PARTY-NOTICES.txt)；第三方授权边界见 [LICENSE-NOTICE.md](LICENSE-NOTICE.md)。

@@ -14,6 +14,8 @@
 
 编码链包括 ID、IED、全零 RSV、EDC、数据扰码、RS-PC PO/PI、PO 行交织、EFMPlus 主表/替代表、SYNC/DSV 控制和 NRZI 转换。
 
+独立[灰阶实验工具](../tools/DvdGrayProbe/README.md)使用 `FastDispersionImageWriter.WriteScrambledCodewordPatternStream`，在同一 payload 码字中心坐标系下直接指定扰码 Q，再写出 `P = Q XOR mask`。该接口不经过固定灰度分档，适合测试 `64/E4` 等候选码字和离散抖动图集；普通图片生成的调色板不受影响。快速生成不回放全盘 ECC/EFM，也不预测光学亮度。回归测试对混合码字执行完整 ECC/EFM 小样本回放，另验证实际 payload、几何、并行一致性和取消。
+
 ## 构建和自检
 
 需要 Windows 和 .NET 9 Desktop Runtime 或更高版本：
@@ -56,7 +58,9 @@ dotnet run --project src/DvdImageSolver --configuration Release -- selftest
 
 SYNC、RLL、EDC 和 ECC 会限制可实现的图案，因此任意逐 bit 图像通常不存在零误差解。`full`模式以不匹配的NRZI bits为目标；图片的`state-control`模式把目标二值化为黑或白，先计算pit/land多数方向是否错误，再计算实际land数量到纯黑0或纯白16的灰度距离。搜索目标只使用可控payload码字，最终可见度则统计全部channel码字。
 
-`dispersion`模式不控制绝对pit/land多数，而用EFMPlus跳变密度形成纹理对比。根据实盘极性，图片黑色映射为扰码后字节`Q=0xA5`（所有表示均为5次transition），白色映射为`Q=0x92`（所有表示均为2次transition）。NRZI整体反色不改变transition位置，因此该模式不依赖初始pit/land极性来区分两种纹理。
+`dispersion`模式不控制绝对pit/land多数，而用EFMPlus跳变密度形成黑白二阶纹理。采用扰码后字节`Q=0xA5/0x92`，所有状态表示分别固定为5/2次transition。图片亮度0–127映射A5、128–255映射92，预览亮度为0/255。新生成的图片不再使用66或B9作为独立灰阶。NRZI整体反色不改变transition位置。
+
+已抖动的全不透明灰度图片若只含`0/255`（允许全黑或全白），生成与标定预览使用最近像素采样，保留像素的原始档位；普通连续灰度、彩色或带透明度的图片仍采用双线性采样。主程序的CD/DVD环形复制对黑白离散输入先进行高质量缩放和旋转，再重新二阶抖动，避免缩放后的连续灰度直接分档而损失混合层次。`full`和`state-control`的二值目标保持原来的采样规则。
 
 ## 图片映射
 
@@ -190,12 +194,12 @@ state-control搜索时使用严格字典序目标：先最小化自由payload的
 `--algorithm dispersion`（别名`byte-pool`）直接在扰码域生成payload，不执行随机搜索：
 
 ```text
-图片黑色 -> Q = 0xA5 -> 每个EFMPlus码字固定5次transition，短游程分散
-图片白色 -> Q = 0x92 -> 每个EFMPlus码字固定2次transition，长游程集中
+图片亮度   0..127 -> Q = 0xA5 -> 固定5次transition -> 预览0
+图片亮度 128..255 -> Q = 0x92 -> 固定2次transition -> 预览255
 ISO payload P = Q XOR sector scrambler byte
 ```
 
-每个payload码字都按其16个channel bits的盘面中心采样图片，因此该模式不受`--constraint-step`影响。ID、IED、全零RSV、EDC、PI、PO和SYNC仍按标准生成；程序不展开619008个NRZI bits，但会用完整recording frames逐码字重放，精确传递最终EFMPlus state、DSV和pit/land到下一ECC Block。
+每个payload码字都按其16个channel bits的盘面中心采样图片，再按上述固定区间分档，因此该模式不受`--constraint-step`或`--image-threshold`影响；`--image-threshold`仅控制`full/state-control`的二值目标。ID、IED、全零RSV、EDC、PI、PO和SYNC仍按标准生成；程序不展开619008个NRZI bits，但会用完整recording frames逐码字重放，精确传递最终EFMPlus state、DSV和pit/land到下一ECC Block。
 
 #### 影调抖动
 
@@ -232,7 +236,13 @@ ISO payload P = Q XOR sector scrambler byte
 
 `--fast-parallelism 0`会按逻辑处理器数量并行生成互不依赖的ECC Block payload，再按LBA顺序写入镜像；也可以设为`1..64`限制CPU占用。并行不会改变字节选择或输出顺序。
 
-`payload-transition-class-error=0`表示所有受控payload都正确分配到了`0x92/0xA5`类别，不表示固定字段、ECC和SYNC也具有相同transition密度。实盘标定确认原黑白极性相反，因此当前约定把`0xA5`称为黑色、`0x92`称为白色。
+快速文件输出与流式输出在支持硬件加速时默认启用四点双精度 SIMD 采样。每组仍使用四个实际 payload 码字中心，不把跨 SYNC/ECC 的位置当作连续等距样本。三次轨距的同段求逆共用一次查段，并向量化原有四次 Newton/Hermite 计算；跨段和边界回退到标量几何。全不透明黑白图使用向量正余弦，接近半像素或图片边缘的点按原标量路径重算；普通灰阶、彩色和透明图保留原有标量正余弦与插值，只加速三次轨距几何。恒定轨距、解析图案回调和无 SIMD 硬件的机器继续使用标量采样。恒定轨距的四点路径在当前实测中存在性能回退，因此暂不启用。全程保留 `double`，不使用单精度坐标或近似螺旋公式。
+
+调用生成 API 时可设置 `MultiBlockSolveOptions.UseSimdSampling = false` 使用标量参考路径，便于性能与输出比较；默认值为 `true`，无需改动现有 GUI 或命令行参数。回归覆盖两种采样路径的 payload/计数一致性、三次轨距分段边界、半像素边界、透明度阈值、顺逆时针和并行输出顺序。吞吐应按相同输入与 LBA 范围的实际 payload 字节计时；单独三角函数的加速比不代表整盘加速比。
+
+恒定轨距的快速求逆缓存求解完成后不变的内半径积分值、半径平方与轨距系数，并在一次 Newton 修正中复用相同的平方根。该路径保留原有 `double` 运算顺序、除法和边界行为，不使用近似积分或乘倒数替代除法。独立旧公式回归逐位比较半径、角度及短螺旋边界；性能比较须使用优化前后的独立引擎，因为 `UseSimdSampling` 开关两侧都会使用这项标量优化。
+
+`payload-transition-class-error=0`表示所有受控payload都正确分配到了二阶`0xA5/0x92`类别，不表示固定字段、ECC和SYNC也具有相同transition密度。输出JSON的`dispersionPool.levels`记录两档输入区间、Q字节、跳变数和名义预览亮度；这些预览值不等同于实盘反射率。
 
 输出包括：
 
@@ -369,7 +379,7 @@ dotnet run --project src/DvdImageSolver --configuration Release -- calibrate `
 
 ## 生成 ISO 的读回模拟
 
-`calibrate` 的输入是源图片，描述"按生成几何写入、按实测几何读回"的理想效果；`simulate` 则读取已经生成的 ISO 镜像本身：把每个采样到的 payload 字节经 DVD 扰码还原后分类为 dispersion 池的黑（`0xA5`）/白（`0x92`）码字，再用实测半径的螺旋线把码字中心投到盘面。这是与 cdimage 校准对话框同构的闭环——生成几何已经固化在 ISO 里，模拟只需要一套实测几何参数。
+`calibrate` 的输入是源图片，描述"按生成几何写入、按实测几何读回"的理想效果；它使用与生成一致的二阶分界128，`--image-threshold`保留为兼容参数但不改变该预览。`simulate` 则读取已经生成的 ISO 镜像本身：把每个采样到的 payload 字节经 DVD 扰码还原后分类为`0xA5/0x92`，分别显示为0/255，再用实测半径的螺旋线把码字中心投到盘面。为查看旧多阶镜像，读回仍将`0x66`显示为0、`0xB9`显示为85；这些值不用于新图片生成。这是与 cdimage 校准对话框同构的闭环——生成几何已经固化在 ISO 里，模拟只需要一套实测几何参数。
 
 ```powershell
 dotnet run --project src/DvdImageSolver --configuration Release -- simulate `
@@ -381,7 +391,7 @@ dotnet run --project src/DvdImageSolver --configuration Release -- simulate `
   --samples-per-sector 16
 ```
 
-`--total-sectors`、`--lba` 与 `--fill-sectors` 缺省时读取求解命令写出的 `drawing.iso.json`（绘制起始 LBA 与绘制扇区数），没有 sidecar 时回退为整个 ISO 文件、从 LBA 0 开始。`--samples-per-sector` 控制每个扇区采样的 payload 字节个数（1–2048，默认16）。扰码后不属于黑/白码字的字节（文件系统前缀、ECC 校验等）跳过不计。输出旁同样写出 `readback-preview.png.json`，其中 `mappingMode` 为 `payload-scramble-classify-splat`，并记录分类命中数、螺距与总圈数。
+`--total-sectors`、`--lba` 与`--fill-sectors`缺省时读取求解命令写出的`drawing.iso.json`（绘制起始LBA与绘制扇区数），没有sidecar时回退为整个ISO文件、从LBA 0开始。`--samples-per-sector`控制每个扇区采样的payload字节个数（1–2048，默认16）。扰码后不属于二阶码表或兼容旧值66/B9的字节跳过不计。文件系统前缀可能偶然命中码表，应使用sidecar中的绘图区间排除它；ISO中本身不存储PI/PO纠错码。输出旁同样写出`readback-preview.png.json`，其中`mappingMode`为`payload-scramble-classify-splat`，并记录分类命中数、螺距与总圈数。
 
 采样位置取码字中心：生成端 `FastDispersionImageWriter` 按 `PayloadDirectChannelOffset + 8`（16 位码字的一半）把图片目标落在码字中心，读回端使用同一位置，两个方向的投影因此不会相差 8 个通道位（约 1 µm 轨道长度）。除此之外读回与生成共用同一套螺旋线、方向与扰码掩码，所以"生成时的参数"与"预览时的参数"一致时，读回图逐采样复现生成图。
 

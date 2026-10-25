@@ -147,7 +147,8 @@ public static class CalibrationPreviewRenderer
                 PixelSample sample = source.SampleDisc(
                     generatedRadiusMm * Math.Cos(generatedPolarAngle),
                     generatedRadiusMm * Math.Sin(generatedPolarAngle),
-                    generated.OuterRadiusMm);
+                    generated.OuterRadiusMm,
+                    preserveDiscreteGrayscale: true);
                 if (sample.Alpha < options.AlphaThreshold)
                 {
                     continue;

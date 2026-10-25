@@ -108,7 +108,8 @@ public static class CdTrackGenerator
         CancellationToken cancellationToken = default,
         string outputDescription = "direct-burn-stream",
         CdAudioByteOrder audioByteOrder = CdAudioByteOrder.BigEndian,
-        ToneProfile? tone = null)
+        ToneProfile? tone = null,
+        bool useSimdSampling = true)
     {
         ArgumentNullException.ThrowIfNull(output);
         if (!output.CanWrite)
@@ -120,8 +121,9 @@ public static class CdTrackGenerator
         parameters.Validate();
         string sourceFullPath = Path.GetFullPath(imagePath);
         RasterImage source = RasterImage.Load(sourceFullPath);
+        CdImageSampler sampler = new(source, parameters);
         return GenerateSamplesToStream(
-            globalByte => Sample(source, parameters, globalByte),
+            sampler.Sample,
             sourceFullPath,
             output,
             parameters,
@@ -130,7 +132,8 @@ public static class CdTrackGenerator
             cancellationToken,
             outputDescription,
             audioByteOrder,
-            (tone ?? ToneProfile.LegacyBinary).Normalized());
+            (tone ?? ToneProfile.LegacyBinary).Normalized(),
+            useSimdSampling && sampler.SupportsSimd ? sampler.SampleFour : null);
     }
 
     /// <summary>
@@ -236,7 +239,8 @@ public static class CdTrackGenerator
         CancellationToken cancellationToken,
         string outputDescription,
         CdAudioByteOrder audioByteOrder,
-        ToneProfile tone)
+        ToneProfile tone,
+        Func<long, uint>? sampleFour = null)
     {
         long totalBytes = parameters.TotalBytes;
         CddaInterleaver? cddaInterleaver = interleave ? new CddaInterleaver(audioByteOrder) : null;
@@ -244,6 +248,7 @@ public static class CdTrackGenerator
         Stopwatch stopwatch = Stopwatch.StartNew();
         long progressInterval = Math.Max(CdDiscParameters.BytesPerSector, totalBytes / 200);
         long nextProgress = progressInterval;
+        uint packedSamples = 0;
 
         for (long globalByte = 0; globalByte < totalBytes; globalByte++)
         {
@@ -252,7 +257,20 @@ public static class CdTrackGenerator
                 cancellationToken.ThrowIfCancellationRequested();
             }
 
-            byte gray = sampleGray(globalByte);
+            byte gray;
+            if (sampleFour is null)
+            {
+                gray = sampleGray(globalByte);
+            }
+            else
+            {
+                // A CD audio sector has 2352 bytes, so every track ends on a
+                // complete four-lane batch. Output/interleave order stays serial.
+                if ((globalByte & 3) == 0)
+                    packedSamples = sampleFour(globalByte);
+                gray = (byte)packedSamples;
+                packedSamples >>= 8;
+            }
             byte value = CdToneMapping.Map(gray, tone, globalByte);
             if (cddaInterleaver is null)
             {
@@ -294,7 +312,7 @@ public static class CdTrackGenerator
     /// Projects the picture through two parameter sets: the sample is taken where
     /// <paramref name="generated"/> lays the picture out on the disc, and drawn where
     /// <paramref name="actual"/> reads that byte back. Passing the same geometry twice
-    /// reproduces the picture untouched, so the difference between the two is exactly the
+    /// preserves the picture's binary geometry, so the difference between the two is the
     /// distortion a disc whose measured geometry differs from the generated one would show.
     /// </summary>
     public static void PreviewWarp(
@@ -330,13 +348,13 @@ public static class CdTrackGenerator
         ValidatePreview(outputSize, samplesPerSector);
         tone = tone.Normalized();
         RasterImage source = RasterImage.Load(Path.GetFullPath(imagePath));
-        byte[] pixels = CreateWhitePixels(outputSize);
-        int pixelCount = checked(outputSize * outputSize);
-        int[] levelSums = new int[pixelCount];
-        int[] sampleCounts = new int[pixelCount];
+        CdImageSampler sampler = new(source, generated);
+        GrayPreview preview = new(outputSize);
         long step = Math.Max(1, CdDiscParameters.BytesPerSector / samplesPerSector);
         long totalBytes = generated.TotalBytes;
         long sampleNumber = 0;
+        uint packedSamples = 0;
+        long packedGroup = -1;
         for (long globalByte = 0; globalByte < totalBytes; globalByte += step)
         {
             if ((sampleNumber & 0x3FFF) == 0)
@@ -344,39 +362,31 @@ public static class CdTrackGenerator
                 cancellationToken.ThrowIfCancellationRequested();
             }
 
-            byte gray = Sample(source, generated, globalByte);
-            byte level = CdToneMapping.DisplayGray(CdToneMapping.Map(gray, tone, globalByte));
-            (double pixelX, double pixelY) = actual.ImagePointFromByte(globalByte, outputSize);
-            int x = (int)Math.Round(pixelX);
-            int y = (int)Math.Round(pixelY);
-            if ((uint)x >= (uint)outputSize || (uint)y >= (uint)outputSize)
+            byte gray;
+            if (sampler.SupportsSimd)
             {
-                sampleNumber++;
-                continue;
+                // Generation samples four consecutive bytes per lane; reuse that exact
+                // packed group so a sparse preview cannot land on a different side of a
+                // pixel boundary than the generated track did.
+                long group = globalByte & ~3L;
+                if (group != packedGroup)
+                {
+                    packedSamples = sampler.SampleFour(group);
+                    packedGroup = group;
+                }
+
+                gray = (byte)(packedSamples >> (int)((globalByte & 3) * 8));
+            }
+            else
+            {
+                gray = sampler.Sample(globalByte);
             }
 
-            int pixelIndex = checked((y * outputSize) + x);
-            levelSums[pixelIndex] += level;
-            sampleCounts[pixelIndex]++;
+            Splat(actual, outputSize, preview, globalByte, CdToneMapping.Map(gray, tone, globalByte));
             sampleNumber++;
         }
 
-        for (int pixelIndex = 0; pixelIndex < pixelCount; pixelIndex++)
-        {
-            int count = sampleCounts[pixelIndex];
-            if (count == 0)
-            {
-                continue;
-            }
-
-            byte level = (byte)((levelSums[pixelIndex] + (count / 2)) / count);
-            int offset = checked(pixelIndex * 4);
-            pixels[offset] = level;
-            pixels[offset + 1] = level;
-            pixels[offset + 2] = level;
-        }
-
-        WritePng(Path.GetFullPath(outputPath), outputSize, pixels);
+        WritePng(Path.GetFullPath(outputPath), outputSize, preview.CreatePixels());
     }
 
     /// <summary>
@@ -406,10 +416,7 @@ public static class CdTrackGenerator
             throw new ArgumentOutOfRangeException(nameof(byteStep), "Byte step must be positive.");
         }
 
-        byte[] pixels = CreateWhitePixels(outputSize);
-        int pixelCount = checked(outputSize * outputSize);
-        int[] levelSums = new int[pixelCount];
-        int[] sampleCounts = new int[pixelCount];
+        GrayPreview preview = new(outputSize);
         using FileStream input = new(
             Path.GetFullPath(trackPath),
             FileMode.Open,
@@ -442,8 +449,7 @@ public static class CdTrackGenerator
                 actual,
                 outputSize,
                 byteStep,
-                levelSums,
-                sampleCounts,
+                preview,
                 cancellationToken);
         }
         else
@@ -456,27 +462,11 @@ public static class CdTrackGenerator
                 actual,
                 outputSize,
                 byteStep,
-                levelSums,
-                sampleCounts,
+                preview,
                 cancellationToken);
         }
 
-        for (int pixelIndex = 0; pixelIndex < pixelCount; pixelIndex++)
-        {
-            int count = sampleCounts[pixelIndex];
-            if (count == 0)
-            {
-                continue;
-            }
-
-            int offset = checked(pixelIndex * 4);
-            byte level = (byte)((levelSums[pixelIndex] + (count / 2)) / count);
-            pixels[offset] = level;
-            pixels[offset + 1] = level;
-            pixels[offset + 2] = level;
-        }
-
-        WritePng(Path.GetFullPath(outputPath), outputSize, pixels);
+        WritePng(Path.GetFullPath(outputPath), outputSize, preview.CreatePixels());
     }
 
     /// <summary>Renders the file's bytes in file order; correct for a track without interleave.</summary>
@@ -488,8 +478,7 @@ public static class CdTrackGenerator
         CdDiscParameters actual,
         int outputSize,
         int byteStep,
-        int[] levelSums,
-        int[] sampleCounts,
+        GrayPreview preview,
         CancellationToken cancellationToken)
     {
         byte[] buffer = new byte[1024 * 1024];
@@ -515,7 +504,7 @@ public static class CdTrackGenerator
             for (int index = first; index < bytesRead; index += byteStep)
             {
                 long globalByte = globalOffset + index;
-                Splat(actual, outputSize, levelSums, sampleCounts, globalByte, buffer[index]);
+                Splat(actual, outputSize, preview, globalByte, buffer[index]);
             }
 
             globalOffset += bytesRead;
@@ -535,8 +524,7 @@ public static class CdTrackGenerator
         CdDiscParameters actual,
         int outputSize,
         int byteStep,
-        int[] levelSums,
-        int[] sampleCounts,
+        GrayPreview preview,
         CancellationToken cancellationToken)
     {
         const int WindowBytes = 1024 * 1024;
@@ -573,7 +561,7 @@ public static class CdTrackGenerator
                     continue;
                 }
 
-                Splat(actual, outputSize, levelSums, sampleCounts, logical, buffer[local]);
+                Splat(actual, outputSize, preview, logical, buffer[local]);
             }
         }
     }
@@ -581,22 +569,15 @@ public static class CdTrackGenerator
     private static void Splat(
         CdDiscParameters actual,
         int outputSize,
-        int[] levelSums,
-        int[] sampleCounts,
+        GrayPreview preview,
         long globalByte,
         byte paletteByte)
     {
         (double pixelX, double pixelY) = actual.ImagePointFromByte(globalByte, outputSize);
-        int x = (int)Math.Round(pixelX);
-        int y = (int)Math.Round(pixelY);
-        if ((uint)x >= (uint)outputSize || (uint)y >= (uint)outputSize)
-        {
-            return;
-        }
-
-        int pixelIndex = checked((y * outputSize) + x);
-        levelSums[pixelIndex] += CdToneMapping.DisplayGray(paletteByte);
-        sampleCounts[pixelIndex]++;
+        preview.Add(
+            (int)Math.Round(pixelX),
+            (int)Math.Round(pixelY),
+            CdToneMapping.DisplayGray(paletteByte));
     }
 
     private static byte Sample(
@@ -608,11 +589,45 @@ public static class CdTrackGenerator
         return source.GrayAt(pixelX, pixelY);
     }
 
-    private static byte[] CreateWhitePixels(int size)
+    /// <summary>Source projections and track readback average every sample that lands in one pixel.</summary>
+    private sealed class GrayPreview(int size)
     {
-        byte[] pixels = new byte[checked(size * size * 4)];
-        Array.Fill(pixels, (byte)255);
-        return pixels;
+        private readonly int[] _levelSums = new int[checked(size * size)];
+        private readonly int[] _sampleCounts = new int[checked(size * size)];
+
+        internal void Add(int x, int y, byte level)
+        {
+            if ((uint)x >= (uint)size || (uint)y >= (uint)size)
+            {
+                return;
+            }
+
+            int pixelIndex = checked((y * size) + x);
+            _levelSums[pixelIndex] += level;
+            _sampleCounts[pixelIndex]++;
+        }
+
+        internal byte[] CreatePixels()
+        {
+            byte[] pixels = new byte[checked(size * size * 4)];
+            Array.Fill(pixels, (byte)255);
+            for (int pixelIndex = 0; pixelIndex < _sampleCounts.Length; pixelIndex++)
+            {
+                int count = _sampleCounts[pixelIndex];
+                if (count == 0)
+                {
+                    continue;
+                }
+
+                byte level = (byte)((_levelSums[pixelIndex] + (count / 2)) / count);
+                int offset = checked(pixelIndex * 4);
+                pixels[offset] = level;
+                pixels[offset + 1] = level;
+                pixels[offset + 2] = level;
+            }
+
+            return pixels;
+        }
     }
 
     private static void WritePng(string outputPath, int size, byte[] pixels)

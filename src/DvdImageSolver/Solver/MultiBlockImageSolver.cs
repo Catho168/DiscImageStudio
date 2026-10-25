@@ -23,7 +23,11 @@ public sealed record MultiBlockSolveOptions(
     int BatchCandidates = 4,
     int SearchLanes = 1,
     int FastParallelism = 0,
-    bool PreserveExistingIso = false);
+    bool PreserveExistingIso = false)
+{
+    /// <summary>Use four-double raster sampling in fast output when supported; false retains the scalar reference path.</summary>
+    public bool UseSimdSampling { get; init; } = true;
+}
 
 public sealed record MultiBlockProgress(
     int CompletedBlocks,

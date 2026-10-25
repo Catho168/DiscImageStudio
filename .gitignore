@@ -15,3 +15,11 @@ tmp/
 *.appxbundle
 TestResults/
 AGENTS.md
+__pycache__/
+*.py[cod]
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
+*.key

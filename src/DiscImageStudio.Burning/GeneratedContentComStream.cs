@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 using System.Threading.Channels;
@@ -8,13 +9,13 @@ namespace DiscImageStudio.Burning;
 [ClassInterface(ClassInterfaceType.None)]
 internal sealed class GeneratedContentComStream : IStream, IDisposable
 {
-    internal const int ChunkBytes = 256 * 1024;
+    internal const int ChunkBytes = OpticalBurnBufferOptions.ChunkBytes;
     internal const int BufferCapacityBytes = 64 * 1024 * 1024;
     internal const int PrebufferBytes = 32 * 1024 * 1024;
-    private const int BufferChunks = BufferCapacityBytes / ChunkBytes;
     private const int StgTypeStream = 2;
     private const int StgEInvalidFunction = unchecked((int)0x80030001);
     private const int ENotImpl = unchecked((int)0x80004001);
+    private static readonly TimeSpan ProgressInterval = TimeSpan.FromMilliseconds(250);
 
     private readonly long _length;
     private readonly Channel<byte[]> _channel;
@@ -23,17 +24,23 @@ internal sealed class GeneratedContentComStream : IStream, IDisposable
         TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Task _producerTask;
     private readonly Action<long, long>? _progress;
+    private readonly Func<long> _getTimestamp;
     private byte[]? _currentChunk;
     private int _currentOffset;
     private long _position;
+    private long _lastProgressTimestamp;
     private bool _hasRead;
+    private bool _hasReportedProgress;
     private bool _disposed;
+    internal OpticalBurnBufferOptions BufferOptions { get; }
 
     internal GeneratedContentComStream(
         long length,
         Action<Stream, CancellationToken> producer,
         Action<long, long>? progress,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        OpticalBurnBufferOptions? bufferOptions = null,
+        Func<long>? timestampProvider = null)
     {
         if (length <= 0)
         {
@@ -41,16 +48,19 @@ internal sealed class GeneratedContentComStream : IStream, IDisposable
         }
 
         ArgumentNullException.ThrowIfNull(producer);
+        BufferOptions = bufferOptions ?? OpticalBurnBufferOptions.Default;
+        BufferOptions.Validate();
         _length = length;
         _progress = progress;
+        _getTimestamp = timestampProvider ?? Stopwatch.GetTimestamp;
         _cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _channel = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(BufferChunks)
+        _channel = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(BufferOptions.CapacityBytes / ChunkBytes)
         {
             FullMode = BoundedChannelFullMode.Wait,
             SingleReader = true,
             SingleWriter = true,
         });
-        long prebufferBytes = Math.Min(length, PrebufferBytes);
+        long prebufferBytes = Math.Min(length, BufferOptions.PrebufferBytes);
         _producerTask = Task.Factory.StartNew(
             () => Produce(producer, prebufferBytes),
             CancellationToken.None,
@@ -104,13 +114,29 @@ internal sealed class GeneratedContentComStream : IStream, IDisposable
             Marshal.WriteInt32(pcbRead, totalRead);
         }
 
+        if (totalRead > 0) ReportReadProgress();
+    }
+
+    private void ReportReadProgress()
+    {
+        if (_progress is null) return;
+        // This remains synchronous on the IStream reader's thread. Throttle
+        // before constructing/posting UI events, while always keeping the first
+        // successful read and the last byte. EOF reads do not repeat completion.
+        long now = _getTimestamp();
+        if (_hasReportedProgress && _position != _length
+            && Stopwatch.GetElapsedTime(_lastProgressTimestamp, now) < ProgressInterval)
+            return;
+        _lastProgressTimestamp = now;
+        _hasReportedProgress = true;
         try
         {
-            _progress?.Invoke(_position, _length);
+            _progress(_position, _length);
         }
         catch
         {
             // UI progress must never interrupt the recorder's IStream read.
+            // A failing observer must not bypass throttling on subsequent reads.
         }
     }
 
@@ -317,7 +343,12 @@ internal sealed class GeneratedContentComStream : IStream, IDisposable
             set => throw new NotSupportedException();
         }
 
-        public override void Flush() => PublishBuffer();
+        public override void Flush()
+        {
+            // Before prebuffering, partial chunks must not fill the bounded queue
+            // before its byte threshold is reached. Complete always publishes the tail.
+            if (_written + _buffered >= prebufferBytes) PublishBuffer();
+        }
 
         public override void Write(byte[] buffer, int offset, int count)
         {

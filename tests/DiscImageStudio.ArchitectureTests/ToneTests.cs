@@ -13,7 +13,7 @@ internal static class ToneTests
 {
     internal static void Run()
     {
-        TestLegacyMappingIsUnchanged();
+        TestBinaryMapping();
         TestPhotographicDefault();
         TestDitherReproducesGreyLevels();
         TestFourLevelPalette();
@@ -40,15 +40,15 @@ internal static class ToneTests
             "a new parameter state starts at 75% dither");
     }
 
-    private static void TestLegacyMappingIsUnchanged()
+    private static void TestBinaryMapping()
     {
         for (int grey = 0; grey <= 255; grey++)
         {
             for (long index = 0; index < 64; index += 7)
             {
-                byte expected = grey < 128 ? (byte)0x10 : (byte)0xAA;
+                byte expected = grey < 128 ? (byte)0x0D : (byte)0xAA;
                 byte actual = CdToneMapping.Map((byte)grey, ToneProfile.LegacyBinary, index);
-                True(actual == expected, $"legacy mapping at grey {grey}");
+                True(actual == expected, $"binary mapping at grey {grey}");
             }
         }
     }
@@ -60,7 +60,7 @@ internal static class ToneTests
         // Full strength is the reconstruction property of the dither itself; the shipped
         // default (75%) deliberately keeps a quarter of the grain away and is checked below.
         ToneProfile tone = new(1, ToneProfile.TwoLevels, 0);
-        const int samples = 8192;
+        const int samples = 32768;
         foreach (int grey in new[] { 0, 32, 64, 96, 128, 160, 192, 224, 255 })
         {
             int sum = 0;
@@ -107,8 +107,8 @@ internal static class ToneTests
         }
 
         True(
-            seen.SetEquals([0x10, 0x21, 0x28, 0xAA]),
-            "4-level mapping emits only the four low-contrast palette bytes");
+            seen.SetEquals([0x0D, 0x10, 0x63, 0xAA]),
+            "4-level mapping emits only the four palette bytes");
         True(
             CdToneMapping.DisplayGray(0x21) == 96 && CdToneMapping.DisplayGray(0x28) == 160,
             "the two intermediate palette bytes keep their preview greys");
@@ -221,10 +221,10 @@ internal static class ToneTests
                 tone: tone);
             byte[] bytes = File.ReadAllBytes(tonePath);
             True(
-                bytes.All(value => value is 0x10 or 0x21 or 0x28 or 0xAA),
+                bytes.All(value => value is 0x0D or 0x10 or 0x63 or 0xAA),
                 "generated 4-level track contains only palette bytes");
             True(
-                new byte[] { 0x10, 0x21, 0x28, 0xAA }.All(value => bytes.Contains(value)),
+                new byte[] { 0x0D, 0x10, 0x63, 0xAA }.All(value => bytes.Contains(value)),
                 "a smooth gradient exercises all four palette levels");
 
             const int previewSize = 400;
@@ -246,9 +246,14 @@ internal static class ToneTests
                 previewSize,
                 samplesPerSector,
                 tone);
+            byte[] trackPixels = ReadPngPixels(trackPreview);
+            byte[] warpPixels = ReadPngPixels(warpPreview);
+            int firstDifference = Enumerable.Range(0, trackPixels.Length)
+                .FirstOrDefault(index => trackPixels[index] != warpPixels[index]);
             True(
-                ReadPngPixels(trackPreview).SequenceEqual(ReadPngPixels(warpPreview)),
-                "tone-mapped read-back and source projection agree pixel for pixel");
+                trackPixels.SequenceEqual(warpPixels),
+                $"tone-mapped read-back and source projection agree pixel for pixel"
+                + $" (first difference at {firstDifference}: {trackPixels[firstDifference]} vs {warpPixels[firstDifference]})");
         }
         finally
         {

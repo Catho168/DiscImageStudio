@@ -1,3 +1,5 @@
+using System.Runtime.Intrinsics;
+
 namespace DiscImageStudio.Core;
 
 /// <summary>
@@ -14,6 +16,10 @@ public sealed class DvdTrackGeometry
     private readonly double _range;
     private readonly Segment[] _segments;
     private readonly double _lengthScale = 1;
+    private readonly double _constantInnerRadiusSquared;
+    private readonly double _constantGrowthSquared;
+    private readonly double _constantTwiceGrowth;
+    private readonly double _constantInnerPrimitive;
 
     // Positive half of the eight-point Gauss-Legendre rule.
     private static readonly double[] Nodes =
@@ -49,6 +55,10 @@ public sealed class DvdTrackGeometry
                 else high = middle;
             }
             RadialGrowthPerRadianMm = (low + high) / 2;
+            _constantInnerRadiusSquared = innerRadiusMm * innerRadiusMm;
+            _constantGrowthSquared = RadialGrowthPerRadianMm * RadialGrowthPerRadianMm;
+            _constantTwiceGrowth = 2 * RadialGrowthPerRadianMm;
+            _constantInnerPrimitive = Primitive(innerRadiusMm, RadialGrowthPerRadianMm);
             TotalAngleRadians = _range / RadialGrowthPerRadianMm;
             return;
         }
@@ -143,15 +153,7 @@ public sealed class DvdTrackGeometry
 
     public double RadiusAtArcLengthFast(double arcLengthMm)
     {
-        if (IsConstantPitch)
-        {
-            double b = RadialGrowthPerRadianMm;
-            double radius = Math.Clamp(Math.Sqrt(InnerRadiusMm * InnerRadiusMm + 2 * b * arcLengthMm),
-                InnerRadiusMm, OuterRadiusMm);
-            double error = ConstantArc(InnerRadiusMm, radius, b) - arcLengthMm;
-            double derivative = Math.Sqrt(radius * radius + b * b) / b;
-            return Math.Clamp(radius - error / derivative, InnerRadiusMm, OuterRadiusMm);
-        }
+        if (IsConstantPitch) return RadiusAtConstantArcLengthFast(arcLengthMm);
         if (arcLengthMm <= 0) return InnerRadiusMm;
         if (arcLengthMm >= TrackLengthMm) return OuterRadiusMm;
         if (!double.IsFinite(arcLengthMm)) throw new ArgumentOutOfRangeException(nameof(arcLengthMm));
@@ -162,6 +164,21 @@ public sealed class DvdTrackGeometry
         return segment.RadiusStart + segment.Width * t;
     }
 
+    private double RadiusAtConstantArcLengthFast(double arcLengthMm)
+    {
+        double b = RadialGrowthPerRadianMm;
+        double radius = Math.Clamp(Math.Sqrt(_constantInnerRadiusSquared + _constantTwiceGrowth * arcLengthMm),
+            InnerRadiusMm, OuterRadiusMm);
+        // The inner primitive is invariant once b has been solved. Reuse the
+        // radius root in the primitive and derivative, retaining the original
+        // operation order and divisions so every double result is unchanged.
+        double root = Math.Sqrt(radius * radius + _constantGrowthSquared);
+        double primitive = 0.5 * (radius * root + _constantGrowthSquared * Math.Asinh(radius / b));
+        double error = (primitive - _constantInnerPrimitive) / b - arcLengthMm;
+        double derivative = root / b;
+        return Math.Clamp(radius - error / derivative, InnerRadiusMm, OuterRadiusMm);
+    }
+
     public double AngleAtArcLength(double arcLengthMm) => AngleAtRadius(RadiusAtArcLength(arcLengthMm));
 
     /// <summary>Returns both coordinates with one table search in generation hot loops.</summary>
@@ -169,8 +186,8 @@ public sealed class DvdTrackGeometry
     {
         if (IsConstantPitch)
         {
-            double radius = RadiusAtArcLengthFast(arcLengthMm);
-            return (radius, AngleAtRadius(radius));
+            double radius = RadiusAtConstantArcLengthFast(arcLengthMm);
+            return (radius, (radius - InnerRadiusMm) / RadialGrowthPerRadianMm);
         }
         if (arcLengthMm <= 0) return (InnerRadiusMm, 0);
         if (arcLengthMm >= TrackLengthMm) return (OuterRadiusMm, TotalAngleRadians);
@@ -182,6 +199,51 @@ public sealed class DvdTrackGeometry
         return (segment.RadiusStart + segment.Width * t,
             segment.AngleStart + Hermite(t, segment.AngleDelta,
                 segment.Width * segment.AngleDerivativeStart, segment.Width * segment.AngleDerivativeEnd));
+    }
+
+    /// <summary>
+    /// Evaluates four independent samples with the scalar formulas. Cubic-pitch
+    /// samples in one segment share its lookup and use vector Hermite arithmetic.
+    /// Segment crossings and endpoints retain the scalar path's exact behavior.
+    /// </summary>
+    public (Vector256<double> Radius, Vector256<double> Angle) AtArcLengthFast(
+        Vector256<double> arcLengthsMm)
+    {
+        // These strict comparisons also reject NaN and infinities without changing
+        // the scalar path's handling of out-of-range values or its exceptions.
+        if (IsConstantPitch || !Vector256.IsHardwareAccelerated
+            || !Vector256.GreaterThanAll(arcLengthsMm, Vector256<double>.Zero)
+            || !Vector256.LessThanAll(arcLengthsMm, Vector256.Create(TrackLengthMm)))
+            return AtArcLengthFastScalar(arcLengthsMm);
+
+        Vector256<double> unscaled = arcLengthsMm / Vector256.Create(_lengthScale);
+        int segmentIndex = FindSegment(unscaled.GetElement(0), byAngle: false);
+        Segment segment = _segments[segmentIndex];
+        // Use the next stored start rather than ArcStart + ArcDelta: compensated
+        // accumulation can round those differently at the segment boundary.
+        if (!Vector256.GreaterThanOrEqualAll(unscaled, Vector256.Create(segment.ArcStart))
+            || (segmentIndex + 1 < _segments.Length
+                && !Vector256.LessThanAll(unscaled,
+                    Vector256.Create(_segments[segmentIndex + 1].ArcStart))))
+            return AtArcLengthFastScalar(arcLengthsMm);
+
+        Vector256<double> t = InvertHermite(unscaled - Vector256.Create(segment.ArcStart),
+            segment.ArcDelta, segment.Width * segment.ArcDerivativeStart,
+            segment.Width * segment.ArcDerivativeEnd);
+        return (Vector256.Create(segment.RadiusStart) + Vector256.Create(segment.Width) * t,
+            Vector256.Create(segment.AngleStart) + Hermite(t, segment.AngleDelta,
+                segment.Width * segment.AngleDerivativeStart, segment.Width * segment.AngleDerivativeEnd));
+    }
+
+    private (Vector256<double> Radius, Vector256<double> Angle) AtArcLengthFastScalar(
+        Vector256<double> arcLengthsMm)
+    {
+        var first = AtArcLengthFast(arcLengthsMm.GetElement(0));
+        var second = AtArcLengthFast(arcLengthsMm.GetElement(1));
+        var third = AtArcLengthFast(arcLengthsMm.GetElement(2));
+        var fourth = AtArcLengthFast(arcLengthsMm.GetElement(3));
+        return (Vector256.Create(first.Radius, second.Radius, third.Radius, fourth.Radius),
+            Vector256.Create(first.Angle, second.Angle, third.Angle, fourth.Angle));
     }
 
     public double AngleAtRadius(double radius)
@@ -483,6 +545,46 @@ public sealed class DvdTrackGeometry
             t = Math.Clamp(t - error / derivative, 0, 1);
         }
         return t;
+    }
+
+    private static Vector256<double> Hermite(Vector256<double> t,
+        double delta, double derivativeStart, double derivativeEnd)
+        => t * (Vector256.Create(derivativeStart)
+            + t * (Vector256.Create(3 * delta - 2 * derivativeStart - derivativeEnd)
+                + t * Vector256.Create(derivativeStart + derivativeEnd - 2 * delta)));
+
+    private static Vector256<double> InvertHermite(Vector256<double> value,
+        double delta, double derivativeStart, double derivativeEnd)
+    {
+        Vector256<double> t = ClampUnit(value / Vector256.Create(delta));
+        double quadratic = 3 * delta - 2 * derivativeStart - derivativeEnd;
+        double cubic = derivativeStart + derivativeEnd - 2 * delta;
+        Vector256<double> start = Vector256.Create(derivativeStart);
+        Vector256<double> quadraticVector = Vector256.Create(quadratic);
+        Vector256<double> cubicVector = Vector256.Create(cubic);
+        Vector256<double> twiceQuadratic = Vector256.Create(2 * quadratic);
+        Vector256<double> three = Vector256.Create(3.0);
+        for (int i = 0; i < 4; i++)
+        {
+            // Preserve the scalar evaluation order; do not fuse multiply/add or
+            // replace division with a reciprocal approximation in this path.
+            Vector256<double> error = t * (start + t * (quadraticVector + t * cubicVector)) - value;
+            Vector256<double> derivative = start + t * (twiceQuadratic + three * t * cubicVector);
+            t = ClampUnit(t - error / derivative);
+        }
+        return t;
+    }
+
+    private static Vector256<double> ClampUnit(Vector256<double> value)
+        => Clamp(value, Vector256<double>.Zero, Vector256.Create(1.0));
+
+    private static Vector256<double> Clamp(Vector256<double> value,
+        Vector256<double> minimum, Vector256<double> maximum)
+    {
+        // Conditional selects match Math.Clamp for NaN and signed zero as well
+        // as ordinary values, unlike hardware min/max operand selection rules.
+        return Vector256.ConditionalSelect(Vector256.LessThan(value, minimum), minimum,
+            Vector256.ConditionalSelect(Vector256.GreaterThan(value, maximum), maximum, value));
     }
 
     private double Shape(double radius) => Polynomial(_linear, _quadratic, _cubic, (radius - InnerRadiusMm) / _range);

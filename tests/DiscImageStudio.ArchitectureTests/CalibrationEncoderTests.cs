@@ -5,6 +5,7 @@ using System.Text.Json.Nodes;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using DiscImageStudio.Cd;
+using DiscImageStudio.Core;
 using DiscImageStudio.Core.Calibration;
 using DiscImageStudio.Dvd;
 using DiscImageStudio.Services;
@@ -69,8 +70,9 @@ internal static class CalibrationEncoderTests
         MethodInfo export = renderer.GetMethod("RenderEncodingImage", BindingFlags.Static | BindingFlags.NonPublic)!;
         foreach (CalibrationDiscKind kind in Enum.GetValues<CalibrationDiscKind>())
         {
-            CalibrationParameters parameters = new(kind, 23.9968875, 57.9779875, kind == CalibrationDiscKind.Cd ? 8 : 16,
-                kind == CalibrationDiscKind.Cd ? 1200 : 133.33);
+            CalibrationParameters parameters = new(kind, 23.9968875, 57.9779875,
+                kind == CalibrationDiscKind.Cd ? 8 : kind == CalibrationDiscKind.BluRay ? 64 : 16,
+                kind == CalibrationDiscKind.Cd ? 1200 : kind == CalibrationDiscKind.BluRay ? 74.5 : 133.33);
             CalibrationTarget target = CalibrationTarget.Create(parameters);
             double centre = kind == CalibrationDiscKind.Cd ? 1200 : 1199.5;
             BitmapSource exported = (BitmapSource)export.Invoke(null, [target, CancellationToken.None])!;
@@ -80,8 +82,9 @@ internal static class CalibrationEncoderTests
             for (int x = 0; x < 2400; x++)
             {
                 // Independently invert the ordinary encoder's pixel-coordinate mapping.
-                double xm = (x - centre) * parameters.OuterRadiusMm / centre;
-                double ym = (y - centre) * parameters.OuterRadiusMm / centre;
+                double scaleCentre = kind == CalibrationDiscKind.BluRay ? 1200 : centre;
+                double xm = (x - centre) * parameters.OuterRadiusMm / scaleCentre;
+                double ym = (y - centre) * parameters.OuterRadiusMm / scaleCentre;
                 double r2 = xm * xm + ym * ym;
                 byte expected = r2 >= parameters.InnerRadiusMm * parameters.InnerRadiusMm - 1e-10
                     && r2 <= parameters.OuterRadiusMm * parameters.OuterRadiusMm + 1e-10 ? gray[y * 2400 + x] : (byte)255;
@@ -106,8 +109,10 @@ internal static class CalibrationEncoderTests
             {
                 double xm = (x + 0.5) * 120 / previewSize - 60;
                 double ym = (y + 0.5) * 120 / previewSize - 60;
-                Require(previewPixels[y * previewSize + x] == target.Sample(xm, ym),
-                    "the physical preview uses the captured image mapping without an extra canvas scale");
+                byte sampled = target.Sample(xm, ym);
+                byte expectedPreview = BinaryGrayscale.Quantize(sampled);
+                Require(previewPixels[y * previewSize + x] == expectedPreview,
+                    "the physical preview uses its medium's encoded levels without an extra canvas scale");
             }
             CalibrationTarget smaller = CalibrationTarget.Create(parameters with { OuterRadiusMm = 50 });
             Require(Math.Abs(smaller.RingRadiiMm[4] / target.RingRadiiMm[4] - 50 / parameters.OuterRadiusMm) < 1e-12
@@ -403,17 +408,11 @@ internal static class CalibrationEncoderTests
         double centre = (ImageSize - 1) / 2.0;
         double pixelX = centre + x * centre / outerRadiusMm;
         double pixelY = centre + y * centre / outerRadiusMm;
-        int x0 = (int)Math.Floor(pixelX);
-        int y0 = (int)Math.Floor(pixelY);
-        int x1 = Math.Min(x0 + 1, ImageSize - 1);
-        int y1 = Math.Min(y0 + 1, ImageSize - 1);
-        double horizontal = pixelX - x0;
-        double vertical = pixelY - y0;
-        double value = QuadrantPixel(x0, y0) * (1 - horizontal) * (1 - vertical)
-            + QuadrantPixel(x1, y0) * horizontal * (1 - vertical)
-            + QuadrantPixel(x0, y1) * (1 - horizontal) * vertical
-            + QuadrantPixel(x1, y1) * horizontal * vertical;
-        return (byte)Math.Clamp((int)Math.Round(value), 0, 255);
+        // This opaque black/white fixture is a subset of the DVD palette. Its
+        // pixels must survive sampling without synthesizing intermediate grays.
+        int nearestX = Math.Clamp((int)Math.Floor(pixelX + 0.5), 0, ImageSize - 1);
+        int nearestY = Math.Clamp((int)Math.Floor(pixelY + 0.5), 0, ImageSize - 1);
+        return QuadrantPixel(nearestX, nearestY);
     }
 
     private static byte QuadrantPixel(int x, int y)

@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2008-2022 arduinocelentano
+// Copyright (c) 2026 Disc Image Studio contributors
+// Adapted from CDImage's converter.cpp / converter.h:
+// https://github.com/arduinocelentano/cdimage/tree/de5ca19f403b86934cfedb6793ca75f6716080c0/src
+// C# port and subsequent stream, byte-order and shared-table changes: 2026.
+// Attribution restored 2026-10-25; see Git history and THIRD-PARTY-NOTICES.txt.
+
 namespace DiscImageStudio.Cd;
 
 /// <summary>

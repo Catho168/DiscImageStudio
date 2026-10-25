@@ -5,8 +5,8 @@ namespace DvdImageSolver.Solver;
 
 internal sealed class DispersionPoolSolver
 {
-    internal const byte BlackScrambledByte = 0xA5;
-    internal const byte WhiteScrambledByte = 0x92;
+    internal const byte BlackScrambledByte = DvdGrayscalePalette.BlackScrambledByte;
+    internal const byte WhiteScrambledByte = DvdGrayscalePalette.WhiteScrambledByte;
 
     internal SolverResult Solve(
         ImageConstraint constraint,
@@ -34,6 +34,7 @@ internal sealed class DispersionPoolSolver
 
         byte[] payloads = initialPayloads.ToArray();
         ReadOnlySpan<sbyte> wordTargets = constraint.ChannelWordTargets;
+        ReadOnlySpan<sbyte> grayscaleTargets = constraint.ChannelWordGrayscaleTargets;
         int controlledWords = 0;
         for (int sector = 0; sector < DvdEccBlockEncoder.SectorCount; sector++)
         {
@@ -50,15 +51,17 @@ internal sealed class DispersionPoolSolver
             {
                 int payloadIndex = payloadOffset + byteIndex;
                 int wordIndex = DvdEccBlockEncoder.PayloadDirectChannelOffset(payloadIndex) / 16;
-                sbyte target = wordTargets[wordIndex];
+                sbyte target = grayscaleTargets.IsEmpty
+                    ? wordTargets[wordIndex]
+                    : grayscaleTargets[wordIndex];
                 if (target < 0)
                 {
                     continue;
                 }
 
-                sectorPayload[byteIndex] = target < 8
-                    ? BlackScrambledByte
-                    : WhiteScrambledByte;
+                sectorPayload[byteIndex] = grayscaleTargets.IsEmpty
+                    ? target < 8 ? BlackScrambledByte : WhiteScrambledByte
+                    : DvdGrayscalePalette.GetScrambledByteForLevel(target);
                 controlledWords++;
             }
 

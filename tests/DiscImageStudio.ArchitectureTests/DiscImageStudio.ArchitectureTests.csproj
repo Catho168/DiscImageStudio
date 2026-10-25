@@ -14,6 +14,7 @@
     <ProjectReference Include="..\..\src\DiscImageStudio.Imaging\DiscImageStudio.Imaging.csproj" />
     <ProjectReference Include="..\..\src\DiscImageStudio.Cd\DiscImageStudio.Cd.csproj" />
     <ProjectReference Include="..\..\src\DiscImageStudio.Dvd\DiscImageStudio.Dvd.csproj" />
+    <ProjectReference Include="..\..\src\DiscImageStudio.BluRay\DiscImageStudio.BluRay.csproj" />
     <ProjectReference Include="..\..\src\DiscImageStudio.App\DiscImageStudio.App.csproj" />
   </ItemGroup>
 </Project>

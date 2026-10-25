@@ -20,7 +20,7 @@ GitHub Actions 从配置读取完整版本，自动创建对应的 `vA.B.C` 或 
 
 ### 准备发布
 
-1. 确认许可证决定、隐私政策与支持联系方式已满足本次分发要求；仓库当前的授权状态见 [LICENSE-NOTICE.md](../LICENSE-NOTICE.md)。
+1. 确认 GPL-3.0-or-later 许可证、隐私政策与支持联系方式已满足本次分发要求。发布时保留指向构建提交的标签，并在同一 Release 提供该版本完整对应源代码及构建说明，确保源代码可与 EXE/MSIX 一同获取；核对 GitHub 自动生成的源码归档包含构建所需文件。升级依赖或自包含 .NET 运行时时同步更新 [第三方声明](../THIRD-PARTY-NOTICES.txt)。项目许可证、第三方声明和字体协议均嵌入应用，可在“关于”页离线查看；授权边界见 [LICENSE-NOTICE.md](../LICENSE-NOTICE.md)。
 2. 在功能分支修改 `Directory.Build.props` 的 `VersionPrefix`（预发布同时设置 `VersionSuffix`），并把本次内容从 `CHANGELOG.md` 的 `Unreleased` 整理到对应版本段。保留 `## Unreleased`，用于后续开发。
 3. 版本段标题必须使用 `## [1.0.27] - YYYY-MM-DD` 或 `## [1.0.27-rc.1] - YYYY-MM-DD` 的形式，将日期占位符替换为实际发布日期，且段落内容不能为空。预发布和正式版各自需要与标签完全对应的版本段。
 4. 将版本配置和发布日志放入同一个发布准备 PR，确认 `build` 工作流通过后合并到 `main`。该次 push 的变更范围必须同时包含这两个文件，且配置中的完整版本必须实际变化，才会启动自动发布。

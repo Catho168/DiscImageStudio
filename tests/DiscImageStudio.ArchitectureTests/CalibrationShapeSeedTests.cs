@@ -13,8 +13,12 @@ internal static class CalibrationShapeSeedTests
         Console.WriteLine("calibration-shape-seed: wide off-centre searches, independent geometry, multiple arms and exact fallback passed");
     }
 
-    private static CalibrationParameters Parameters(CalibrationDiscKind kind) => kind == CalibrationDiscKind.Cd
-        ? new(kind, 24, 58, 359849, 1200) : new(kind, 24, 58, 2297888, 133.3);
+    private static CalibrationParameters Parameters(CalibrationDiscKind kind) => kind switch
+    {
+        CalibrationDiscKind.Cd => new(kind, 24, 58, 359849, 1200),
+        CalibrationDiscKind.BluRay => new(kind, 24, 58, 12_219_392, 74.5),
+        _ => new(kind, 24, 58, 2297888, 133.3),
+    };
 
     private static void TestWideOffCentreSearch(CalibrationDiscKind kind)
     {

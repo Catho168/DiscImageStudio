@@ -1,4 +1,5 @@
 using DiscImageStudio.Burning;
+using DiscImageStudio.BluRay;
 using DiscImageStudio.Cd;
 using DiscImageStudio.Core;
 using DiscImageStudio.Dvd;
@@ -12,6 +13,7 @@ internal static class UnifiedCommandRunner
     [
         new CdDiscModule(),
         new DvdDiscModule(),
+        new BluRayDiscModule(Services.BluRayImageLoader.Load),
     ]);
 
     internal static int Run(string[] arguments)
@@ -84,16 +86,35 @@ internal static class UnifiedCommandRunner
                     Console.WriteLine(value.Message);
                 }
             });
-            DiscJobResult result = Modules
-                .ExecuteAsync(request, progress)
-                .GetAwaiter()
-                .GetResult();
+            using CancellationTokenSource cancellation = new();
+            bool supportsCancellation = Modules.Resolve(command).Descriptor.SupportsCancellation;
+            ConsoleCancelEventHandler cancelHandler = (_, e) =>
+            {
+                if (!supportsCancellation) return;
+                e.Cancel = true;
+                cancellation.Cancel();
+            };
+            DiscJobResult result;
+            Console.CancelKeyPress += cancelHandler;
+            try
+            {
+                result = Modules.ExecuteAsync(request, progress, cancellation.Token).GetAwaiter().GetResult();
+            }
+            finally
+            {
+                Console.CancelKeyPress -= cancelHandler;
+            }
             if (!string.IsNullOrWhiteSpace(result.Summary))
             {
                 Console.WriteLine(result.Summary);
             }
 
             return result.ExitCode;
+        }
+        catch (OperationCanceledException)
+        {
+            Console.Error.WriteLine("Cancelled.");
+            return 130;
         }
         catch (Exception exception)
         {
@@ -106,7 +127,7 @@ internal static class UnifiedCommandRunner
     {
         Console.WriteLine(
             """
-            Disc Image Studio - modular DVD/CD optical-disc image generator
+            Disc Image Studio - modular CD/DVD/Blu-ray optical-disc image generator
 
             Start without arguments to open the graphical interface.
             Disc commands are provided by modules through DiscImageStudio.Core.
@@ -141,8 +162,13 @@ internal static class UnifiedCommandRunner
             header trail at a fixed point in its lap; --tone-preview waits for the design
             page's tone module and switches the snapshot to that page.
 
-            Blu-ray support is added as another IOpticalDiscModule; CD and DVD engines
-            do not need to be modified. See docs/ADDING_BLURAY.md.
+            Blu-ray: bd-info exports parameters; bd-probe exports raw payload tests;
+            bd-encode exports one ECC cluster; bd-generate maps dark to 3T and light to 6T run-count bias.
+              bd-generate --input IMAGE.png --output PICTURE.iso [--invert true]
+                          [--total-sectors 12219392] [--data-dir FOLDER] [--volume-label BD_IMAGE]
+            Total sectors must align to 32. Output is a complete ISO9660/Joliet image:
+            inner files first, followed by picture data. Press Ctrl+C to cancel.
+            See docs/ADDING_BLURAY.md for options and physical-model limitations.
             """);
         return 0;
     }

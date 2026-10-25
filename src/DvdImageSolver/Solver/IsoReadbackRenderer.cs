@@ -55,9 +55,6 @@ public sealed record IsoReadbackSummary(
 
 internal static class IsoReadbackRenderer
 {
-    private const byte DarkLevel = 32;
-    private const byte LightLevel = 224;
-
     /// <summary>Half of the 16-bit payload code word the generator targets.</summary>
     private const int CodeWordCenterOffset = 8;
 
@@ -143,16 +140,7 @@ internal static class IsoReadbackRenderer
                         }
 
                         byte scrambled = (byte)(payload[byteIndex] ^ mask[byteIndex]);
-                        byte level;
-                        if (scrambled == DispersionPoolSolver.BlackScrambledByte)
-                        {
-                            level = DarkLevel;
-                        }
-                        else if (scrambled == DispersionPoolSolver.WhiteScrambledByte)
-                        {
-                            level = LightLevel;
-                        }
-                        else
+                        if (!DvdGrayscalePalette.TryGetLuminance(scrambled, out byte level))
                         {
                             continue;
                         }

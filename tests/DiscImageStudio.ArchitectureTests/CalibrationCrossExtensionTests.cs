@@ -17,8 +17,12 @@ internal static class CalibrationCrossExtensionTests
         Console.WriteLine("calibration-cross-extension: full observed support, exact continuation, forward curves and real 10-point regression passed");
     }
 
-    private static CalibrationParameters Parameters(CalibrationDiscKind kind) => kind == CalibrationDiscKind.Cd
-        ? new(kind, 24.5, 56.8, 359849, 1200) : new(kind, 24, 58, 2295104, 133.33);
+    private static CalibrationParameters Parameters(CalibrationDiscKind kind) => kind switch
+    {
+        CalibrationDiscKind.Cd => new(kind, 24.5, 56.8, 359849, 1200),
+        CalibrationDiscKind.BluRay => new(kind, 24, 58, 12_219_392, 74.5),
+        _ => new(kind, 24, 58, 2295104, 133.33),
+    };
 
     private static void TestIdentityAndDirection(CalibrationDiscKind kind)
     {
@@ -80,8 +84,10 @@ internal static class CalibrationCrossExtensionTests
         Throws<ArgumentException>(() => mapping(double.NaN), "nonfinite support is invalid");
         Throws<ArgumentException>(() => CalibrationCrossPrediction.GetOutline(target, actual, 1, 17), "outline cannot skip an invalid endpoint");
         CalibrationPoint[] points = new[] { 1.0, 4, 8, 10, 14, 17 }.Select(radius => Polar(radius, 0.3)).ToArray();
+        CalibrationPoint[] originalPoints = points.ToArray();
         var fit = CalibrationCrossFitter.Fit(target, [new(0, points)], new(SearchCenter: actual, RadiusRangeMm: 0.005));
-        Check(!fit.Succeeded && fit.Candidates.Count == 0 && fit.Warnings.Any(w => w.Contains("正半径", StringComparison.Ordinal)),
+        Check(!fit.Succeeded && fit.Candidates.Count == 0 && points.SequenceEqual(originalPoints)
+            && fit.Warnings.Any(w => w.Contains("正半径", StringComparison.Ordinal)),
             "all-candidate domain failure is clear and retains every observation");
     }
 

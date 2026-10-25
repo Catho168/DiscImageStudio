@@ -242,33 +242,30 @@ internal static class CdAudioCompatibilityTests
         CdTrackGenerator.PreviewWarp(sourcePath, measuredPath, generated, measured, size, 16);
 
         True(
-            Bilevel(ReadPngPixels(identicalPath))
-                .SequenceEqual(Bilevel(Preview(trackPath, generated, size, deinterleave: false, byteStep))),
+            ReadPngPixels(identicalPath)
+                .SequenceEqual(Preview(trackPath, generated, size, deinterleave: false, byteStep)),
             "warp with one geometry matches the read-back of the track it describes");
         True(
-            Bilevel(ReadPngPixels(measuredPath))
-                .SequenceEqual(Bilevel(Preview(trackPath, measured, size, deinterleave: false, byteStep))),
+            ReadPngPixels(measuredPath)
+                .SequenceEqual(Preview(trackPath, measured, size, deinterleave: false, byteStep)),
             "warp onto measured geometry matches the read-back under that geometry");
         True(
             MeanDarkRadius(measuredPath, size) < MeanDarkRadius(identicalPath, size),
             "a smaller measured geometry pulls the projection inwards");
-    }
 
-    /// <summary>Thresholds a rendered picture to the black/white pattern it encodes: the
-    /// read-back keeps the palette's grey levels (32/224) where the projection writes pure
-    /// black and white, so the pattern is what the two must agree on.</summary>
-    private static byte[] Bilevel(byte[] pixels)
-    {
-        byte[] result = (byte[])pixels.Clone();
-        for (int offset = 0; offset < result.Length; offset += 4)
+        // At this resolution many differently colored audio bytes land in one pixel.
+        // Source projection and readback must use the same averaging, not last-write wins.
+        foreach (CdDiscParameters actual in new[] { generated, measured })
         {
-            byte level = result[offset] < 128 ? (byte)0 : (byte)255;
-            result[offset] = level;
-            result[offset + 1] = level;
-            result[offset + 2] = level;
+            string densePath = Path.Combine(directory, "warp-dense.png");
+            CdTrackGenerator.PreviewWarp(sourcePath, densePath, generated, actual, 64,
+                CdDiscParameters.BytesPerSector);
+            byte[] dense = ReadPngPixels(densePath);
+            True(dense.Where((_, index) => index % 4 == 0).Any(level => level is not (0 or 255)),
+                "dense preview exercises overlapping black and white samples");
+            True(dense.SequenceEqual(Preview(trackPath, actual, 64, deinterleave: false)),
+                "dense source projection and generated readback average the same samples");
         }
-
-        return result;
     }
 
     private static double MeanDarkRadius(string pngPath, int size)
@@ -468,9 +465,7 @@ internal static class CdAudioCompatibilityTests
         {
             for (int x = 0; x < size; x++)
             {
-                byte level = ((x * 17) + (y * 31) + ((x * y) % 23)) % 53 < 21
-                    ? (byte)0
-                    : (byte)255;
+                byte level = (byte)((((x * 17) + (y * 31) + ((x * y) % 23)) % 4) * 85);
                 int offset = (y * stride) + (x * 4);
                 pixels[offset] = level;
                 pixels[offset + 1] = level;

@@ -1,5 +1,6 @@
 ﻿using DiscImageStudio.Cd;
 using DiscImageStudio.Core.Calibration;
+using DiscImageStudio.BluRay;
 using DvdImageSolver.Encoding;
 using System.Reflection;
 using System.Text.Json.Nodes;
@@ -22,8 +23,12 @@ internal static class CalibrationCoreTests
     }
 
     private static CalibrationParameters Parameters(CalibrationDiscKind kind = CalibrationDiscKind.Cd)
-        => kind == CalibrationDiscKind.Cd ? new(kind, 24.5, 56.8, 359849, 1200)
-            : new(kind, 24, 58, 2295104, 133.33);
+        => kind switch
+        {
+            CalibrationDiscKind.Cd => new(kind, 24.5, 56.8, 359849, 1200),
+            CalibrationDiscKind.BluRay => new(kind, 24, 58, 12_219_392, 74.5),
+            _ => new(kind, 24, 58, 2295104, 133.33),
+        };
 
     private static void TestTargetAndSession()
     {
@@ -164,6 +169,10 @@ internal static class CalibrationCoreTests
 
     private static void TestBoundarySignalAndWideRecovery(CalibrationDiscKind kind)
     {
+        // BluRay spans far more turns per millimetre and deliberately keeps the
+        // positive-radius continuation; this CD/DVD-shaped trace is not a valid
+        // winding fixture for it. BD calibration has its own observed-curve tests.
+        if (kind == CalibrationDiscKind.BluRay) return;
         CalibrationParameters generated = Parameters(kind);
         CalibrationParameters actual = generated with
         {
@@ -220,6 +229,17 @@ internal static class CalibrationCoreTests
             (double r1, double a1) = actualCd.PolarFromByte(channelPosition);
             source = Polar(r0, a0);
             expected = Polar(r1, a1 + rotation);
+        }
+        else if (kind == CalibrationDiscKind.BluRay)
+        {
+            var generatedBd = new BluRayTrackGeometry(new(checked((uint)generated.Sectors),
+                InnerRadiusMm: generated.InnerRadiusMm, OuterRadiusMm: generated.OuterRadiusMm));
+            var actualBd = new BluRayTrackGeometry(new(checked((uint)actual.Sectors),
+                InnerRadiusMm: actual.InnerRadiusMm, OuterRadiusMm: actual.OuterRadiusMm));
+            BluRayTrackPoint sourceBd = generatedBd.AtLayerFraction(0, 0.37);
+            BluRayTrackPoint actualPoint = actualBd.AtLayerFraction(0, 0.37);
+            source = Polar(sourceBd.RadiusMm, -sourceBd.AngleRadians);
+            expected = Polar(actualPoint.RadiusMm, -actualPoint.AngleRadians + rotation);
         }
         else
         {

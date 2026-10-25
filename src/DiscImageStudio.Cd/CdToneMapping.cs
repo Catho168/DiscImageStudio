@@ -3,18 +3,18 @@ using DiscImageStudio.Core;
 namespace DiscImageStudio.Cd;
 
 /// <summary>
-/// CD palette encoding of <see cref="ToneProfile"/>. The two palettes are the ones the
-/// reference cdimage converter uses: the 2-level pair the project already shipped with, and
-/// the 4-level low-contrast palette (0x21 / 0x28 are two intermediate pit patterns).
+/// CD palette encoding of <see cref="ToneProfile"/>. The black/white pair is the higher
+/// contrast 0x0D/0xAA pair from upstream 1.1; the 4-level palette keeps the reference
+/// cdimage intermediate patterns (0x21 / 0x28).
 /// </summary>
 public static class CdToneMapping
 {
     /// <summary>Display grey of the palette bytes; also the tone-mapping endpoints.</summary>
-    public const byte BlackGray = 32;
-    public const byte WhiteGray = 224;
+    public const byte BlackGray = 0;
+    public const byte WhiteGray = 255;
 
-    private static readonly byte[] TwoLevelPalette = [0x10, 0xAA];
-    private static readonly byte[] FourLevelPalette = [0x10, 0x21, 0x28, 0xAA];
+    private static readonly byte[] TwoLevelPalette = [0x0D, 0xAA];
+    private static readonly byte[] FourLevelPalette = [0x0D, 0x10, 0x63, 0xAA];
 
     public static ReadOnlySpan<byte> Palette(int levels)
         => (levels == ToneProfile.FourLevels ? FourLevelPalette : TwoLevelPalette).AsSpan();
@@ -56,10 +56,12 @@ public static class CdToneMapping
     /// <summary>Display grey of a palette byte, so every preview uses the same levels.</summary>
     public static byte DisplayGray(byte paletteByte) => paletteByte switch
     {
-        0x10 => 32,
+        0x0D => 0,
+        0x10 => 85,
         0x21 => 96,
         0x28 => 160,
-        0xAA => 224,
+        0x63 => 170,
+        0xAA => 255,
         _ => paletteByte,
     };
 }
