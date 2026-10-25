@@ -4,6 +4,8 @@ artifacts/
 tmp/
 .vs/
 .idea/
+.zcode/
+.audit/
 *.user
 *.suo
 *.nupkg

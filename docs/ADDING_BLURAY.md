@@ -64,7 +64,7 @@ public sealed class BluRayDiscModule : IOpticalDiscModule
 new BluRayDiscModule(),
 ```
 
-统一命令行随后会自动路由 `bd-generate`。GUI 可以根据 `DiscCommandDescriptor.Options` 构建蓝光表单，或新增专用蓝光页面；CD/DVD 页面无需修改。
+统一命令行随后会自动路由 `bd-generate`。GUI 可以根据 `DiscCommandDescriptor.Options` 构建蓝光表单，或新增专用蓝光工作区；设计 / 预览 / 输出 / 标定四个工作区无需修改。
 
 ## 4. 必须补充的测试
 
