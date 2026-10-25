@@ -4,6 +4,18 @@ public enum OpticalBurnMediaKind
 {
     CdAudio,
     DvdData,
+    BluRayData,
+}
+
+internal static class OpticalBurnMedia
+{
+    internal static int GetSectorBytes(OpticalBurnMediaKind mediaKind)
+        => mediaKind switch
+        {
+            OpticalBurnMediaKind.CdAudio => 2352,
+            OpticalBurnMediaKind.DvdData or OpticalBurnMediaKind.BluRayData => 2048,
+            _ => throw new ArgumentOutOfRangeException(nameof(mediaKind), mediaKind, "Unknown optical media kind."),
+        };
 }
 
 public sealed record OpticalBurnDevice(
@@ -16,17 +28,22 @@ public sealed record OpticalWriteSpeed(
     bool RotationTypeIsPureCav)
 {
     private const double DvdBytesPerSecondAtOneX = 1_385_000.0;
+    private const double BluRayBytesPerSecondAtOneX = 4_500_000.0;
     private const double CdSectorsPerSecondAtOneX = 75.0;
 
     public double GetMultiplier(OpticalBurnMediaKind mediaKind)
-        => mediaKind == OpticalBurnMediaKind.CdAudio
-            ? SectorsPerSecond / CdSectorsPerSecondAtOneX
-            : SectorsPerSecond * 2048.0 / DvdBytesPerSecondAtOneX;
+        => mediaKind switch
+        {
+            OpticalBurnMediaKind.CdAudio => SectorsPerSecond / CdSectorsPerSecondAtOneX,
+            OpticalBurnMediaKind.DvdData => SectorsPerSecond * 2048.0 / DvdBytesPerSecondAtOneX,
+            OpticalBurnMediaKind.BluRayData => SectorsPerSecond * 2048.0 / BluRayBytesPerSecondAtOneX,
+            _ => throw new ArgumentOutOfRangeException(nameof(mediaKind), mediaKind, "Unknown optical media kind."),
+        };
 
     public double GetMegabytesPerSecond(OpticalBurnMediaKind mediaKind)
     {
-        int sectorBytes = mediaKind == OpticalBurnMediaKind.CdAudio ? 2352 : 2048;
-        return SectorsPerSecond * sectorBytes / 1_000_000.0;
+        int sectorBytes = OpticalBurnMedia.GetSectorBytes(mediaKind);
+        return SectorsPerSecond * (double)sectorBytes / 1_000_000.0;
     }
 
     internal void Validate()
@@ -44,7 +61,8 @@ public sealed record OpticalBurnProgress(
     string Stage,
     string Message,
     long CompletedBytes,
-    long TotalBytes)
+    long TotalBytes,
+    double? BytesPerSecond = null)
 {
     public double Fraction => TotalBytes == 0 ? 0 : (double)CompletedBytes / TotalBytes;
 }
@@ -52,20 +70,26 @@ public sealed record OpticalBurnProgress(
 /// <summary>
 /// CD producers supply headerless 44.1 kHz, 16-bit stereo little-endian PCM,
 /// as required by IMAPI_CD_SECTOR_AUDIO. ContentLength excludes any WAV header.
-/// DVD producers supply complete 2048-byte data sectors.
+/// DVD and Blu-ray producers supply complete 2048-byte logical data sectors.
+/// The recorder adds physical encoding and error correction.
 /// </summary>
 public sealed record OpticalBurnRequest(
     string DeviceId,
     OpticalBurnMediaKind MediaKind,
     long ContentLength,
     Action<Stream, CancellationToken> ProduceContent,
-    OpticalWriteSpeed? WriteSpeed = null)
+    OpticalWriteSpeed? WriteSpeed = null,
+    OpticalBurnBufferOptions? BufferOptions = null)
 {
+    public OpticalBurnBufferOptions EffectiveBufferOptions => BufferOptions
+        ?? (MediaKind == OpticalBurnMediaKind.BluRayData
+            ? OpticalBurnBufferOptions.BluRayDefault : OpticalBurnBufferOptions.Default);
+
     public void Validate()
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(DeviceId);
         ArgumentNullException.ThrowIfNull(ProduceContent);
-        int sectorBytes = MediaKind == OpticalBurnMediaKind.CdAudio ? 2352 : 2048;
+        int sectorBytes = OpticalBurnMedia.GetSectorBytes(MediaKind);
         if (ContentLength <= 0 || ContentLength % sectorBytes != 0)
         {
             throw new ArgumentOutOfRangeException(
@@ -74,6 +98,7 @@ public sealed record OpticalBurnRequest(
         }
 
         WriteSpeed?.Validate();
+        EffectiveBufferOptions.Validate();
     }
 }
 

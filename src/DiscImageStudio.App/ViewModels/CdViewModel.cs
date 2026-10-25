@@ -57,10 +57,10 @@ public partial class CdViewModel : ObservableObject
         {
             string input = RequirePath(_state.CdImagePath, "请选择 CD 源图片。");
             string output = RequirePath(_state.CdOutputPath, "请选择 CD 音轨输出位置。");
-            using RingImagePreparation.PreparedImage preparedImage = PrepareCdImage(
+            RingImagePreparation.Request imagePreparation = CreateCdImageRequest(
                 input,
                 RingImageQuality.GenerationSize);
-            List<string> arguments = ["cd-generate", "--input", preparedImage.Path, "--output", output];
+            List<string> arguments = ["cd-generate", "--input", input, "--output", output];
             AddCdGeometry(arguments);
             arguments.Add("--interleave");
             arguments.Add(_state.CdInterleave.ToString().ToLowerInvariant());
@@ -71,7 +71,9 @@ public partial class CdViewModel : ObservableObject
                 arguments.ToArray(),
                 output,
                 RecentJobEntry.CdFamily,
-                _state.CdImagePath);
+                input,
+                imagePreparation,
+                imageOption: "--input");
             // The generated track is the live preview page's calibration input.
             _state.CdTrackPath = output;
         }
@@ -93,27 +95,28 @@ public partial class CdViewModel : ObservableObject
         ]);
     }
 
-    private RingImagePreparation.PreparedImage PrepareCdImage(string sourcePath, int outputSize)
+    private RingImagePreparation.Request CreateCdImageRequest(string sourcePath, int outputSize)
     {
-        if (_state.CdImageProcessingModeIndex != 1)
+        RingImageLayoutOptions? options = null;
+        if (_state.IsCdRingMode)
         {
-            return RingImagePreparation.PreparedImage.Original(sourcePath);
+            double generatedInner = ParameterParser.ParsePositiveDouble(_state.CdInnerRadius, "CD 内半径");
+            double generatedOuter = ParameterParser.ParsePositiveDouble(_state.CdOuterRadius, "CD 外半径");
+            options = ParameterParser.CreateRingLayoutOptions(
+                CdDiscParameters.StandardImageOuterRadiusMm,
+                generatedInner,
+                generatedOuter,
+                _state.CdRingInnerMargin,
+                _state.CdRingOuterMargin,
+                outputSize);
         }
 
-        double generatedInner = ParameterParser.ParsePositiveDouble(_state.CdInnerRadius, "CD 内半径");
-        double generatedOuter = ParameterParser.ParsePositiveDouble(_state.CdOuterRadius, "CD 外半径");
-        RingImageLayoutOptions options = ParameterParser.CreateRingLayoutOptions(
-            CdDiscParameters.StandardImageOuterRadiusMm,
-            generatedInner,
-            generatedOuter,
-            _state.CdRingInnerMargin,
-            _state.CdRingOuterMargin,
-            outputSize);
-        return RingImagePreparation.PrepareRingImage(
+        return new RingImagePreparation.Request(
             sourcePath,
             options,
             "cd",
-            appendLog: _shell.AppendLog);
+            _state.CdImageProcessingEnabled,
+            _state.CdGammaCorrectionEnabled);
     }
 
     private static string RequirePath(string raw, string message)

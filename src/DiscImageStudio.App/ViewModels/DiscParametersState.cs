@@ -30,6 +30,12 @@ public partial class DiscParametersState : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsDvdRingMode))]
     private int _dvdImageProcessingModeIndex;
 
+    // The gamma preference is retained while image processing is disabled.
+    [ObservableProperty] private bool _cdImageProcessingEnabled;
+    [ObservableProperty] private bool _cdGammaCorrectionEnabled;
+    [ObservableProperty] private bool _dvdImageProcessingEnabled;
+    [ObservableProperty] private bool _dvdGammaCorrectionEnabled;
+
     private bool _isApplyingDiscPreset;
 
     // CD page / live preview shared fields. Linear velocity, start angle and the image
@@ -52,8 +58,8 @@ public partial class DiscParametersState : ObservableObject
     [ObservableProperty] private bool _cdInterleave = true;
 
     // Second parameter set of the live preview page's calibration mode: the disc the reader
-    // follows, as opposed to the generated geometry above. It is preview-only and never
-    // feeds a generation job, so it is not a preset field either.
+    // follows, as opposed to the generated geometry above. Applying a preset initializes
+    // both geometries; subsequent actual-geometry edits stay independent of generation.
     [ObservableProperty] private string _cdActualInnerRadius = "24.3";
     [ObservableProperty] private string _cdActualOuterRadius = "56.6";
 
@@ -313,6 +319,8 @@ public partial class DiscParametersState : ObservableObject
                 CdSectors = preset.Sectors.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 CdInnerRadius = FormatPresetNumber(preset.InnerRadiusMm);
                 CdOuterRadius = FormatPresetNumber(preset.OuterRadiusMm);
+                CdActualInnerRadius = CdInnerRadius;
+                CdActualOuterRadius = CdOuterRadius;
             }
         }
         finally
@@ -337,6 +345,11 @@ public partial class DiscParametersState : ObservableObject
                 DvdPitchLinear = FormatPresetNumber(preset.PitchLinear);
                 DvdPitchQuadratic = FormatPresetNumber(preset.PitchQuadratic);
                 DvdPitchCubic = FormatPresetNumber(preset.PitchCubic);
+                DvdActualInnerRadius = DvdInnerRadius;
+                DvdActualOuterRadius = DvdOuterRadius;
+                DvdActualPitchLinear = DvdPitchLinear;
+                DvdActualPitchQuadratic = DvdPitchQuadratic;
+                DvdActualPitchCubic = DvdPitchCubic;
             }
         }
         finally
@@ -346,5 +359,5 @@ public partial class DiscParametersState : ObservableObject
     }
 
     private static string FormatPresetNumber(double value)
-        => value.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+        => ParameterNumberText.ForInput(value);
 }

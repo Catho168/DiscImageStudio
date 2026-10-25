@@ -8,17 +8,23 @@ namespace DiscImageStudio.ViewModels;
 /// <summary>
 /// One card under "快速创建": a disc preset from the editable catalog, or the trailing
 /// custom-size card (<see cref="PresetId"/> null), which opens the parameter page for the
-/// family the action bar has selected and therefore ignores <see cref="IsDvd"/>. The custom
-/// card belongs to no family, so it carries its own caption rather than a CD/DVD one.
+/// family the action bar has selected and therefore ignores <see cref="DiscFamily"/>. The custom
+/// card belongs to no family, so it carries its own caption rather than a disc-family label.
 /// </summary>
 public sealed record QuickCreateTile(
     string Title,
     string Caption,
     string Detail,
     PackIconLucideKind Icon,
-    bool IsDvd,
+    string DiscFamily,
     string? PresetId)
 {
+    public bool IsDvd => DiscFamily == RecentJobEntry.DvdFamily;
+
+    public bool IsBluRay => DiscFamily == RecentJobEntry.BluRayFamily;
+
+    public int DiscTypeIndex => IsBluRay ? 2 : IsDvd ? 1 : 0;
+
     /// <summary>The preset's own discriminator (its parenthetical, or its geometry) stays off
     /// the card face — the family is what the row is read for — and shows on hover instead.</summary>
     public string ToolTipText => string.IsNullOrWhiteSpace(Detail)
@@ -47,7 +53,7 @@ public sealed class RecentJobTile
 
     public bool HasThumbnail => Thumbnail is not null;
 
-    public string FamilyLabel => Entry.IsDvd ? "DVD" : "CD";
+    public string FamilyLabel => Entry.IsBluRay ? "BD" : Entry.IsDvd ? "DVD" : "CD";
 
     public string Title => Path.GetFileName(Entry.SourceImagePath);
 

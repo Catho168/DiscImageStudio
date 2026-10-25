@@ -1,5 +1,6 @@
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using DiscImageStudio.Core;
 using DvdImageSolver.Encoding;
 
 namespace DvdImageSolver.Solver;
@@ -136,7 +137,8 @@ internal static class CalibrationPreviewRenderer
                 PixelSample sample = source.SampleDisc(
                     generatedRadiusMm * Math.Cos(generatedPolarAngle),
                     generatedRadiusMm * Math.Sin(generatedPolarAngle),
-                    generated.OuterRadiusMm);
+                    generated.OuterRadiusMm,
+                    preserveDiscreteGrayscale: true);
                 if (sample.Alpha < options.AlphaThreshold)
                 {
                     continue;
@@ -155,10 +157,10 @@ internal static class CalibrationPreviewRenderer
                 }
 
                 int pixelIndex = (pixelY * size) + pixelX;
-                int binaryLevel = sample.Luminance < options.LuminanceThreshold ? 0 : 255;
+                byte level = BinaryGrayscale.Quantize(sample.Luminance);
                 Interlocked.Add(
                     ref weightedLevelSums[pixelIndex],
-                    binaryLevel * sample.Alpha);
+                    level * sample.Alpha);
                 Interlocked.Add(ref alphaSums[pixelIndex], sample.Alpha);
             }
         });

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using DiscImageStudio.Core;
 using DvdImageSolver.Encoding;
 using DvdImageSolver.Solver;
 
@@ -110,8 +111,7 @@ internal static class Program
         else if (algorithm == SolverAlgorithm.Dispersion)
         {
             Console.WriteLine(
-                $"dispersion pool: black Q=0x{DispersionPoolSolver.BlackScrambledByte:X2}, "
-                + $"white Q=0x{DispersionPoolSolver.WhiteScrambledByte:X2}, "
+                DispersionPaletteDescription() + ", "
                 + "image sampled at every payload code-word center");
         }
         if (constraint.ImageMapping is { } mapping)
@@ -587,8 +587,7 @@ internal static class Program
         if (algorithm == SolverAlgorithm.Dispersion)
         {
             Console.WriteLine(
-                $"dispersion pool: black Q=0x{DispersionPoolSolver.BlackScrambledByte:X2}, "
-                + $"white Q=0x{DispersionPoolSolver.WhiteScrambledByte:X2}");
+                DispersionPaletteDescription());
         }
         MultiBlockSolveResult result = MultiBlockImageSolver.Solve(
             arguments.Require("image"),
@@ -657,14 +656,7 @@ internal static class Program
                 ? BinaryBytePairMetadata()
                 : null,
             dispersionPool = algorithm == SolverAlgorithm.Dispersion
-                ? new
-                {
-                    domain = "scrambled-main-data-byte-at-efmplus-input",
-                    blackByte = $"0x{DispersionPoolSolver.BlackScrambledByte:X2}",
-                    whiteByte = $"0x{DispersionPoolSolver.WhiteScrambledByte:X2}",
-                    blackTransitionsPerCodeword = 2,
-                    whiteTransitionsPerCodeword = 5,
-                }
+                ? DispersionPaletteMetadata()
                 : null,
             constraintStep = imageMapping.SampleEveryChannelBits,
             initialBoundary = new
@@ -763,8 +755,7 @@ internal static class Program
             + "algorithm=dispersion, ECC/EFM replay=skipped, "
             + $"workers={(options.FastParallelism == 0 ? Environment.ProcessorCount : options.FastParallelism)}");
         Console.WriteLine(
-            $"dispersion pool: black Q=0x{DispersionPoolSolver.BlackScrambledByte:X2}, "
-            + $"white Q=0x{DispersionPoolSolver.WhiteScrambledByte:X2}, "
+            DispersionPaletteDescription() + ", "
             + "image sampled at every payload code-word center");
 
         FastDispersionWriteResult result = FastDispersionImageWriter.Write(
@@ -808,14 +799,7 @@ internal static class Program
                 : options.FastParallelism,
             exactEccEfmReplay = false,
             finalBoundary = (object?)null,
-            dispersionPool = new
-            {
-                domain = "scrambled-main-data-byte-at-efmplus-input",
-                blackByte = $"0x{DispersionPoolSolver.BlackScrambledByte:X2}",
-                whiteByte = $"0x{DispersionPoolSolver.WhiteScrambledByte:X2}",
-                blackTransitionsPerCodeword = 2,
-                whiteTransitionsPerCodeword = 5,
-            },
+            dispersionPool = DispersionPaletteMetadata(),
             constraintStep = imageMapping.SampleEveryChannelBits,
             constraintStepUsed = false,
             totalScore = 0,
@@ -1283,14 +1267,7 @@ internal static class Program
                 ? BinaryBytePairMetadata()
                 : null,
             dispersionPool = solverOptions?.Algorithm == SolverAlgorithm.Dispersion
-                ? new
-                {
-                    domain = "scrambled-main-data-byte-at-efmplus-input",
-                    blackByte = $"0x{DispersionPoolSolver.BlackScrambledByte:X2}",
-                    whiteByte = $"0x{DispersionPoolSolver.WhiteScrambledByte:X2}",
-                    blackTransitionsPerCodeword = 2,
-                    whiteTransitionsPerCodeword = 5,
-                }
+                ? DispersionPaletteMetadata()
                 : null,
             channelPacking = "MSB-first, 1=land/white, 0=pit/black",
             imageMapping,
@@ -1315,6 +1292,31 @@ internal static class Program
             Directory.CreateDirectory(directory);
         }
     }
+
+    private static string DispersionPaletteDescription()
+        => "dispersion black/white pool: Q="
+            + string.Join(",", Enumerable.Range(0, 2)
+                .Select(level => $"0x{DvdGrayscalePalette.GetScrambledByteForLevel(level):X2}"))
+            + "; nominal luminance=0,255; threshold=128";
+
+    private static object DispersionPaletteMetadata() => new
+    {
+        domain = "scrambled-main-data-byte-at-efmplus-input",
+        blackByte = $"0x{DvdGrayscalePalette.BlackScrambledByte:X2}",
+        whiteByte = $"0x{DvdGrayscalePalette.WhiteScrambledByte:X2}",
+        blackTransitionsPerCodeword = 5,
+        whiteTransitionsPerCodeword = 2,
+        luminanceCalibration = "nominal-black-white-not-photometric-measurement",
+        rasterSampling = "nearest-for-opaque-binary-grayscale-otherwise-alpha-weighted-bilinear",
+        levels = Enumerable.Range(0, 2).Select(level => new
+        {
+            inputMinimum = Enumerable.Range(0, 256).First(value => BinaryGrayscale.GetLevelIndex((byte)value) == level),
+            inputMaximum = Enumerable.Range(0, 256).Last(value => BinaryGrayscale.GetLevelIndex((byte)value) == level),
+            previewLuminance = BinaryGrayscale.GetLuminance(level),
+            scrambledByte = $"0x{DvdGrayscalePalette.GetScrambledByteForLevel(level):X2}",
+            transitionsPerCodeword = level == 0 ? 5 : 2,
+        }).ToArray(),
+    };
 
     private static object[] BinaryBytePairMetadata()
         => EfmPlusBinaryBytePairs.AtZeroDsv
@@ -1392,7 +1394,7 @@ internal static class Program
               --channel-bit-nm N        Physical channel-bit length (default 133.3)
               --start-angle-deg N       Track start angle (default 0)
               --spiral-direction ccw|cw Polar direction (default cw)
-              --image-threshold 0..255  Below threshold is pit/black (default 128)
+              --image-threshold 0..255  Binary full/state-control threshold (default 128)
               --alpha-threshold 1..255  Lower alpha is unconstrained (default 1)
               --constraint-output FILE  Save the mapped 619008-symbol target
               --constraint-step N       Constrain every Nth channel bit (single block default 1)
@@ -1409,7 +1411,7 @@ internal static class Program
               --volume-label TEXT       Label for a new minimal ISO (default DVD_IMAGE)
               --target-sector 0..15     Placement for a one-sector target (default 0)
               --algorithm full|state-control|dispersion
-                                        Bit search, state control, or fixed 0x92/0xA5 texture pool
+                                        Bit search, state control, or black/white dispersion texture pool
               --iterations N            Full/state-control passes; dispersion ignores search (defaults 1000/3/1)
               --mutation-bytes N        Bytes changed per full-mode proposal (default 4)
               --bridge-bytes N          Payload bridge bytes at each free-frame edge (default 2)
@@ -1433,9 +1435,14 @@ internal static class Program
             words; the reported majority/gray scores cover every 16-bit channel word, including
             fixed/EDC/PI/PO and both SYNC words. Stream, DSV and final boundaries remain exact.
 
-            Dispersion maps black pixels to scrambled EFMPlus input byte 0xA5 (5 transitions)
-            and white pixels to 0x92 (2 transitions), then reverses DVD payload scrambling for ISO
-            output. It samples every payload code-word center regardless of --constraint-step.
+            Dispersion maps luminance bins 0..127 and 128..255 to scrambled
+            EFMPlus input bytes 0xA5 and 0x92 (5 and 2 transitions), then
+            reverses DVD payload scrambling for ISO output. Nominal preview levels are 0 and 255.
+            It samples every payload code-word center regardless of --constraint-step and
+            --image-threshold. These values are not calibrated optical luminance. Opaque
+            black/white images use nearest-neighbor sampling to preserve their dither pattern.
+            Other images retain alpha-weighted bilinear sampling. Q=0x66 and 0xB9 are not
+            generated; old ISOs retain readback of 66 as black and B9 as nominal dark gray 85.
             With --fast-output true, payload selection is unchanged but final ECC/EFM boundary and
             DSV verification are skipped; the JSON finalBoundary is therefore null.
 
@@ -1459,7 +1466,7 @@ internal static class Program
               --actual-pitch-cubic N    Actual cubic pitch coefficient (default 0)
               --channel-bit-nm N        Default 133.3
               --spiral-direction ccw|cw Default cw; no rotation-offset calibration
-              --image-threshold 0..255  Default 128
+              --image-threshold 0..255  Accepted for compatibility; black/white preview uses 128
               --alpha-threshold 1..255  Default 1
               --preview-size 64..8192   Square PNG size (default 1024)
               --samples-per-sector 1..4096 Forward geometry samples per sector (default 16)

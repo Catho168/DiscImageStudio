@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace DiscImageStudio.Core.Calibration;
 
-public enum CalibrationDiscKind { Cd, Dvd }
+public enum CalibrationDiscKind { Cd, Dvd, BluRay }
 public enum CalibrationSector { Coarse, Large, Medium, Small }
 public enum CalibrationGroupRole { Coarse, Fine, Validation }
 
@@ -21,14 +21,32 @@ public sealed record CalibrationControlPoint(string Id, string CellId, int Corne
 public sealed record CalibrationParameters(
     CalibrationDiscKind Kind, double InnerRadiusMm, double OuterRadiusMm,
     long Sectors, double LinearDensity,
-    double PitchLinear = 0, double PitchQuadratic = 0, double PitchCubic = 0)
+    double PitchLinear = 0, double PitchQuadratic = 0, double PitchCubic = 0,
+    bool BluRayInvertMapping = false, long DrawingStartSector = 0, DateTimeOffset? BluRayIsoTimestamp = null,
+    long DrawingEndSectorExclusive = 0)
 {
     public const int DvdChannelBitsPerSector = 38_688;
+    public const int BluRaySectorsPerCluster = 32;
+    public const int BluRayChannelBitsPerRecordingUnit = 962_136;
+    public const double BluRayChannelBitLengthNm = 74.5;
 
     [JsonIgnore]
-    public double TrackLengthMm => Kind == CalibrationDiscKind.Cd
-        ? Sectors / 75.0 * LinearDensity
-        : Sectors * (double)DvdChannelBitsPerSector * LinearDensity * 1e-6;
+    public double TrackLengthMm => Kind switch
+    {
+        CalibrationDiscKind.Cd => Sectors / 75.0 * LinearDensity,
+        CalibrationDiscKind.Dvd => Sectors * (double)DvdChannelBitsPerSector * LinearDensity * 1e-6,
+        CalibrationDiscKind.BluRay => Sectors / (double)BluRaySectorsPerCluster
+            * BluRayChannelBitsPerRecordingUnit * LinearDensity * 1e-6,
+        _ => double.NaN,
+    };
+
+    [JsonIgnore]
+    public double DrawingInnerRadiusMm => DrawingStartSector == 0 ? InnerRadiusMm
+        : new CalibrationGeometry(this).AtProgress(DrawingStartSector / (double)Sectors).Radius;
+
+    [JsonIgnore]
+    public double DrawingOuterRadiusMm => DrawingEndSectorExclusive == 0 ? OuterRadiusMm
+        : new CalibrationGeometry(this).AtProgress(DrawingEndSectorExclusive / (double)Sectors).Radius;
 
     public void Validate()
     {
@@ -41,8 +59,19 @@ public sealed record CalibrationParameters(
             || !double.IsFinite(2 * TrackLengthMm / (OuterRadiusMm * OuterRadiusMm - InnerRadiusMm * InnerRadiusMm)))
             throw new ArgumentException("标定参数无效：请检查盘片类型、内外半径、扇区数和线速度／位长。");
         DvdTrackGeometry.ValidatePitchCoefficients(PitchLinear, PitchQuadratic, PitchCubic);
-        if (Kind == CalibrationDiscKind.Cd && (PitchLinear != 0 || PitchQuadratic != 0 || PitchCubic != 0))
+        if (Kind != CalibrationDiscKind.Dvd && (PitchLinear != 0 || PitchQuadratic != 0 || PitchCubic != 0))
             throw new ArgumentException("三次轨距参数仅适用于 DVD。");
+        if (DrawingStartSector < 0 || DrawingStartSector >= Sectors
+            || DrawingEndSectorExclusive < 0 || DrawingEndSectorExclusive > Sectors
+            || (DrawingEndSectorExclusive != 0 && DrawingEndSectorExclusive <= DrawingStartSector)
+            || (Kind != CalibrationDiscKind.BluRay && (DrawingStartSector != 0 || DrawingEndSectorExclusive != 0
+                || BluRayInvertMapping || BluRayIsoTimestamp is not null)))
+            throw new ArgumentException("标定图案的可绘制扇区范围无效。");
+        if (Kind == CalibrationDiscKind.BluRay && (Sectors > uint.MaxValue
+            || Sectors % BluRaySectorsPerCluster != 0 || DrawingStartSector % BluRaySectorsPerCluster != 0
+            || DrawingEndSectorExclusive % BluRaySectorsPerCluster != 0
+            || LinearDensity != BluRayChannelBitLengthNm || OuterRadiusMm > 60))
+            throw new ArgumentException("蓝光标定需要完整的 32 扇区簇、74.5 nm 位长和不超过 60 mm 的外半径。");
     }
 }
 
@@ -151,6 +180,8 @@ public sealed class CalibrationTarget
     private readonly Dictionary<string, CalibrationCell> _byId;
     private readonly Dictionary<(string CellId, int CornerIndex), CalibrationControlPoint> _controlPointByReference;
     private readonly CalibrationGeometry _generatedGeometry;
+    private readonly double _drawingInnerRadiusMm;
+    private readonly double _drawingOuterRadiusMm;
 
     [JsonConstructor]
     public CalibrationTarget(int schemaVersion, string id, CalibrationParameters parameters,
@@ -163,6 +194,8 @@ public sealed class CalibrationTarget
         Cells = Array.AsReadOnly(cells?.ToArray() ?? throw new ArgumentNullException(nameof(cells)));
         Validate();
         _generatedGeometry = new(Parameters);
+        _drawingInnerRadiusMm = _generatedGeometry.AtProgress(Parameters.DrawingStartSector / (double)Parameters.Sectors).Radius;
+        _drawingOuterRadiusMm = Parameters.DrawingOuterRadiusMm;
         Groups = Array.AsReadOnly(BuildGroups(Parameters));
         double pixelSizeMm = CalibrationReferencePattern.MillimetresPerPixel(Parameters.OuterRadiusMm, Parameters.Kind);
         RingRadiiMm = Array.AsReadOnly(CalibrationReferencePattern.RingRadiiPixels.Select(radius => radius * pixelSizeMm).ToArray());
@@ -328,11 +361,17 @@ public sealed class CalibrationTarget
     {
         if (!double.IsFinite(xMm) || !double.IsFinite(yMm)) return 255;
         double radiusSquared = xMm * xMm + yMm * yMm;
-        if (radiusSquared < Parameters.InnerRadiusMm * Parameters.InnerRadiusMm - 1e-10
-            || radiusSquared > Parameters.OuterRadiusMm * Parameters.OuterRadiusMm + 1e-10)
+        if (radiusSquared < DrawingInnerRadiusMm * DrawingInnerRadiusMm - 1e-10
+            || radiusSquared > DrawingOuterRadiusMm * DrawingOuterRadiusMm + 1e-10)
             return 255;
         return CalibrationReferencePattern.Sample(xMm, yMm, Parameters.OuterRadiusMm, Parameters.Kind);
     }
+
+    [JsonIgnore]
+    public double DrawingInnerRadiusMm => _drawingInnerRadiusMm;
+
+    [JsonIgnore]
+    public double DrawingOuterRadiusMm => _drawingOuterRadiusMm;
 
     public CalibrationPoint MapPoint(CalibrationPoint sourcePoint, CalibrationParameters actualParameters,
         double rotationRadians = 0)
@@ -457,7 +496,11 @@ public sealed class CalibrationTarget
     {
         actual.Validate();
         if (actual.Kind != Parameters.Kind || actual.Sectors != Parameters.Sectors
-            || actual.LinearDensity != Parameters.LinearDensity)
+            || actual.LinearDensity != Parameters.LinearDensity
+            || actual.BluRayInvertMapping != Parameters.BluRayInvertMapping
+            || actual.DrawingStartSector != Parameters.DrawingStartSector
+            || actual.DrawingEndSectorExclusive != Parameters.DrawingEndSectorExclusive
+            || actual.BluRayIsoTimestamp != Parameters.BluRayIsoTimestamp)
             throw new ArgumentException("标定固定盘片类型、扇区数和线速度／位长；DVD 可拟合内外半径、三次轨距与整体旋转。");
     }
 
@@ -487,7 +530,7 @@ public sealed class CalibrationTarget
             return new CalibrationGroup($"C-{index}", index, CalibrationGroupRole.Coarse, angle, [],
                 0, angle, angle, CalibrationReferencePattern.NominalLineWidthPixels
                     * CalibrationReferencePattern.MillimetresPerPixel(parameters.OuterRadiusMm, parameters.Kind),
-                parameters.InnerRadiusMm, parameters.OuterRadiusMm);
+                parameters.DrawingInnerRadiusMm, parameters.DrawingOuterRadiusMm);
         }).ToArray();
     }
 

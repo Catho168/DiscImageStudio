@@ -5,6 +5,7 @@ using System.Windows.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DiscImageStudio.Cd;
+using DiscImageStudio.BluRay;
 using DiscImageStudio.Core.Calibration;
 using DiscImageStudio.Dvd;
 using DiscImageStudio.Services;
@@ -46,7 +47,7 @@ public partial class CalibrationViewModel : ObservableObject
         shell.BusyChanged += () => { OnPropertyChanged(nameof(IsBusy)); RefreshCommands(); };
     }
 
-    public IReadOnlyList<string> DiscTypes { get; } = ["CD", "DVD"];
+    public IReadOnlyList<string> DiscTypes { get; } = ["CD", "DVD", "BD"];
     [ObservableProperty] private string _selectedDiscType = "CD";
     [ObservableProperty] private BitmapSource? _targetImage;
     [ObservableProperty] private double _canvasOuterRadiusMm = 60;
@@ -59,7 +60,7 @@ public partial class CalibrationViewModel : ObservableObject
     [ObservableProperty] private bool _fitDvdPitch = true;
     public bool IsDvdTarget => _target?.Parameters.Kind == CalibrationDiscKind.Dvd;
     [ObservableProperty] private string _outputPath = string.Empty;
-    [ObservableProperty] private string _statusText = "使用当前 CD / DVD 参数创建标定图案。";
+    [ObservableProperty] private string _statusText = "使用当前 CD / DVD / BD 参数创建标定图案。";
     [ObservableProperty] private string _fitSummary = "先矫正照片，再沿一条清楚的曲线打点。至少 6 点，覆盖靠内、中间和靠外的位置。";
     [ObservableProperty] private string _fitAssessment = "全部有效点都会参与计算，结果需与实拍曲线核对。";
     [ObservableProperty] private string _validationSummary = "拟合后将预测曲线叠加在照片上，检查整条曲线是否吻合。";
@@ -100,7 +101,8 @@ public partial class CalibrationViewModel : ObservableObject
     {
         try
         {
-            CalibrationParameters p = SelectedDiscType == "DVD"
+            CalibrationParameters p = SelectedDiscType == "BD" ? CreateBluRayCalibrationParameters()
+                : SelectedDiscType == "DVD"
                 ? new(CalibrationDiscKind.Dvd, Number(_state.DvdInnerRadius), Number(_state.DvdOuterRadius),
                     ParameterParser.ParsePositiveLong(_state.DvdTotalSectors, "DVD 扇区数"), DvdStreamingOptions.StandardChannelBitLengthNm,
                     ParameterParser.ParseDouble(_state.DvdPitchLinear, "DVD 相对一次项"),
@@ -119,6 +121,22 @@ public partial class CalibrationViewModel : ObservableObject
 
     private static double Number(string raw) => ParameterParser.ParsePositiveDouble(raw, "标定参数");
 
+    private CalibrationParameters CreateBluRayCalibrationParameters()
+    {
+        BluRayDiscParameters disc = _shell.BluRay.ReadParameters();
+        BluRayIsoPlan plan = BluRayIsoGenerator.PrepareDrawing(disc);
+        return new(CalibrationDiscKind.BluRay, disc.InnerRadiusMm, disc.OuterRadiusMm, disc.TotalSectors,
+            BluRayDiscParameters.ChannelBitLengthNm, BluRayInvertMapping: _shell.BluRay.InvertMapping,
+            DrawingStartSector: plan.DrawingStartSector,
+            DrawingEndSectorExclusive: plan.DrawingEndSectorExclusive);
+    }
+
+    private static string DiscName(CalibrationDiscKind kind) => kind switch
+    {
+        CalibrationDiscKind.Cd => "CD", CalibrationDiscKind.Dvd => "DVD", CalibrationDiscKind.BluRay => "BD",
+        _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+    };
+
     private void InstallTarget(CalibrationTarget target, CalibrationFitOptions? options, bool interleave)
     {
         _installing = true;
@@ -130,18 +148,23 @@ public partial class CalibrationViewModel : ObservableObject
             _cdInterleave = interleave;
             _searchCenter = options?.SearchCenter ?? target.Parameters;
             _loadedFitOptions = options ?? new();
-            FitDvdPitch = _loadedFitOptions.FitDvdPitch;
+            FitDvdPitch = target.Parameters.Kind == CalibrationDiscKind.Dvd && _loadedFitOptions.FitDvdPitch;
             SelectedCoarseSearchRange = CoarseSearchRangeChoices.FirstOrDefault(r => r.RadiusRangeMm == (options?.RadiusRangeMm ?? 0.02))
                 ?? new("会话搜索范围", options?.RadiusRangeMm ?? 0.02);
-            SelectedDiscType = target.Parameters.Kind == CalibrationDiscKind.Dvd ? "DVD" : "CD";
+            SelectedDiscType = DiscName(target.Parameters.Kind);
             // The 60 mm canvas is a disc-preview background; the target itself maps its
             // reference pixels using the saved generation outer radius.
             CanvasOuterRadiusMm = Math.Max(CalibrationReferencePattern.CanvasRadiusMm, target.Parameters.OuterRadiusMm);
             TargetImage = CalibrationPatternRenderer.Render(target, CanvasOuterRadiusMm, 900);
             InvalidateFit();
             TargetSummary = $"{SelectedDiscType} · 图案 {target.Id[..8]} · target_slim 细线图案\n"
-                + $"绘图区 {target.Parameters.InnerRadiusMm:0.###}–{target.Parameters.OuterRadiusMm:0.###} mm\n"
+                + $"{CalibrationRadiusDisplay.Format(target)} · {target.Parameters.Sectors:N0} 扇区\n"
                 + (IsDvdTarget ? DvdPitchDisplay.Format(target.Parameters) + "\n" : string.Empty)
+                + (target.Parameters.Kind == CalibrationDiscKind.BluRay
+                    ? $"蓝光恒定轨距 · {(target.Parameters.BluRayInvertMapping ? "反转" : "正常")} 3T / 6T 映射\n"
+                        + (HasBluRayFileSystem(target)
+                            ? "此标定记录包含 UDF 文件系统，继续使用创建时保存的绘图范围。\n"
+                            : "纯绘图标靶覆盖完整数据区，不含文件系统。\n") : string.Empty)
                 + "原图按生成外半径缩放，再裁切刻录环带。\n"
                 + "生成参数是反推基准，不限制照片上可标点的范围。";
             OnPropertyChanged(nameof(Target));
@@ -172,7 +195,7 @@ public partial class CalibrationViewModel : ObservableObject
     }
 
     private CalibrationFitOptions FitOptions() => _loadedFitOptions with
-        { SearchCenter = _searchCenter, RadiusRangeMm = SelectedCoarseSearchRange.RadiusRangeMm, FitDvdPitch = FitDvdPitch };
+        { SearchCenter = _searchCenter, RadiusRangeMm = SelectedCoarseSearchRange.RadiusRangeMm, FitDvdPitch = IsDvdTarget && FitDvdPitch };
 
     partial void OnFitDvdPitchChanged(bool value)
     {
@@ -223,24 +246,31 @@ public partial class CalibrationViewModel : ObservableObject
     private void ApplyParameters()
     {
         if (!CanApplyParameters() || SelectedCoarseCandidate?.Parameters is not { } p) return;
-        string ri = p.InnerRadiusMm.ToString("G17", CultureInfo.InvariantCulture);
-        string ro = p.OuterRadiusMm.ToString("G17", CultureInfo.InvariantCulture);
+        string ri = ParameterNumberText.ForInput(p.InnerRadiusMm);
+        string ro = ParameterNumberText.ForInput(p.OuterRadiusMm);
         if (p.Kind == CalibrationDiscKind.Cd)
         {
             _state.CdInnerRadius = ri; _state.CdOuterRadius = ro;
             _state.CdActualInnerRadius = ri; _state.CdActualOuterRadius = ro;
             _state.CdSectors = p.Sectors.ToString(CultureInfo.InvariantCulture);
         }
-        else
+        else if (p.Kind == CalibrationDiscKind.Dvd)
         {
             _state.DvdInnerRadius = ri; _state.DvdOuterRadius = ro;
             _state.DvdActualInnerRadius = ri; _state.DvdActualOuterRadius = ro;
-            _state.DvdPitchLinear = _state.DvdActualPitchLinear = p.PitchLinear.ToString("G17", CultureInfo.InvariantCulture);
-            _state.DvdPitchQuadratic = _state.DvdActualPitchQuadratic = p.PitchQuadratic.ToString("G17", CultureInfo.InvariantCulture);
-            _state.DvdPitchCubic = _state.DvdActualPitchCubic = p.PitchCubic.ToString("G17", CultureInfo.InvariantCulture);
+            _state.DvdPitchLinear = _state.DvdActualPitchLinear = ParameterNumberText.ForInput(p.PitchLinear);
+            _state.DvdPitchQuadratic = _state.DvdActualPitchQuadratic = ParameterNumberText.ForInput(p.PitchQuadratic);
+            _state.DvdPitchCubic = _state.DvdActualPitchCubic = ParameterNumberText.ForInput(p.PitchCubic);
             _state.DvdTotalSectors = p.Sectors.ToString(CultureInfo.InvariantCulture);
         }
-        StatusText = $"已应用到 {(p.Kind == CalibrationDiscKind.Cd ? "CD" : "DVD")} 参数。原标定盘记录仍保留，可继续补点核对。";
+        else if (p.Kind == CalibrationDiscKind.BluRay)
+        {
+            _shell.BluRay.InnerRadius = ri;
+            _shell.BluRay.OuterRadius = ro;
+            _shell.BluRay.TotalSectors = p.Sectors.ToString(CultureInfo.InvariantCulture);
+            _shell.BluRay.InvertMapping = p.BluRayInvertMapping;
+        }
+        StatusText = $"已应用到 {DiscName(p.Kind)} 参数。原标定盘记录仍保留，可继续补点核对。";
         _shell.AppendLog($"[{DateTime.Now:HH:mm:ss}] 标定 {Target?.Id}: {StatusText} 内半径={ri}, 外半径={ro}\n");
     }
 
@@ -253,7 +283,7 @@ public partial class CalibrationViewModel : ObservableObject
             FitAssessment = _fit.Succeeded && CandidateResidualAccepted(value)
                 ? $"候选 · 点位偏差 {value.RmsErrorMm:0.###} mm，待核对"
                 : $"未通过 · 点位偏差 {value.RmsErrorMm:0.###} mm，不能应用";
-            FitSummary = $"所选候选：内半径 {value.Parameters.InnerRadiusMm:0.############} mm · 外半径 {value.Parameters.OuterRadiusMm:0.############} mm\n"
+            FitSummary = $"所选候选：内半径 {ParameterNumberText.ForSummary(value.Parameters.InnerRadiusMm, 8)} mm · 外半径 {ParameterNumberText.ForSummary(value.Parameters.OuterRadiusMm, 8)} mm\n"
                 + (IsDvdTarget ? DvdPitchDisplay.Format(value.Parameters) + "\n" : string.Empty)
                 + $"曲线均方根误差 {value.RmsErrorMm:0.###} mm · 整体转动已单独处理。\n"
                 + $"全部 {TracePoints.Count} 个实拍点均用于计算；预设绘图区不裁剪点或预测。\n"
@@ -325,9 +355,9 @@ public partial class CalibrationViewModel : ObservableObject
     private void BrowseOutput()
     {
         if (_target is null) return;
-        bool dvd = _target.Parameters.Kind == CalibrationDiscKind.Dvd;
-        string? path = _shell.Dialogs?.PickSave(dvd ? "DVD 镜像|*.iso" : "CD 音轨|*.wav|CD 原始音轨|*.raw",
-            dvd ? ".iso" : ".wav", $"calibration-{_target.Id[..8]}{(dvd ? ".iso" : ".wav")}");
+        bool iso = _target.Parameters.Kind != CalibrationDiscKind.Cd;
+        string? path = _shell.Dialogs?.PickSave(iso ? $"{DiscName(_target.Parameters.Kind)} 镜像|*.iso" : "CD 音轨|*.wav|CD 原始音轨|*.raw",
+            iso ? ".iso" : ".wav", $"calibration-{_target.Id[..8]}{(iso ? ".iso" : ".wav")}");
         if (path is not null) OutputPath = path;
     }
 
@@ -356,8 +386,8 @@ public partial class CalibrationViewModel : ObservableObject
         {
             path = Path.GetFullPath(OutputPath.Trim());
             string extension = Path.GetExtension(path).ToLowerInvariant();
-            if (target.Parameters.Kind == CalibrationDiscKind.Dvd ? extension != ".iso" : extension is not (".wav" or ".raw"))
-                throw new ArgumentException("请选择 DVD 的 .iso 或 CD 的 .wav / .raw 输出文件。");
+            if (target.Parameters.Kind != CalibrationDiscKind.Cd ? extension != ".iso" : extension is not (".wav" or ".raw"))
+                throw new ArgumentException("请选择 DVD / BD 的 .iso 或 CD 的 .wav / .raw 输出文件。");
         }
         catch (Exception ex) { Report(ex); return; }
         var session = Session();
@@ -375,6 +405,15 @@ public partial class CalibrationViewModel : ObservableObject
                     if (target.Parameters.Kind == CalibrationDiscKind.Cd)
                         CdTrackGenerator.GeneratePattern(target.Sample, stagedPath, CdParameters(target), session.CdInterleave,
                             cancellationToken: token);
+                    else if (target.Parameters.Kind == CalibrationDiscKind.BluRay)
+                    {
+                        BluRayIsoPlan plan = BluRayPlan(target);
+                        if (plan.DrawingStartSector != target.Parameters.DrawingStartSector
+                            || plan.DrawingEndSectorExclusive != (target.Parameters.DrawingEndSectorExclusive == 0
+                                ? target.Parameters.Sectors : target.Parameters.DrawingEndSectorExclusive))
+                            throw new InvalidOperationException("标定记录的绘图布局不匹配，请重新创建标定图案。");
+                        BluRayIsoGenerator.GenerateFile(stagedPath, plan, BluRayPatternMapping(target), cancellationToken: token);
+                    }
                     else
                     {
                         using FileStream output = new(stagedPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
@@ -421,7 +460,8 @@ public partial class CalibrationViewModel : ObservableObject
     {
         if (_target is null) return;
         if (!EnsureSessionSavedForBurn()) return;
-        _shell.Burn.IsDvdBurn = _target.Parameters.Kind == CalibrationDiscKind.Dvd;
+        _shell.Burn.SelectedMediaIndex = _target.Parameters.Kind switch
+            { CalibrationDiscKind.Cd => 0, CalibrationDiscKind.Dvd => 1, CalibrationDiscKind.BluRay => 2, _ => 0 };
         _shell.Burn.UseCalibrationPattern = true;
         _shell.NavigateTo(ShellViewModel.BurnTabIndex);
     }
@@ -447,12 +487,37 @@ public partial class CalibrationViewModel : ObservableObject
         target.Parameters.InnerRadiusMm, target.Parameters.OuterRadiusMm, target.Parameters.LinearDensity, 0,
         PitchLinear: target.Parameters.PitchLinear, PitchQuadratic: target.Parameters.PitchQuadratic,
         PitchCubic: target.Parameters.PitchCubic);
+    internal static BluRayDiscParameters BluRayParameters(CalibrationTarget target)
+    {
+        if (target.Parameters.Kind != CalibrationDiscKind.BluRay)
+            throw new ArgumentException("当前标定记录不是蓝光图案。", nameof(target));
+        return new(checked((uint)target.Parameters.Sectors), InnerRadiusMm: target.Parameters.InnerRadiusMm,
+            OuterRadiusMm: target.Parameters.OuterRadiusMm);
+    }
+    internal static IBluRayPayloadMapping BluRayPatternMapping(CalibrationTarget target)
+        // Blu-ray encoder coordinates have Y up; all calibration coordinates have Y down.
+        => new BluRayImagePayloadMapping(BluRayParameters(target), (x, y) => target.Sample(x, -y),
+            new BluRayRunLengthMapping(target.Parameters.BluRayInvertMapping), allowParallelSampling: true);
+    internal static BluRayIsoPlan BluRayPlan(CalibrationTarget target)
+        // Older portable sessions had no timestamp. A stable fallback reproduces
+        // their complete ISO, including metadata, after subsequent saves/reloads.
+        => HasBluRayFileSystem(target)
+            ? BluRayIsoGenerator.Prepare(BluRayParameters(target), timestamp: target.Parameters.BluRayIsoTimestamp
+                ?? new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.Zero))
+            : BluRayIsoGenerator.PrepareDrawing(BluRayParameters(target));
+    internal static bool HasBluRayFileSystem(CalibrationTarget target)
+        => target.Parameters.Kind == CalibrationDiscKind.BluRay
+            && (target.Parameters.DrawingStartSector > 0
+                || target.Parameters.DrawingEndSectorExclusive > 0
+                    && target.Parameters.DrawingEndSectorExclusive < target.Parameters.Sectors);
     private static void ValidateOutputParameters(CalibrationParameters p)
     {
         p.Validate();
         if (p.Kind == CalibrationDiscKind.Dvd)
             new DvdStreamingOptions(checked((uint)p.Sectors), p.InnerRadiusMm, p.OuterRadiusMm, p.LinearDensity, 0,
                 PitchLinear: p.PitchLinear, PitchQuadratic: p.PitchQuadratic, PitchCubic: p.PitchCubic).Validate();
+        else if (p.Kind == CalibrationDiscKind.BluRay)
+            new BluRayDiscParameters(checked((uint)p.Sectors), InnerRadiusMm: p.InnerRadiusMm, OuterRadiusMm: p.OuterRadiusMm).Validate();
         else new CdDiscParameters(p.InnerRadiusMm, p.OuterRadiusMm, p.Sectors, p.LinearDensity).Validate();
     }
 

@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2008-2022 arduinocelentano
+// Copyright (c) 2026 Disc Image Studio contributors
+// Adapted from CDImage's converter.cpp / converter.h:
+// https://github.com/arduinocelentano/cdimage/tree/de5ca19f403b86934cfedb6793ca75f6716080c0/src
+// C# port and subsequent stream, byte-order and shared-table changes: 2026.
+// Attribution restored 2026-10-25; see Git history and THIRD-PARTY-NOTICES.txt.
+
 using System.IO;
 
 namespace DiscImageStudio.Cd;
@@ -26,9 +34,15 @@ internal sealed class CddaInterleaver(CdAudioByteOrder audioByteOrder)
             _head = 0;
         }
 
-        for (int index = 0; index < CddaInterleaveTable.BytesPerFrame; index++)
+        // Both the ring and an audio sector contain whole 24-byte frames. The
+        // completed frame is contiguous even when the head wrapped to zero.
+        _interleaveSequence.AsSpan(_head * CddaInterleaveTable.BytesPerFrame,
+            CddaInterleaveTable.BytesPerFrame).CopyTo(_sector.AsSpan(_sectorPosition));
+        _sectorPosition += CddaInterleaveTable.BytesPerFrame;
+        if (_sectorPosition == _sector.Length)
         {
-            WriteByte(_interleaveSequence[MapIndex(index)], output);
+            CdAudioSamples.WriteSector(output, _sector, audioByteOrder);
+            _sectorPosition = 0;
         }
     }
 
@@ -54,17 +68,5 @@ internal sealed class CddaInterleaver(CdAudioByteOrder audioByteOrder)
         }
 
         return value < 0 ? value + modulus : value;
-    }
-
-    private void WriteByte(byte value, Stream output)
-    {
-        _sector[_sectorPosition++] = value;
-        if (_sectorPosition < _sector.Length)
-        {
-            return;
-        }
-
-        CdAudioSamples.WriteSector(output, _sector, audioByteOrder);
-        _sectorPosition = 0;
     }
 }

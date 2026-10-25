@@ -1,6 +1,8 @@
 using System.Buffers.Binary;
+using System.Numerics;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using DiscImageStudio.Core;
 using DvdImageSolver.Encoding;
 using DvdImageSolver.Solver;
 
@@ -16,6 +18,8 @@ internal static class SelfTests
         TestPhysicalEncoding();
         TestCodewordStateControl();
         TestDispersionPool();
+        TestBinaryDispersion();
+        TestDiscreteGrayscaleSampling();
         TestImageMapping();
         TestIsoOutput();
         TestCalibrationAndRange();
@@ -207,6 +211,238 @@ internal static class SelfTests
             "payload-transition-class-error",
             result.ScoreMetric,
             "dispersion score metric");
+    }
+
+    private static void TestBinaryDispersion()
+    {
+        byte[] inputLevels = [0, 127, 128, 255];
+        byte[] expectedBytes = [0xA5, 0xA5, 0x92, 0x92];
+        byte[] displayLevels = [0, 255];
+        int[] transitionCounts = [5, 2];
+        for (int index = 0; index < inputLevels.Length; index++)
+        {
+            Equal(expectedBytes[index], DvdGrayscalePalette.GetScrambledByte(inputLevels[index]),
+                $"DVD grayscale threshold {inputLevels[index]}");
+        }
+
+        for (int level = 0; level < displayLevels.Length; level++)
+        {
+            byte value = expectedBytes[level * 2];
+            True(DvdGrayscalePalette.TryGetLuminance(value, out byte luminance), "DVD palette readback");
+            Equal(displayLevels[level], luminance, "DVD nominal readback level");
+            for (byte state = 1; state <= 4; state++)
+            {
+                Equal(transitionCounts[level], BitOperations.PopCount(EfmPlusTables.LookupMain(value, state).Word),
+                    $"DVD tone 0x{value:X2} has stable transitions in state {state}");
+            }
+        }
+
+        True(!DvdGrayscalePalette.TryGetLuminance(0, out _), "unknown DVD byte is not classified");
+        True(DvdGrayscalePalette.TryGetLuminance(0x66, out byte legacyLuminance), "legacy Q66 is recognized");
+        Equal((byte)0, legacyLuminance, "legacy Q66 readback matches observed black appearance");
+        True(DvdGrayscalePalette.TryGetLuminance(0xB9, out legacyLuminance), "legacy QB9 is recognized");
+        Equal((byte)85, legacyLuminance, "legacy QB9 readback remains nominal dark gray");
+        SequenceEqual(new byte[] { 0xA5, 0x92 }, DvdGrayscalePalette.ScrambledBytes,
+            "DVD generation palette excludes rejected candidates");
+        string directory = Path.Combine(Path.GetTempPath(), $"dvd-grayscale-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            string sourcePath = Path.Combine(directory, "gray-source.png");
+            WriteTestPng(sourcePath, grayscale: true);
+            ImageMappingOptions mapping = new(
+                TotalSectors: 64, InnerRadiusMm: 24, OuterRadiusMm: 24.1,
+                ChannelBitLengthNm: 133.33, StartAngleDegrees: 17, Clockwise: true,
+                LuminanceThreshold: 20, AlphaThreshold: 128, SampleEveryChannelBits: 256);
+            MultiBlockSolveOptions fastOptions = new(
+                StartLba: 16, FillSectors: 16, PsnOffset: 0x30000,
+                IterationsPerBlock: 1, MutationBytes: 4, RandomSeed: 804,
+                InitialTemperature: 64, FinalTemperature: 0.25, ZeroInitialPayload: false,
+                ImageMapping: mapping, Algorithm: SolverAlgorithm.Dispersion, FastParallelism: 2);
+            ImageConstraint constraint = ImageTargetMapper.Map(sourcePath, fastOptions.StartLba, mapping);
+            byte[] initialPayload = new byte[DvdEccBlockEncoder.PayloadBytesPerBlock];
+            new Random(fastOptions.RandomSeed).NextBytes(initialPayload);
+            ModulationBoundary initialBoundary = new(1, 0, IsLand: true);
+            SolverResult exact = SolverEngine.Solve(
+                constraint, initialPayload, fastOptions.StartLba, fastOptions.PsnOffset, initialBoundary,
+                new SolverOptions(1, 4, 804, 64, 0.25, Algorithm: SolverAlgorithm.Dispersion));
+            string isoPath = Path.Combine(directory, "gray.iso");
+            FastDispersionImageWriter.Write(sourcePath, isoPath, fastOptions, progress: null);
+            SequenceEqual(exact.Payloads, File.ReadAllBytes(isoPath).AsSpan(initialPayload.Length),
+                "binary fast file matches exact payload at nonzero LBA");
+            using MemoryStream imageStream = new();
+            FastDispersionImageWriter.WriteStream(sourcePath, imageStream, fastOptions);
+            SequenceEqual(exact.Payloads, imageStream.ToArray(), "binary streaming matches exact payload");
+
+            HashSet<byte> observedBytes = [];
+            int preserved = 0;
+            for (int payloadIndex = 0; payloadIndex < initialPayload.Length; payloadIndex++)
+            {
+                int wordIndex = DvdEccBlockEncoder.PayloadDirectChannelOffset(payloadIndex) / 16;
+                sbyte target = constraint.ChannelWordGrayscaleTargets[wordIndex];
+                True(constraint.ChannelWordTargets[wordIndex] is -1 or 0 or 16,
+                    "dispersion targets leave full/state-control solver targets unchanged");
+                if (target < 0)
+                {
+                    Equal(initialPayload[payloadIndex], exact.Payloads[payloadIndex],
+                        "transparent payload remains unchanged");
+                    preserved++;
+                    continue;
+                }
+
+                int sector = payloadIndex / DvdEccBlockEncoder.PayloadBytesPerSector;
+                int byteIndex = payloadIndex % DvdEccBlockEncoder.PayloadBytesPerSector;
+                byte q = (byte)(exact.Payloads[payloadIndex] ^ DvdDataFrameBuilder.PayloadScramblerMask(
+                    fastOptions.StartLba + fastOptions.PsnOffset + (uint)sector)[byteIndex]);
+                Equal(expectedBytes[target * 2], q, "binary payload reverse scrambling");
+                observedBytes.Add(q);
+            }
+
+            Equal(2, observedBytes.Count, "both DVD tones generated from image");
+            True(!observedBytes.Contains(0x66) && !observedBytes.Contains(0xB9),
+                "new constrained payload never uses Q66 or QB9");
+            True(preserved > 0, "binary image includes unconstrained alpha samples");
+
+            using MemoryStream codewordStream = new();
+            FastDispersionImageWriter.WriteCodewordPatternStream(
+                sample => inputLevels[(int)(sample.GlobalCodewordIndex % (uint)inputLevels.Length)], codewordStream, fastOptions);
+            byte[] codewordPayload = codewordStream.ToArray();
+            EncodedEccBlock encoded = new DvdEccBlockEncoder().Encode(
+                codewordPayload, fastOptions.StartLba, fastOptions.PsnOffset, initialBoundary);
+            ValidateDataRll(encoded.ChannelLevels, initialBoundary.IsLand);
+            for (int payloadIndex = 0; payloadIndex < codewordPayload.Length; payloadIndex++)
+            {
+                int channelOffset = DvdEccBlockEncoder.PayloadDirectChannelOffset(payloadIndex);
+                ulong globalWord = (((ulong)fastOptions.StartLba * DvdEccBlockEncoder.ChannelBitsPerSector)
+                    + (ulong)channelOffset) / 16;
+                int expectedIndex = (int)(globalWord % (uint)inputLevels.Length);
+                int sector = payloadIndex / DvdEccBlockEncoder.PayloadBytesPerSector;
+                int byteIndex = payloadIndex % DvdEccBlockEncoder.PayloadBytesPerSector;
+                byte q = (byte)(codewordPayload[payloadIndex] ^ DvdDataFrameBuilder.PayloadScramblerMask(
+                    fastOptions.StartLba + fastOptions.PsnOffset + (uint)sector)[byteIndex]);
+                Equal(expectedBytes[expectedIndex], q, "codeword stream quantizes boundary values");
+                int transitions = 0;
+                for (int bit = channelOffset; bit < channelOffset + 16; bit++)
+                {
+                    if (encoded.ChannelLevels[bit] != encoded.ChannelLevels[bit - 1])
+                    {
+                        transitions++;
+                    }
+                }
+
+                Equal(transitionCounts[expectedIndex / 2], transitions, "binary ECC/SYNC replay transition count");
+            }
+
+            MultiBlockSolveOptions analyticOptions = fastOptions with { StartLba = 0 };
+            for (int level = 0; level < displayLevels.Length; level++)
+            {
+                byte input = displayLevels[level];
+                using MemoryStream analyticStream = new();
+                FastDispersionImageWriter.WritePatternStream((_, _) => input, analyticStream, analyticOptions);
+                byte[] payload = analyticStream.ToArray();
+                for (int sector = 0; sector < DvdEccBlockEncoder.SectorCount; sector++)
+                {
+                    Span<byte> scrambled = payload.AsSpan(
+                        sector * DvdEccBlockEncoder.PayloadBytesPerSector,
+                        DvdEccBlockEncoder.PayloadBytesPerSector);
+                    DvdDataFrameBuilder.TransformPayloadScrambling(scrambled, 0x30000 + (uint)sector);
+                    True(scrambled.IndexOfAnyExcept(expectedBytes[level * 2]) < 0,
+                        "analytic stream generates the selected DVD tone");
+                }
+
+                string constantIsoPath = Path.Combine(directory, $"tone-{level}.iso");
+                File.WriteAllBytes(constantIsoPath, analyticStream.ToArray());
+                string readbackPath = Path.Combine(directory, $"tone-{level}.png");
+                IsoReadbackSummary readback = IsoReadbackRenderer.Render(
+                    constantIsoPath, readbackPath,
+                    new IsoReadbackOptions(64, 0, 16, 0x30000, 24, 24.1, 133.33,
+                        Clockwise: true, PreviewSize: 128, SamplesPerSector: 64));
+                Equal(readback.TotalSamples, readback.ClassifiedSamples,
+                    "ISO readback recognizes every sample of each DVD tone");
+                True(ContainsOpaqueGray(readbackPath, displayLevels[level]),
+                    "ISO readback renders each nominal DVD tone");
+            }
+
+            string ditheredPath = Path.Combine(directory, "dithered-source.png");
+            WriteTestPng(ditheredPath, binaryDither: true);
+            ImageConstraint ditheredConstraint = ImageTargetMapper.Map(ditheredPath, fastOptions.StartLba, mapping);
+            SolverResult ditheredExact = SolverEngine.Solve(
+                ditheredConstraint, initialPayload, fastOptions.StartLba, fastOptions.PsnOffset, initialBoundary,
+                new SolverOptions(1, 4, 804, 64, 0.25, Algorithm: SolverAlgorithm.Dispersion));
+            using MemoryStream ditheredStream = new();
+            FastDispersionImageWriter.WriteStream(ditheredPath, ditheredStream, fastOptions);
+            SequenceEqual(ditheredExact.Payloads, ditheredStream.ToArray(),
+                "discrete dither exact and streaming paths select identical source pixels");
+            string ditheredIsoPath = Path.Combine(directory, "dithered.iso");
+            FastDispersionImageWriter.Write(ditheredPath, ditheredIsoPath, fastOptions, progress: null);
+            SequenceEqual(ditheredExact.Payloads, File.ReadAllBytes(ditheredIsoPath).AsSpan(initialPayload.Length),
+                "discrete dither fast file and exact payload agree");
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private static void TestDiscreteGrayscaleSampling()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), $"dvd-discrete-sampling-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            string discretePath = Path.Combine(directory, "discrete.png");
+            WritePixelColumns(discretePath, [0, 255, 0]);
+            RasterImage discrete = RasterImage.Load(discretePath);
+            True(discrete.HasBinaryGrayscalePalette, "loaded opaque black/white PNG is detected");
+            Equal(new PixelSample(0, 255), discrete.SampleDisc(-0.6, 0, 1, preserveDiscreteGrayscale: true),
+                "dither black pixel is preserved without interpolation");
+            Equal(new PixelSample(255, 255), discrete.SampleDisc(-0.4, 0, 1, preserveDiscreteGrayscale: true),
+                "dither white pixel is preserved without interpolation");
+            Equal(new PixelSample(153, 255), discrete.SampleDisc(-0.4, 0, 1),
+                "binary solver retains existing bilinear sampling");
+            Equal((byte)255, BinaryGrayscale.Quantize(153),
+                "continuous gray is thresholded to one of the two production tones");
+
+            string continuousPath = Path.Combine(directory, "continuous.png");
+            WritePixelColumns(continuousPath, [0, 128, 255]);
+            RasterImage continuous = RasterImage.Load(continuousPath);
+            True(!continuous.HasBinaryGrayscalePalette, "continuous grayscale is not mistaken for dither");
+            Equal(new PixelSample(77, 255), continuous.SampleDisc(-0.4, 0, 1, preserveDiscreteGrayscale: true),
+                "continuous image retains bilinear sampling");
+
+            string alphaPath = Path.Combine(directory, "alpha.png");
+            WritePixelColumns(alphaPath, [0, 255, 0], firstAlpha: 128);
+            RasterImage alpha = RasterImage.Load(alphaPath);
+            True(!alpha.HasBinaryGrayscalePalette, "partial alpha disables discrete sampling");
+            Equal(new PixelSample(145, 179), alpha.SampleDisc(-0.6, 0, 1, preserveDiscreteGrayscale: true),
+                "transparent image retains alpha-weighted bilinear sampling");
+            RasterImage color = RasterImage.CreateForTest(3, 3, 0, 255, 0, 255);
+            True(!color.HasBinaryGrayscalePalette, "color images are not treated as grayscale dither");
+
+            void WritePixelColumns(string path, byte[] values, byte firstAlpha = 255)
+            {
+                byte[] pixels = new byte[3 * 3 * 4];
+                for (int y = 0; y < 3; y++)
+                {
+                    for (int x = 0; x < 3; x++)
+                    {
+                        int offset = (y * 3 + x) * 4;
+                        pixels[offset] = pixels[offset + 1] = pixels[offset + 2] = values[x];
+                        pixels[offset + 3] = x == 0 ? firstAlpha : (byte)255;
+                    }
+                }
+
+                BitmapSource bitmap = BitmapSource.Create(3, 3, 96, 96, PixelFormats.Bgra32, null, pixels, 12);
+                PngBitmapEncoder encoder = new();
+                encoder.Frames.Add(BitmapFrame.Create(bitmap));
+                using FileStream output = File.Create(path);
+                encoder.Save(output);
+            }
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
     }
 
     private static void TestCodewordStateControl()
@@ -965,7 +1201,7 @@ internal static class SelfTests
         }
     }
 
-    private static void WriteTestPng(string path)
+    private static void WriteTestPng(string path, bool grayscale = false, bool binaryDither = false)
     {
         const int size = 64;
         const int stride = size * 4;
@@ -975,11 +1211,15 @@ internal static class SelfTests
             for (int x = 0; x < size; x++)
             {
                 int offset = (y * stride) + (x * 4);
-                byte value = ((x / 8) + (y / 8)) % 2 == 0 ? (byte)0 : (byte)255;
+                byte value = binaryDither
+                    ? BinaryGrayscale.GetLuminance((x + y) % 2)
+                    : grayscale
+                    ? (byte)((x / 16) * 85)
+                    : ((x / 8) + (y / 8)) % 2 == 0 ? (byte)0 : (byte)255;
                 pixels[offset] = value;
                 pixels[offset + 1] = value;
                 pixels[offset + 2] = value;
-                pixels[offset + 3] = 255;
+                pixels[offset + 3] = grayscale && x < 8 && y < 32 ? (byte)0 : (byte)255;
             }
         }
 
@@ -1065,6 +1305,27 @@ internal static class SelfTests
         }
 
         return (dark, light);
+    }
+
+    private static bool ContainsOpaqueGray(string path, byte gray)
+    {
+        using FileStream stream = File.OpenRead(path);
+        BitmapFrame frame = BitmapFrame.Create(
+            stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+        FormatConvertedBitmap converted = new(frame, PixelFormats.Bgra32, null, 0);
+        int stride = checked(converted.PixelWidth * 4);
+        byte[] pixels = new byte[checked(stride * converted.PixelHeight)];
+        converted.CopyPixels(pixels, stride, 0);
+        for (int offset = 0; offset < pixels.Length; offset += 4)
+        {
+            if (pixels[offset] == gray && pixels[offset + 1] == gray
+                && pixels[offset + 2] == gray && pixels[offset + 3] == 255)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static int CountIntermediateOpaquePixels(string path)

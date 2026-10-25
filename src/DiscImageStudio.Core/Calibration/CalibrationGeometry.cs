@@ -1,12 +1,13 @@
 namespace DiscImageStudio.Core.Calibration;
 
-/// <summary>Continuous track envelope matching the CD and DVD encoders.</summary>
+/// <summary>Continuous track envelope matching the CD, DVD and Blu-ray encoders.</summary>
 internal sealed class CalibrationGeometry
 {
     private readonly CalibrationParameters _parameters;
     private readonly double _b;
     private readonly double _squaredRange;
     private readonly DvdTrackGeometry? _dvd;
+    private readonly ConstantPitchCalibrationGeometry? _constant;
 
     internal double RadialGrowthPerRadianMm => _b;
     internal bool IsConstantPitch => _dvd?.IsConstantPitch ?? true;
@@ -22,6 +23,11 @@ internal sealed class CalibrationGeometry
             _dvd = DvdTrackGeometry.Create(parameters.InnerRadiusMm, parameters.OuterRadiusMm,
                 parameters.TrackLengthMm, parameters.PitchLinear, parameters.PitchQuadratic, parameters.PitchCubic);
             _b = _dvd.RadialGrowthPerRadianMm;
+        }
+        else if (parameters.Kind == CalibrationDiscKind.BluRay)
+        {
+            _constant = new(parameters);
+            _b = _constant.Growth;
         }
     }
 
@@ -54,7 +60,8 @@ internal sealed class CalibrationGeometry
         return (minimum * _b, maximum * _b);
     }
 
-    internal double ProgressAtRadius(double radius) => Math.Clamp(_dvd is null
+    internal double ProgressAtRadius(double radius) => Math.Clamp(_constant is not null
+        ? _constant.ProgressAtRadius(radius) : _dvd is null
         ? (radius * radius - _parameters.InnerRadiusMm * _parameters.InnerRadiusMm) / _squaredRange
         : _dvd.ArcLengthAtRadius(radius) / _parameters.TrackLengthMm, 0, 1);
 
@@ -63,6 +70,12 @@ internal sealed class CalibrationGeometry
 
     internal (double Radius, double Angle) AtProgress(double progress)
     {
+        if (_constant is not null)
+        {
+            if (!_constant.TryAtProgress(progress, out double constantRadius))
+                throw new ArgumentException("该进度没有有效的正半径轨迹。");
+            return (constantRadius, AngleAtRadius(constantRadius));
+        }
         double radius = _dvd is null
             ? Math.Sqrt(_parameters.InnerRadiusMm * _parameters.InnerRadiusMm + progress * _squaredRange)
             : _dvd.RadiusAtArcLength(progress * _parameters.TrackLengthMm);
@@ -75,6 +88,11 @@ internal sealed class CalibrationGeometry
         if (_dvd is not null) return _dvd.TryProgressAtRadiusExtended(radius, out progress);
         progress = double.NaN;
         if (!double.IsFinite(radius) || radius <= 0 || !double.IsFinite(radius * radius)) return false;
+        if (_constant is not null)
+        {
+            progress = _constant.ProgressAtRadius(radius);
+            return double.IsFinite(progress);
+        }
         progress = (radius - _parameters.InnerRadiusMm) * (radius + _parameters.InnerRadiusMm) / _squaredRange;
         return double.IsFinite(progress);
     }
@@ -84,6 +102,12 @@ internal sealed class CalibrationGeometry
         if (_dvd is not null) return _dvd.TryAtProgressExtended(progress, out point);
         point = (double.NaN, double.NaN);
         if (!double.IsFinite(progress)) return false;
+        if (_constant is not null)
+        {
+            if (!_constant.TryAtProgress(progress, out double constantRadius)) return false;
+            point = (constantRadius, AngleAtRadius(constantRadius));
+            return double.IsFinite(point.Angle);
+        }
         double squared = _parameters.InnerRadiusMm * _parameters.InnerRadiusMm + progress * _squaredRange;
         if (!double.IsFinite(squared) || squared <= 0) return false;
         double radius = Math.Sqrt(squared), angle = AngleAtRadius(radius);

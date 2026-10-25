@@ -35,7 +35,7 @@ internal interface ICdRawImageSession : IDisposable
     IStream CreateAudioImage(IStream audioContent);
 }
 
-internal sealed class DynamicCdRawSession(object format) : ICdRawSession
+internal sealed class DynamicCdRawSession(object format, Action<object>? reportWriteProgress = null) : ICdRawSession
 {
     private readonly dynamic _format = format;
 
@@ -70,7 +70,33 @@ internal sealed class DynamicCdRawSession(object format) : ICdRawSession
     public void SetWriteSpeed(int sectorsPerSecond, bool rotationTypeIsPureCav) =>
         _format.SetWriteSpeed(sectorsPerSecond, rotationTypeIsPureCav);
 
-    public void WriteMedia(IStream content) => _format.WriteMedia(content);
+    public void WriteMedia(IStream content)
+    {
+        if (reportWriteProgress is null)
+        {
+            _format.WriteMedia(content);
+            return;
+        }
+        // DDiscFormat2RawCDEvents.Update (Windows SDK imapi2.idl).
+        Guid events = new("27354142-7F64-5B0F-8F00-5D77AFBE261E");
+        Action<object, object> update = (_, args) => reportWriteProgress(args);
+        bool subscribed = false;
+        try
+        {
+            ComEventsHelper.Combine((object)_format, events, 0x200, update);
+            subscribed = true;
+        }
+        catch (COMException) { /* Optional telemetry must not prevent writing. */ }
+        try { _format.WriteMedia(content); }
+        finally
+        {
+            if (subscribed)
+            {
+                try { ComEventsHelper.Remove((object)_format, events, 0x200, update); }
+                catch (COMException) { /* Preserve any write error. */ }
+            }
+        }
+    }
 
     public void CancelWrite() => _format.CancelWrite();
 

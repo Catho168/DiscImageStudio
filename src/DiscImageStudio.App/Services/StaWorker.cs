@@ -3,9 +3,9 @@ namespace DiscImageStudio.Services;
 internal static class StaWorker
 {
     /// Runs COM/WIC-touching work on a dedicated STA background thread.
-    internal static Task<int> RunAsync(Func<int> action)
+    internal static Task<T> RunAsync<T>(Func<T> action)
     {
-        TaskCompletionSource<int> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<T> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Thread thread = new(() =>
         {
             try

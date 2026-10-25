@@ -82,6 +82,10 @@ public static partial class CalibrationCrossFitter
             {
                 Datum point = data[i];
                 if (!model.TryAtRadius(point.Radius, out CalibrationCrossSample predicted)) return Invalid(inner, outer);
+                // Generation bounds describe what was written, not exact measured
+                // photo coordinates. As for CD/DVD, retain every observed point on
+                // the positive-radius continuation. A hard support constraint here
+                // can force small photo endpoint errors into hundreds of false turns.
                 angles[i] = point.Angle - predicted.Phase;
                 double weight = point.Weight * point.AngularScale * point.AngularScale;
                 means[point.Trace] += weight * angles[i];
@@ -164,6 +168,16 @@ public static partial class CalibrationCrossFitter
         solutions.Sort((first, second) => first.Cost.CompareTo(second.Cost));
         if (solutions.Count == 0) return Failed("搜索范围内没有能覆盖全部观测点的有效正半径曲线延拓，请检查照片尺度、盘心或参数范围。");
         Solution best = solutions[0];
+        if (target.Parameters.Kind == CalibrationDiscKind.BluRay)
+        {
+            var bestParameters = center with { InnerRadiusMm = best.Inner, OuterRadiusMm = best.Outer };
+            var bestModel = new CalibrationCrossModel(original, new(bestParameters), target.Parameters.Kind,
+                target.Parameters == bestParameters);
+            if (data.Any(point => bestModel.TryAtRadius(point.Radius, out var predicted)
+                && (predicted.SourceRadius < target.DrawingInnerRadiusMm - 1e-8
+                    || predicted.SourceRadius > target.DrawingOuterRadiusMm + 1e-8)))
+                warnings.Add("部分描点在候选模型下超出原图案环带，已按连续曲线保留；请复核照片尺度、盘心及端点是否沿同一条可见曲线。");
+        }
         if (coverage < 0.6) warnings.Add("曲线覆盖的内外范围偏窄，参数可能互相补偿；请补充更靠内、外的点。");
         if (best.Rms > delta * 2) warnings.Add("曲线偏差较大，请检查照片矫正、点位和是否始终沿同一条线标点。");
         if (Math.Min(best.Inner - lowerInner, upperInner - best.Inner) < options.RadiusRangeMm * 0.005

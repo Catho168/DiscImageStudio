@@ -50,6 +50,22 @@ internal static class ParameterParser
             : throw new FormatException($"{fieldName}必须是正整数。");
     }
 
+    internal static int ParsePreviewSize(string raw)
+    {
+        int size = ParsePositiveInt(raw, "预览尺寸");
+        return size is >= 64 and <= 8192
+            ? size
+            : throw new ArgumentOutOfRangeException(nameof(raw), "预览尺寸必须在 64–8192 px 之间。");
+    }
+
+    internal static int ParsePreviewSamples(string raw, int maximum)
+    {
+        int samples = ParsePositiveInt(raw, "每扇区采样");
+        return samples <= maximum
+            ? samples
+            : throw new ArgumentOutOfRangeException(nameof(raw), $"每扇区采样必须在 1–{maximum} 之间。");
+    }
+
     internal static RingImageLayoutOptions CreateRingLayoutOptions(
         double canvasOuterRadius,
         double generatedInnerRadius,

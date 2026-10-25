@@ -25,6 +25,8 @@ public static class RingImageProcessor
         string sourceFullPath = Path.GetFullPath(sourcePath);
         string outputFullPath = Path.GetFullPath(outputPath);
         BitmapFrame source = LoadBitmap(sourceFullPath);
+        bool preserveDither = !options.PreserveDitherPalette.IsEmpty
+            && MatchesOpaquePalette(source, options.PreserveDitherPalette.Span, cancellationToken);
         double aspectRatio = source.PixelWidth / (double)source.PixelHeight;
         double angularGapRadians = options.AngularGapDegrees * Math.PI / 180.0;
         double pixelSizeMm = 2.0 * options.CanvasOuterRadiusMm / options.OutputSize;
@@ -120,7 +122,13 @@ public static class RingImageProcessor
 
         RenderTargetBitmap bitmap = new(size, size, 96, 96, PixelFormats.Pbgra32);
         bitmap.Render(visual);
-        WritePng(outputFullPath, bitmap);
+        // Resampling must average the original dither texture before distributing its
+        // luminance across new pixels; nearest-neighbor scaling would alias that texture.
+        BitmapSource output = preserveDither
+            ? GrayscaleDither.Process(bitmap, options.PreserveDitherPalette.Span, cancellationToken)
+            : bitmap;
+        cancellationToken.ThrowIfCancellationRequested();
+        WritePng(outputFullPath, output);
         return new RingImageLayoutSummary(
             sourceFullPath,
             outputFullPath,
@@ -136,6 +144,30 @@ public static class RingImageProcessor
             copyHeightMm,
             copyCentreRadiusMm,
             options.AngularGapDegrees);
+    }
+
+    private static bool MatchesOpaquePalette(
+        BitmapSource source,
+        ReadOnlySpan<byte> palette,
+        CancellationToken cancellationToken)
+    {
+        BitmapSource bgra = source.Format == PixelFormats.Bgra32
+            ? source
+            : new FormatConvertedBitmap(source, PixelFormats.Bgra32, null, 0);
+        int stride = checked(source.PixelWidth * 4);
+        byte[] row = new byte[stride];
+        for (int y = 0; y < source.PixelHeight; y++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            bgra.CopyPixels(new Int32Rect(0, y, source.PixelWidth, 1), row, stride, 0);
+            for (int x = 0; x < stride; x += 4)
+            {
+                if (row[x + 3] != 255 || row[x] != row[x + 1] || row[x] != row[x + 2]
+                    || !palette.Contains(row[x]))
+                    return false;
+            }
+        }
+        return true;
     }
 
     private static BitmapFrame LoadBitmap(string path)

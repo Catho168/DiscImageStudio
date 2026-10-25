@@ -17,8 +17,12 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <controls:SegmentedControl Width="200" VerticalAlignment="Center"
-                                               IsSecondSelected="{Binding IsDvdSelected}" />
+                    <ComboBox Width="200" VerticalAlignment="Center"
+                              SelectedIndex="{Binding SelectedDiscTypeIndex}" AutomationProperties.Name="光盘类型">
+                        <ComboBoxItem Content="CD" />
+                        <ComboBoxItem Content="DVD" />
+                        <ComboBoxItem Content="BD（蓝光）" />
+                    </ComboBox>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
                         <Button Style="{StaticResource GhostButton}" Content="打开预设 JSON"
                                 Height="40" Padding="14,0" FontSize="13" VerticalAlignment="Center"
@@ -43,7 +47,7 @@
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Button Style="{StaticResource TileButton}" Width="146" Height="132" Margin="4"
+                            <Button Style="{StaticResource TileButton}" Width="122" Height="132" Margin="4"
                                     CommandParameter="{Binding}"
                                     Command="{Binding DataContext.CreateTileCommand,
                                                       RelativeSource={RelativeSource AncestorType=ItemsControl}}"

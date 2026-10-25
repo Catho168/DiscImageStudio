@@ -19,7 +19,8 @@ public partial class ShellViewModel : ObservableObject
     public const int LogTabIndex = 5;
     public const int AboutTabIndex = 6;
     public const int CalibrationTabIndex = 7;
-    public const int PageCount = 8;
+    public const int BluRayTabIndex = 8;
+    public const int PageCount = 9;
 
     private readonly Dispatcher _dispatcher;
     private readonly StringBuilder _log = new();
@@ -41,6 +42,11 @@ public partial class ShellViewModel : ObservableObject
         Burn = new BurnViewModel(this, State);
         Dvd = new DvdViewModel(this, State);
         Cd = new CdViewModel(this, State);
+        BluRay = new BluRayViewModel(this);
+        string? bluRayPresetWarning = BluRay.TryLoadPresets();
+        if (bluRayPresetWarning is not null)
+            _presetLoadWarning = _presetLoadWarning is null ? bluRayPresetWarning : _presetLoadWarning + "\n" + bluRayPresetWarning;
+        LivePreview.InitializeBluRay();
         Log = new LogViewModel(this);
         About = new AboutViewModel();
         OpenOutputCommand = new RelayCommand(OpenOutput, () => OpenOutputEnabled);
@@ -65,6 +71,8 @@ public partial class ShellViewModel : ObservableObject
     public DvdViewModel Dvd { get; }
 
     public CdViewModel Cd { get; }
+
+    public BluRayViewModel BluRay { get; }
 
     public LogViewModel Log { get; }
 
@@ -172,6 +180,12 @@ public partial class ShellViewModel : ObservableObject
 
     public void AppendLog(string text)
     {
+        if (_dispatcher is not null && !_dispatcher.CheckAccess())
+        {
+            _dispatcher.BeginInvoke(() => AppendLog(text), DispatcherPriority.Background);
+            return;
+        }
+
         _log.Append(text);
         LogAppended?.Invoke(text);
     }
@@ -345,7 +359,9 @@ public partial class ShellViewModel : ObservableObject
         string[] arguments,
         string outputPath,
         string? discFamily = null,
-        string? sourceImagePath = null)
+        string? sourceImagePath = null,
+        RingImagePreparation.Request? imagePreparation = null,
+        string imageOption = "--input")
     {
         if (_isBusy)
         {
@@ -369,7 +385,21 @@ public partial class ShellViewModel : ObservableObject
         {
             Console.SetOut(writer);
             Console.SetError(writer);
-            exitCode = await StaWorker.RunAsync(() => UnifiedCommandRunner.Run(arguments));
+            exitCode = await StaWorker.RunAsync(() =>
+            {
+                // Preparation shares the job's busy gate and worker, so large images
+                // never block the UI and cannot race a second generation request.
+                using RingImagePreparation.PreparedImage? prepared = imagePreparation?.Prepare(appendLog: writer.Write);
+                string[] effectiveArguments = (string[])arguments.Clone();
+                if (prepared is not null)
+                {
+                    int index = Array.IndexOf(effectiveArguments, imageOption);
+                    if (index < 0 || index + 1 >= effectiveArguments.Length)
+                        throw new ArgumentException($"Missing source image option {imageOption}.", nameof(arguments));
+                    effectiveArguments[index + 1] = prepared.Path;
+                }
+                return UnifiedCommandRunner.Run(effectiveArguments);
+            });
             writer.Flush();
         }
         finally

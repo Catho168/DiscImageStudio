@@ -14,9 +14,12 @@
             <controls:SectionCard Header="刻录参数" IconKind="Flame" Margin="0,0,0,24"
                                   IsEnabled="{Binding IsSetupEnabled}">
                 <StackPanel>
-                    <controls:SegmentedControl IsSecondSelected="{Binding IsDvdBurn}"
-                                                Width="248" Margin="0,0,0,14"
-                                                HorizontalAlignment="Left" />
+                    <ComboBox SelectedIndex="{Binding SelectedMediaIndex}" Width="248" Margin="0,0,0,14"
+                              HorizontalAlignment="Left" AutomationProperties.Name="刻录盘片类型">
+                        <ComboBoxItem Content="CD 音频轨道" />
+                        <ComboBoxItem Content="DVD 数据盘" />
+                        <ComboBoxItem Content="蓝光数据盘" />
+                    </ComboBox>
                     <CheckBox Content="使用辅助标定图案" IsChecked="{Binding UseCalibrationPattern}"
                               Margin="0,0,0,14"
                               ToolTip="使用标定页面中已创建的图案和参数；开始前会保存标定记录。" />
@@ -32,7 +35,9 @@
                         <Button Style="{StaticResource SecondaryButton}" Content="打开 CD 参数" Height="36" Padding="14,0"
                                 Command="{Binding OpenCdParametersCommand}" Margin="0,0,10,0" />
                         <Button Style="{StaticResource SecondaryButton}" Content="打开 DVD 参数" Height="36" Padding="14,0"
-                                Command="{Binding OpenDvdParametersCommand}" />
+                                Command="{Binding OpenDvdParametersCommand}" Margin="0,0,10,0" />
+                        <Button Style="{StaticResource SecondaryButton}" Content="打开蓝光参数" Height="36" Padding="14,0"
+                                Command="{Binding OpenBluRayParametersCommand}" />
                     </StackPanel>
                 </StackPanel>
             </controls:SectionCard>
@@ -94,6 +99,17 @@
                     <TextBlock Text="{Binding BurnStatusText}" Style="{StaticResource CardTitle}" FontSize="14" />
                     <ProgressBar Minimum="0" Maximum="100" Value="{Binding BurnProgressValue, Mode=OneWay}"
                                  Margin="0,12,0,16" />
+                    <Grid Margin="0,0,0,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="实时刻录速率" Style="{StaticResource FieldLabel}" Margin="0"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="{Binding CurrentWriteRateText}"
+                                   Style="{StaticResource CardTitle}" FontSize="16"
+                                   ToolTip="按刻录机确认的写入量计算，包含设备缓存的影响" />
+                    </Grid>
                     <StackPanel Orientation="Horizontal">
                         <Button Style="{StaticResource PrimaryButton}" Content="开始流式刻录"
                                 Command="{Binding StartBurnCommand}" Margin="0,0,12,0" />

@@ -15,6 +15,7 @@ namespace DiscImageStudio;
 public partial class MainWindow : Window
 {
     private readonly ShellViewModel _shell;
+    private readonly WindowWorkArea _workArea;
     private readonly UserControl[] _pages;
     private readonly (SideNavItem Item, int PageIndex)[] _navItems;
     private bool _isSidebarCollapsed;
@@ -23,6 +24,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        _workArea = new WindowWorkArea(this);
         _shell = new ShellViewModel(Dispatcher)
         {
             Dialogs = new FileDialogService(() => this),
@@ -41,6 +43,7 @@ public partial class MainWindow : Window
             new LogView(_shell, _shell.Log),
             new AboutView(_shell.About),
             new CalibrationView(_shell.Calibration),
+            new BluRayView(_shell.BluRay),
         ];
         _navItems =
         [
@@ -52,6 +55,7 @@ public partial class MainWindow : Window
             (NavLog, ShellViewModel.LogTabIndex),
             (NavAbout, ShellViewModel.AboutTabIndex),
             (NavCalibration, ShellViewModel.CalibrationTabIndex),
+            (NavBluRay, ShellViewModel.BluRayTabIndex),
         ];
         foreach ((SideNavItem item, int pageIndex) in _navItems)
         {
@@ -67,20 +71,8 @@ public partial class MainWindow : Window
         SizeChanged += (_, _) => UpdateSidebarCollapse();
         PreviewKeyDown += (_, args) => BurnConfirmModal.HandleKeyDown(args.Key);
         SourceInitialized += (_, _) => ApplyWindowRoundCorners();
-        StateChanged += (_, _) => UpdateMaximizedMargin();
         Loaded += MainWindow_Loaded;
         Closed += MainWindow_Closed;
-        UpdateMaximizedMargin();
-    }
-
-    // When maximized, a borderless WindowChrome window extends past the work area by the
-    // system resize border on each side; padding the root back keeps the title bar fully
-    // on screen.
-    private void UpdateMaximizedMargin()
-    {
-        RootGrid.Margin = WindowState == WindowState.Maximized
-            ? SystemParameters.WindowResizeBorderThickness
-            : default;
     }
 
     // ---- Snapshot hooks (used by UiPreviewRenderer / CLI ui-snapshot) ----
@@ -116,12 +108,13 @@ public partial class MainWindow : Window
         if (!string.IsNullOrWhiteSpace(liveInputPath))
         {
             bool dvd = string.Equals(liveDisc, "dvd", StringComparison.OrdinalIgnoreCase);
+            bool bluRay = string.Equals(liveDisc, "bd", StringComparison.OrdinalIgnoreCase);
             // Omitting --live-mode keeps the page default (source picture); scripts probe the
             // other mode by naming it.
             bool calibration = liveMode is null
                 || string.Equals(liveMode, "calibrate", StringComparison.OrdinalIgnoreCase);
             bool ring = string.Equals(liveProcessing, "ring", StringComparison.OrdinalIgnoreCase);
-            _shell.LivePreview.SetDiscType(dvd, clearResult: false);
+            _shell.LivePreview.SetDiscType(bluRay ? 2 : dvd ? 1 : 0, clearResult: false);
             _shell.LivePreview.SetPreviewMode(calibration, clearResult: false);
             if (ring)
             {
@@ -130,7 +123,12 @@ public partial class MainWindow : Window
             }
 
             string fullInput = Path.GetFullPath(liveInputPath);
-            if (calibration)
+            if (bluRay)
+            {
+                if (calibration) _shell.BluRay.ImagePath = fullInput;
+                else _shell.LivePreview.BluRayIsoPath = fullInput;
+            }
+            else if (calibration)
             {
                 if (dvd)
                 {
@@ -196,6 +194,7 @@ public partial class MainWindow : Window
 
     private void MainWindow_Closed(object? sender, EventArgs e)
     {
+        _workArea.Dispose();
         _shell.LivePreview.OnWindowClosed();
         _shell.Calibration.OnWindowClosed();
     }

@@ -33,6 +33,7 @@
     <ProjectReference Include="..\DiscImageStudio.Imaging\DiscImageStudio.Imaging.csproj" />
     <ProjectReference Include="..\DiscImageStudio.Cd\DiscImageStudio.Cd.csproj" />
     <ProjectReference Include="..\DiscImageStudio.Dvd\DiscImageStudio.Dvd.csproj" />
+    <ProjectReference Include="..\DiscImageStudio.BluRay\DiscImageStudio.BluRay.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Resource Include="Assets\Fonts\HarmonyOS_Sans_SC_Regular.ttf" />
@@ -40,8 +41,21 @@
     <Resource Include="Assets\Fonts\HarmonyOS_Sans_SC_Bold.ttf" />
     <Resource Include="Assets\DiscImageStudio-256.png" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\LICENSE" LogicalName="DiscImageStudio.Licenses.GPL" />
+    <EmbeddedResource Include="..\..\THIRD-PARTY-NOTICES.txt" LogicalName="DiscImageStudio.Licenses.ThirdParty" />
+    <EmbeddedResource Include="Assets\Fonts\HarmonyOS-Sans-LICENSE.txt" LogicalName="DiscImageStudio.Licenses.HarmonyOS" />
+  </ItemGroup>
   <Target Name="RejectInvariantGlobalizationForWpf" BeforeTargets="PrepareForBuild"
           Condition="'$(InvariantGlobalization)' == 'true'">
     <Error Text="DiscImageStudio.App cannot use invariant globalization because WPF font rendering requires named cultures." />
+  </Target>
+  <Target Name="ExcludeHostedSolverRuntimeConfiguration" BeforeTargets="_HandleFileConflictsForPublish">
+    <!-- The solver runs inside this app and uses its runtime configuration.
+         RID and non-RID references can otherwise publish the solver config twice. -->
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+          Condition="'%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)' == 'DvdImageSolver.runtimeconfig.json'" />
+    </ItemGroup>
   </Target>
 </Project>

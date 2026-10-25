@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AssemblyName>FourLevelDither</AssemblyName>
+    <RootNamespace>DiscImageStudio.DitherTool</RootNamespace>
+    <ApplicationIcon>../../src/DiscImageStudio.App/Assets/DiscImageStudio.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/DiscImageStudio.Core/DiscImageStudio.Core.csproj" />
+    <ProjectReference Include="../../src/DiscImageStudio.Imaging/DiscImageStudio.Imaging.csproj" />
+  </ItemGroup>
+</Project>

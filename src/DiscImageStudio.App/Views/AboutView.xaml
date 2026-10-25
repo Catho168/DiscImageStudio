@@ -19,14 +19,31 @@
                        Text="Disc Image Studio是帮助您在光盘表面印刷图案的一站式工作台。" />
 
             <StackPanel Margin="0,24,0,0">
-                <TextBlock Style="{StaticResource FieldLabel}" Text="开源组件" />
+                <TextBlock Style="{StaticResource FieldLabel}" Text="许可证与第三方组件" />
+                <TextBlock Style="{StaticResource BodyText}" Margin="0,0,0,8"
+                           Text="Disc Image Studio — GPL-3.0-or-later · © 2026 Disc Image Studio contributors" />
+                <TextBlock Style="{StaticResource BodyText}" Margin="0,0,0,8"
+                           Text="感谢 CDImage（arduinocelentano）；CD 交织代码由其实现移植并修改。" />
                 <TextBlock Style="{StaticResource BodyText}"
                            Text="HarmonyOS Sans SC — HarmonyOS Sans 字体许可协议" />
                 <TextBlock Style="{StaticResource BodyText}" Margin="0,4,0,0"
-                           Text="MahApps.Metro.IconPacks.Lucide（Lucide Icons）— MIT 许可协议" />
+                           Text="MahApps.Metro.IconPacks — MIT；Lucide / Feather 图标 — ISC / MIT" />
                 <TextBlock Style="{StaticResource BodyText}" Margin="0,4,0,0"
-                           Text="CommunityToolkit.Mvvm — Apache 许可协议 2.0" />
+                           Text="CommunityToolkit.Mvvm — MIT 许可协议" />
             </StackPanel>
+
+            <Expander Header="项目许可证（GNU GPL v3.0 or later）" Margin="0,24,0,0"
+                      Foreground="{StaticResource TextPrimaryBrush}">
+                <TextBlock Text="{Binding LicenseText}" Style="{StaticResource BodyText}" Margin="0,12,0,0" />
+            </Expander>
+            <Expander Header="第三方组件完整声明" Margin="0,12,0,0"
+                      Foreground="{StaticResource TextPrimaryBrush}">
+                <TextBlock Text="{Binding ThirdPartyNoticesText}" Style="{StaticResource BodyText}" Margin="0,12,0,0" />
+            </Expander>
+            <Expander Header="HarmonyOS Sans 字体许可协议" Margin="0,12,0,0"
+                      Foreground="{StaticResource TextPrimaryBrush}">
+                <TextBlock Text="{Binding FontLicenseText}" Style="{StaticResource BodyText}" Margin="0,12,0,0" />
+            </Expander>
 
         </StackPanel>
     </ScrollViewer>

@@ -24,7 +24,7 @@ public static class CalibrationReferencePattern
         Array.AsReadOnly(new[] { 490.0, 570, 650, 730, 810, 890, 970, 1050, 1130 });
 
     public static double MillimetresPerPixel(double outerRadiusMm, CalibrationDiscKind kind)
-        => outerRadiusMm / (kind == CalibrationDiscKind.Cd ? PixelSize / 2.0 : (PixelSize - 1) / 2.0);
+        => outerRadiusMm / (kind == CalibrationDiscKind.Dvd ? (PixelSize - 1) / 2.0 : PixelSize / 2.0);
 
     /// <summary>Inverse of the ordinary encoder's physical-to-image coordinate mapping.</summary>
     public static CalibrationPoint PixelToDisc(double x, double y, double outerRadiusMm, CalibrationDiscKind kind)
@@ -49,18 +49,22 @@ public static class CalibrationReferencePattern
     public static byte[] ReadGrayPixels() => (byte[])Gray.Value.Clone();
 
     /// <summary>
-    /// Samples the original PNG using DVD bilinear or CD nearest-pixel interpolation.
-    /// CD uses pixel 1200 as its centre; DVD uses 1199.5. Y increases downwards.
+    /// Samples the original PNG using each encoder's convention: DVD bilinear,
+    /// CD rounded nearest-pixel, or Blu-ray floor-indexed pixel centres.
+    /// Coordinates have Y down, including when the Blu-ray adapter converts from Y up.
     /// Clipping to the encoded annulus is performed by CalibrationTarget.Sample.
     /// </summary>
     public static byte Sample(double xMm, double yMm, double outerRadiusMm, CalibrationDiscKind kind)
     {
         if (!double.IsFinite(xMm) || !double.IsFinite(yMm)
             || !double.IsFinite(outerRadiusMm) || outerRadiusMm <= 0 || !Enum.IsDefined(kind)) return 255;
-        double centre = kind == CalibrationDiscKind.Cd ? PixelSize / 2.0 : (PixelSize - 1) / 2.0;
+        double centre = kind == CalibrationDiscKind.Dvd ? (PixelSize - 1) / 2.0 : PixelSize / 2.0;
         double scale = centre / outerRadiusMm;
         double x = centre + xMm * scale, y = centre + yMm * scale;
         byte[] pixels = Gray.Value;
+        if (kind == CalibrationDiscKind.BluRay)
+            return x >= 0 && y >= 0 && x < PixelSize && y < PixelSize
+                ? pixels[(int)y * PixelSize + (int)x] : (byte)255;
         if (kind == CalibrationDiscKind.Cd)
         {
             int nearestX = (int)Math.Round(x), nearestY = (int)Math.Round(y);

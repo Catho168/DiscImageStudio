@@ -16,8 +16,26 @@ public sealed record RingImageLayoutOptions(
     int OutputSize = 2048,
     double AngularGapDegrees = 3.0)
 {
+    /// <summary>
+    /// When the source contains only opaque pixels from this grayscale palette, redither
+    /// the high-quality transformed ring back to these levels. Empty preserves normal rendering.
+    /// </summary>
+    public ReadOnlyMemory<byte> PreserveDitherPalette { get; init; }
+
     public void Validate()
     {
+        ReadOnlySpan<byte> palette = PreserveDitherPalette.Span;
+        if (!palette.IsEmpty)
+        {
+            if (palette.Length < 2)
+                throw new ArgumentException("A preserved dither palette needs at least two gray levels.", nameof(PreserveDitherPalette));
+            for (int index = 1; index < palette.Length; index++)
+            {
+                if (palette[index] <= palette[index - 1])
+                    throw new ArgumentException("Preserved gray levels must be distinct and sorted from dark to light.", nameof(PreserveDitherPalette));
+            }
+        }
+
         if (!double.IsFinite(CanvasOuterRadiusMm) || CanvasOuterRadiusMm <= 0)
         {
             throw new ArgumentOutOfRangeException(

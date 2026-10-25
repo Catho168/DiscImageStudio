@@ -68,13 +68,13 @@ public partial class DvdViewModel : ObservableObject
         {
             string image = RequirePath(_state.DvdImagePath, "请选择 DVD 源图片。");
             string output = RequirePath(_state.DvdOutputPath, "请选择 DVD ISO 输出位置。");
-            using RingImagePreparation.PreparedImage preparedImage = PrepareDvdImage(
+            RingImagePreparation.Request imagePreparation = CreateDvdImageRequest(
                 image,
                 RingImageQuality.GenerationSize);
             List<string> arguments =
             [
                 "solve",
-                "--image", preparedImage.Path,
+                "--image", image,
                 "--iso-output", output,
                 "--total-sectors", _state.DvdTotalSectors.Trim(),
                 "--inner-radius-mm", _state.DvdInnerRadius.Trim(),
@@ -106,7 +106,9 @@ public partial class DvdViewModel : ObservableObject
                 arguments.ToArray(),
                 output,
                 RecentJobEntry.DvdFamily,
-                _state.DvdImagePath);
+                image,
+                imagePreparation,
+                imageOption: "--image");
             // The generated ISO is the live preview page's calibration input.
             _state.DvdIsoPath = output;
         }
@@ -116,27 +118,28 @@ public partial class DvdViewModel : ObservableObject
         }
     }
 
-    private RingImagePreparation.PreparedImage PrepareDvdImage(string sourcePath, int outputSize)
+    private RingImagePreparation.Request CreateDvdImageRequest(string sourcePath, int outputSize)
     {
-        if (_state.DvdImageProcessingModeIndex != 1)
+        RingImageLayoutOptions? options = null;
+        if (_state.IsDvdRingMode)
         {
-            return RingImagePreparation.PreparedImage.Original(sourcePath);
+            double generatedInner = ParameterParser.ParsePositiveDouble(_state.DvdInnerRadius, "DVD 内半径");
+            double generatedOuter = ParameterParser.ParsePositiveDouble(_state.DvdOuterRadius, "DVD 外半径");
+            options = ParameterParser.CreateRingLayoutOptions(
+                generatedOuter,
+                generatedInner,
+                generatedOuter,
+                _state.DvdRingInnerMargin,
+                _state.DvdRingOuterMargin,
+                outputSize);
         }
 
-        double generatedInner = ParameterParser.ParsePositiveDouble(_state.DvdInnerRadius, "DVD 内半径");
-        double generatedOuter = ParameterParser.ParsePositiveDouble(_state.DvdOuterRadius, "DVD 外半径");
-        RingImageLayoutOptions options = ParameterParser.CreateRingLayoutOptions(
-            generatedOuter,
-            generatedInner,
-            generatedOuter,
-            _state.DvdRingInnerMargin,
-            _state.DvdRingOuterMargin,
-            outputSize);
-        return RingImagePreparation.PrepareRingImage(
+        return new RingImagePreparation.Request(
             sourcePath,
             options,
             "dvd",
-            appendLog: _shell.AppendLog);
+            _state.DvdImageProcessingEnabled,
+            _state.DvdGammaCorrectionEnabled);
     }
 
     private static string RequirePath(string raw, string message)

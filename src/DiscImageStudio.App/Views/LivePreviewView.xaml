@@ -11,7 +11,7 @@
         <Style x:Key="SubHeading" TargetType="TextBlock" BasedOn="{StaticResource PanelHeading}">
             <Setter Property="Margin" Value="0,6,0,10" />
         </Style>
-        <!-- Preview output group shared by the export flyout's CD and DVD variants. -->
+        <!-- Preview output labels shared by the disc-specific precision panels. -->
         <Style x:Key="PreviewFieldLabel" TargetType="TextBlock" BasedOn="{StaticResource FieldLabel}">
             <Setter Property="Margin" Value="0,10,0,6" />
         </Style>
@@ -19,7 +19,7 @@
              group, the preview mode hides the two halves inside it. -->
         <Style x:Key="CdGroup" TargetType="StackPanel">
             <Style.Triggers>
-                <DataTrigger Binding="{Binding IsDvdSelected}" Value="True">
+                <DataTrigger Binding="{Binding IsCdSelected}" Value="False">
                     <Setter Property="Visibility" Value="Collapsed" />
                 </DataTrigger>
             </Style.Triggers>
@@ -27,6 +27,13 @@
         <Style x:Key="DvdGroup" TargetType="StackPanel">
             <Style.Triggers>
                 <DataTrigger Binding="{Binding IsDvdSelected}" Value="False">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="BluRayGroup" TargetType="StackPanel">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsBluRaySelected}" Value="False">
                     <Setter Property="Visibility" Value="Collapsed" />
                 </DataTrigger>
             </Style.Triggers>
@@ -46,33 +53,42 @@
             </Style.Triggers>
         </Style>
     </UserControl.Resources>
-    <Grid Margin="40,24,40,32">
+    <Grid x:Name="PageLayout" Margin="40,24,40,32">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-        <StackPanel Grid.Row="0" Margin="0,0,0,24">
+        <StackPanel x:Name="PageHeading" Grid.Row="0" Margin="0,0,0,24">
             <TextBlock Text="{Binding HeadingText}" Style="{StaticResource H1Title}" />
         </StackPanel>
 
-        <Grid Grid.Row="1">
+        <ScrollViewer x:Name="PageScroll" Grid.Row="1" VerticalScrollBarVisibility="Disabled"
+                      HorizontalScrollBarVisibility="Disabled" CanContentScroll="False"
+                      HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
+                      SizeChanged="PageScroll_SizeChanged">
+        <Grid x:Name="PreviewLayout">
+            <Grid.RowDefinitions>
+                <RowDefinition x:Name="ParameterRow" Height="*" />
+                <RowDefinition x:Name="PaneGapRow" Height="0" />
+                <RowDefinition x:Name="CanvasRow" Height="0" />
+            </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="300" />
-                <ColumnDefinition Width="16" />
-                <ColumnDefinition Width="*" />
+                <ColumnDefinition x:Name="ParameterColumn" Width="300" />
+                <ColumnDefinition x:Name="PaneGapColumn" Width="16" />
+                <ColumnDefinition x:Name="CanvasColumn" Width="*" />
             </Grid.ColumnDefinitions>
 
             <!-- The input switch governs the parameter panel below it, so it lives in the left
                  column but outside the card: inside, it reads as the panel's own control. Its
                  top edge lines up with the canvas card, so the two columns start together. -->
-            <Grid Grid.Column="0">
+            <Grid x:Name="ParameterPane" Grid.Column="0">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
                 <!-- The source picture is the default input, so it takes the left option and the
                      switch binds the artifact mode's inverse flag for its right-hand side. -->
-                <controls:SegmentedControl Grid.Row="0" Width="300" HorizontalAlignment="Left"
+                <controls:SegmentedControl x:Name="InputModeSwitch" Grid.Row="0" HorizontalAlignment="Stretch"
                                             Margin="0,0,0,16"
                                             LabelA="输入原图" LabelB="输入镜像"
                                             IsSecondSelected="{Binding IsReadbackPreview}" />
@@ -83,12 +99,18 @@
                             <RowDefinition Height="*" />
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
-                        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto"
+                        <ScrollViewer x:Name="ParameterScroll" Grid.Row="0" VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      PreviewMouseWheel="NestedScroll_PreviewMouseWheel"
                                       controls:ScrollMaskBehavior.Enabled="True">
                             <StackPanel Margin="18,18,18,10">
                             <TextBlock Text="光盘类型" Style="{StaticResource PanelHeading}" />
-                            <controls:SegmentedControl Margin="0,0,0,18"
-                                                        IsSecondSelected="{Binding IsDvdSelected}" />
+                            <ComboBox SelectedIndex="{Binding SelectedDiscTypeIndex}" Margin="0,0,0,18"
+                                      AutomationProperties.Name="光盘类型">
+                                <ComboBoxItem Content="CD" />
+                                <ComboBoxItem Content="DVD" />
+                                <ComboBoxItem Content="BD（蓝光）" />
+                            </ComboBox>
     
                             <!-- CD parameter groups -->
                             <StackPanel Style="{StaticResource CdGroup}">
@@ -151,9 +173,17 @@
                                     <!-- Image processing and disc preset mirror the production page:
                                          the projection consumes the same prepared picture and the same
                                          generation geometry, so both have to be editable here too. -->
-                                    <TextBlock Text="图片处理" Style="{StaticResource PanelHeading}" />
+                                    <TextBlock Text="图像处理" Style="{StaticResource PanelHeading}" />
+                                    <CheckBox Content="启用图像处理（黑白抖动）" Margin="0,0,0,10"
+                                              IsChecked="{Binding State.CdImageProcessingEnabled}" />
+                                    <CheckBox Content="sRGB 伽马校正" Margin="0,0,0,8"
+                                              IsChecked="{Binding State.CdGammaCorrectionEnabled}"
+                                              IsEnabled="{Binding State.CdImageProcessingEnabled}" />
+                                    <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,14"
+                                               Text="布局完成后抖动为黑白；可选伽马校正使用线性亮度。" />
+                                    <TextBlock Text="图片布局" Style="{StaticResource FieldLabel}" />
                                     <ComboBox SelectedIndex="{Binding State.CdImageProcessingModeIndex}" Margin="0,0,0,10">
-                                        <ComboBoxItem Content="原图直接映射" />
+                                        <ComboBoxItem Content="直接映射" />
                                         <ComboBoxItem Content="环形复制" />
                                     </ComboBox>
                                     <controls:RevealPanel IsExpanded="{Binding State.IsCdRingMode}"
@@ -223,12 +253,14 @@
                                             <TextBox Text="{Binding State.CdActualOuterRadius, UpdateSourceTrigger=PropertyChanged}" />
                                         </StackPanel>
                                         <StackPanel Width="122" Margin="0,0,12,12">
-                                            <TextBlock Style="{StaticResource FieldLabel}" Text="导出尺寸 (px)" />
-                                            <TextBox Text="{Binding State.CdPreviewSize, UpdateSourceTrigger=PropertyChanged}" />
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="尺寸 (64–8192 px)" />
+                                            <TextBox Text="{Binding State.CdPreviewSize, UpdateSourceTrigger=PropertyChanged}"
+                                                     ToolTip="预览及导出使用此尺寸：64–8192 px" />
                                         </StackPanel>
                                         <StackPanel Width="122" Margin="0,0,0,12">
                                             <TextBlock Style="{StaticResource FieldLabel}" Text="每扇区采样" />
-                                            <TextBox Text="{Binding State.CdSamplesPerSector, UpdateSourceTrigger=PropertyChanged}" />
+                                            <TextBox Text="{Binding State.CdSamplesPerSector, UpdateSourceTrigger=PropertyChanged}"
+                                                     ToolTip="每扇区采样数：1–2352" />
                                         </StackPanel>
                                     </WrapPanel>
                                     <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,12"
@@ -302,9 +334,17 @@
                                                Text="与盘片制作页同步，非特殊需要无需在本页重复设置。" />
 
                                     <!-- Same two production-page controls as the CD panel above. -->
-                                    <TextBlock Text="图片处理" Style="{StaticResource PanelHeading}" />
+                                    <TextBlock Text="图像处理" Style="{StaticResource PanelHeading}" />
+                                    <CheckBox Content="启用图像处理（黑白抖动）" Margin="0,0,0,10"
+                                              IsChecked="{Binding State.DvdImageProcessingEnabled}" />
+                                    <CheckBox Content="sRGB 伽马校正" Margin="0,0,0,8"
+                                              IsChecked="{Binding State.DvdGammaCorrectionEnabled}"
+                                              IsEnabled="{Binding State.DvdImageProcessingEnabled}" />
+                                    <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,14"
+                                               Text="布局完成后抖动为黑白；可选伽马校正使用线性亮度。" />
+                                    <TextBlock Text="图片布局" Style="{StaticResource FieldLabel}" />
                                     <ComboBox SelectedIndex="{Binding State.DvdImageProcessingModeIndex}" Margin="0,0,0,10">
-                                        <ComboBoxItem Content="原图直接映射" />
+                                        <ComboBoxItem Content="直接映射" />
                                         <ComboBoxItem Content="环形复制" />
                                     </ComboBox>
                                     <controls:RevealPanel IsExpanded="{Binding State.IsDvdRingMode}"
@@ -399,12 +439,14 @@
                                             <TextBox Text="{Binding State.DvdActualPitchCubic, UpdateSourceTrigger=PropertyChanged}" />
                                         </StackPanel>
                                         <StackPanel Width="122" Margin="0,0,12,12">
-                                            <TextBlock Style="{StaticResource FieldLabel}" Text="导出尺寸 (px)" />
-                                            <TextBox Text="{Binding State.DvdPreviewSize, UpdateSourceTrigger=PropertyChanged}" />
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="尺寸 (64–8192 px)" />
+                                            <TextBox Text="{Binding State.DvdPreviewSize, UpdateSourceTrigger=PropertyChanged}"
+                                                     ToolTip="预览及导出使用此尺寸：64–8192 px" />
                                         </StackPanel>
                                         <StackPanel Width="122" Margin="0,0,0,12">
                                             <TextBlock Style="{StaticResource FieldLabel}" Text="每扇区采样" />
-                                            <TextBox Text="{Binding State.DvdSamplesPerSector, UpdateSourceTrigger=PropertyChanged}" />
+                                            <TextBox Text="{Binding State.DvdSamplesPerSector, UpdateSourceTrigger=PropertyChanged}"
+                                                     ToolTip="每扇区采样数：1–2048" />
                                         </StackPanel>
                                     </WrapPanel>
                                     <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,12"
@@ -413,44 +455,165 @@
                                 </StackPanel>
                             </StackPanel>
     
+                            <!-- BD shares its source and generation geometry with the production page. -->
+                            <StackPanel Style="{StaticResource BluRayGroup}">
+                                <StackPanel Style="{StaticResource CalibrationGroup}">
+                                    <TextBlock Text="源图片" Style="{StaticResource PanelHeading}" />
+                                    <Grid Margin="0,0,0,10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox Text="{Binding BluRay.ImagePath, UpdateSourceTrigger=PropertyChanged}" />
+                                        <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Width="76"
+                                                Content="浏览…" Command="{Binding BluRay.BrowseImageCommand}" />
+                                    </Grid>
+                                    <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,18"
+                                               Text="源图片与生成参数和蓝光制作页同步。" />
+                                    <TextBlock Text="图像处理" Style="{StaticResource PanelHeading}" />
+                                    <CheckBox Content="启用图像处理（黑白抖动）" Margin="0,0,0,10"
+                                              IsChecked="{Binding BluRay.ImageProcessingEnabled}" />
+                                    <CheckBox Content="sRGB 伽马校正" Margin="0,0,0,8"
+                                              IsChecked="{Binding BluRay.GammaCorrectionEnabled}"
+                                              IsEnabled="{Binding BluRay.ImageProcessingEnabled}" />
+                                    <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,18"
+                                               Text="抖动为黑白后映射到 3T / 6T；可选伽马校正使用线性亮度。" />
+                                </StackPanel>
+                                <StackPanel Style="{StaticResource ReadbackGroup}">
+                                    <TextBlock Text="生成的 BD ISO" Style="{StaticResource PanelHeading}" />
+                                    <Grid Margin="0,0,0,10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox Text="{Binding BluRayIsoPath, UpdateSourceTrigger=PropertyChanged}" />
+                                        <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Width="76"
+                                                Content="浏览…" Command="{Binding BrowseBluRayIsoCommand}" />
+                                    </Grid>
+                                    <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,18"
+                                               Text="支持读取本软件按 3T / 6T 映射生成的蓝光 ISO。" />
+                                </StackPanel>
+
+                                <TextBlock Text="盘片预设" Style="{StaticResource PanelHeading}" />
+                                <ComboBox ItemsSource="{Binding BluRay.Presets}"
+                                          SelectedItem="{Binding BluRay.SelectedPreset}"
+                                          IsEnabled="{Binding BluRay.CanEditPresets}"
+                                          DisplayMemberPath="DisplayName" Margin="0,0,0,10" />
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="自定义预设名称" />
+                                <TextBox Text="{Binding BluRay.PresetName, UpdateSourceTrigger=PropertyChanged}"
+                                         IsEnabled="{Binding BluRay.CanEditPresets}" Margin="0,0,0,8" />
+                                <WrapPanel Margin="0,0,0,6">
+                                    <Button Style="{StaticResource SecondaryButton}" Content="保存预设"
+                                            Command="{Binding BluRay.SavePresetCommand}" Margin="0,0,6,6" />
+                                    <Button Style="{StaticResource SecondaryButton}" Content="导入 JSON"
+                                            Command="{Binding BluRay.ImportPresetCommand}" Margin="0,0,6,6" />
+                                    <Button Style="{StaticResource SecondaryButton}" Content="重载"
+                                            Command="{Binding BluRay.ReloadPresetsCommand}" Margin="0,0,0,6" />
+                                </WrapPanel>
+                                <TextBlock Text="{Binding BluRay.PresetStatus}" Style="{StaticResource HintText}" Margin="0,0,0,8" />
+                                <TextBlock Text="{Binding BluRay.PresetSummary}" Style="{StaticResource HintText}"
+                                           Margin="0,0,0,12" />
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="总扇区数（32 的倍数）" />
+                                <TextBox Text="{Binding BluRay.TotalSectors, UpdateSourceTrigger=PropertyChanged}"
+                                         Margin="0,0,0,16" />
+
+                                <StackPanel Style="{StaticResource CalibrationGroup}">
+                                    <TextBlock Text="生成参数" Style="{StaticResource PanelHeading}" />
+                                    <WrapPanel>
+                                        <StackPanel Width="122" Margin="0,0,12,12">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="内半径 (mm)" />
+                                            <TextBox Text="{Binding BluRay.InnerRadius, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Width="122" Margin="0,0,0,12">
+                                            <TextBlock Style="{StaticResource FieldLabel}" Text="外半径 (mm)" />
+                                            <TextBox Text="{Binding BluRay.OuterRadius, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                    </WrapPanel>
+                                    <CheckBox Content="反转 3T / 6T 对应关系"
+                                              IsChecked="{Binding BluRay.InvertMapping}"
+                                              IsEnabled="{Binding BluRay.CanChangeMapping}" Margin="0,0,0,12" />
+                                </StackPanel>
+
+                                <TextBlock Text="实际参数" Style="{StaticResource SubHeading}" />
+                                <WrapPanel>
+                                    <StackPanel Width="122" Margin="0,0,12,12">
+                                        <TextBlock Style="{StaticResource FieldLabel}" Text="内半径 (mm)" />
+                                        <TextBox Text="{Binding BluRayActualInnerRadius, UpdateSourceTrigger=PropertyChanged}" />
+                                    </StackPanel>
+                                    <StackPanel Width="122" Margin="0,0,0,12">
+                                        <TextBlock Style="{StaticResource FieldLabel}" Text="外半径 (mm)" />
+                                        <TextBox Text="{Binding BluRayActualOuterRadius, UpdateSourceTrigger=PropertyChanged}" />
+                                    </StackPanel>
+                                    <StackPanel Width="122" Margin="0,0,12,12">
+                                        <TextBlock Style="{StaticResource FieldLabel}" Text="起始角 (°)" />
+                                        <TextBox Text="{Binding BluRayActualStartAngle, UpdateSourceTrigger=PropertyChanged}" />
+                                    </StackPanel>
+                                </WrapPanel>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,14"
+                                           Text="选择预设时，实际参数先同步为预设值，再按测量结果微调。" />
+                                <StackPanel Style="{StaticResource CalibrationGroup}">
+                                    <TextBlock Style="{StaticResource FieldLabel}" Text="预览尺寸 (64–8192 px)" />
+                                    <TextBox Text="{Binding BluRayPreviewSize, UpdateSourceTrigger=PropertyChanged}"
+                                             ToolTip="预览及导出使用此尺寸：64–8192 px"
+                                             Margin="0,0,0,14" />
+                                </StackPanel>
+                                <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,12"
+                                           Text="预览用黑白表示 3T / 6T 图案分布，盘面实际明暗需以实盘为准。" />
+                            </StackPanel>
+
                         </StackPanel>
                         </ScrollViewer>
                         <Border Grid.Row="1" Background="{StaticResource Surface2Brush}"
                                 BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0"
                                 CornerRadius="0,0,16,16">
-                            <Button Style="{StaticResource SecondaryButton}" Height="38" Padding="14,0"
+                            <Button x:Name="RefreshPreviewButton" Style="{StaticResource SecondaryButton}" Height="38" Padding="14,0"
                                     Content="刷新预览" Command="{Binding RefreshCommand}" Margin="18,12" />
                         </Border>
                     </Grid>
                 </Border>
             </Grid>
 
-            <Border Grid.Column="2" Style="{StaticResource CardStyle}" Padding="0">
+            <Border x:Name="PreviewCard" Grid.Column="2" Style="{StaticResource CardStyle}" Padding="0"
+                    SizeChanged="PreviewCard_SizeChanged">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="44" />
                         <RowDefinition Height="*" />
-                        <RowDefinition Height="34" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <Border Grid.Row="0" Background="{StaticResource Surface2Brush}"
                             BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1"
                             CornerRadius="16,16,0,0">
-                        <Grid Margin="16,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="{Binding ResultPreviewTitle}" Style="{StaticResource CardTitle}"
-                                       FontSize="14" VerticalAlignment="Center" />
-                            <!-- Right margin keeps the trimming path clear of both title-bar glyphs. -->
-                            <TextBlock Grid.Column="1" Text="{Binding ResultPreviewPath}" Style="{StaticResource HintText}"
-                                       TextTrimming="CharacterEllipsis" HorizontalAlignment="Right"
-                                       Margin="12,0,92,0" VerticalAlignment="Center" />
+                        <Grid Margin="16,0,100,0" VerticalAlignment="Center">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock x:Name="PreviewTitle" Text="{Binding ResultPreviewTitle}" Style="{StaticResource CardTitle}"
+                                       FontSize="14" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding ResultPreviewTitle}" />
+                            <!-- Reserve action space in the grid itself; a long filename must not
+                                 grow the title row or push the action buttons beyond the card. -->
+                            <TextBlock x:Name="PreviewPath" Grid.Row="1" Text="{Binding ResultPreviewPath}" Style="{StaticResource HintText}"
+                                       TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" FontSize="11" LineHeight="14"
+                                       ToolTip="{Binding ResultPreviewPath}" />
                         </Grid>
                     </Border>
                     <Grid Grid.Row="1" ClipToBounds="True">
-                        <Image Source="{Binding ResultImage}" Margin="18" Stretch="Uniform"
-                               SnapsToDevicePixels="True">
+                        <Canvas x:Name="PreviewViewport" Margin="18" ClipToBounds="True" Background="Transparent"
+                                SizeChanged="PreviewViewport_SizeChanged" PreviewMouseWheel="PreviewViewport_MouseWheel"
+                                MouseLeftButtonDown="PreviewViewport_MouseLeftButtonDown"
+                                MouseLeftButtonUp="PreviewViewport_MouseLeftButtonUp"
+                                MouseMove="PreviewViewport_MouseMove" LostMouseCapture="PreviewViewport_LostMouseCapture"
+                                ToolTip="滚轮缩放 · 拖动平移 · 双击适应窗口">
+                        <Image x:Name="PreviewImage" Source="{Binding ResultImage}" Stretch="Fill"
+                               SnapsToDevicePixels="True" RenderOptions.BitmapScalingMode="HighQuality">
+                            <Image.RenderTransform>
+                                <TransformGroup>
+                                    <ScaleTransform x:Name="PreviewScale" />
+                                    <TranslateTransform x:Name="PreviewTranslation" />
+                                </TransformGroup>
+                            </Image.RenderTransform>
                             <Image.Style>
                                 <Style TargetType="Image">
                                     <Setter Property="Visibility" Value="Collapsed" />
@@ -462,7 +625,8 @@
                                 </Style>
                             </Image.Style>
                         </Image>
-                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                        </Canvas>
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="12">
                             <StackPanel.Style>
                                 <Style TargetType="StackPanel">
                                     <Style.Triggers>
@@ -475,11 +639,30 @@
                             <iconPacks:PackIconLucide Kind="Disc" Width="48" Height="48" HorizontalAlignment="Center"
                                                       Foreground="{StaticResource Surface3Brush}" />
                             <TextBlock Text="{Binding ResultPreviewPlaceholderText}" Style="{StaticResource HintText}"
-                                       HorizontalAlignment="Center" Margin="0,10,0,0" />
+                                       HorizontalAlignment="Center" TextAlignment="Center" Margin="0,10,0,0" />
                         </StackPanel>
                     </Grid>
-                    <TextBlock Grid.Row="2" Text="{Binding StatusText}" Style="{StaticResource HintText}"
-                               Margin="16,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    <Grid x:Name="PreviewFooter" Grid.Row="2" Margin="16,3,10,3" MinHeight="28">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="PreviewStatus" Text="{Binding StatusText}" Style="{StaticResource HintText}"
+                                   Margin="0,0,8,0" VerticalAlignment="Center" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding StatusText}" />
+                        <StackPanel x:Name="ZoomControls" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" IsEnabled="{Binding HasResultImage}">
+                            <Button x:Name="FitPreviewButton" Style="{StaticResource GhostButton}" Content="适应窗口" Height="28" Padding="8,0"
+                                    Click="FitButton_Click" ToolTip="显示完整图片（双击画布）" />
+                            <Button x:Name="ActualPixelsButton" Style="{StaticResource GhostButton}" Content="1:1" Height="28" Padding="8,0"
+                                    Click="ActualPixelsButton_Click" ToolTip="一个图片像素对应一个屏幕像素" />
+                            <TextBlock x:Name="ZoomLabel" Text="—" MinWidth="46" TextAlignment="Right"
+                                       Style="{StaticResource HintText}" VerticalAlignment="Center" Margin="4,0,0,0" />
+                        </StackPanel>
+                    </Grid>
 
                     <!-- Title-bar actions. The eye reveals the read-back precision panel, the download
                          glyph exports the current preview next to its input. The panel is an in-card
@@ -487,8 +670,10 @@
                          timers, no second window), and the two glyphs sit in their own cells so hovering
                          the download never opens the panel. The calibration panel carries its own size
                          and sampling fields, so the eye is read-back only. -->
-                    <StackPanel Grid.Row="0" Grid.RowSpan="3" Orientation="Horizontal"
-                                HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,6,16,0">
+                    <!-- Canvas contributes no desired width/height: opening the precision panel
+                         must not enlarge the card or its surrounding star-sized rows. -->
+                    <Canvas Grid.Row="0" Grid.RowSpan="3" ClipToBounds="True">
+                    <StackPanel Orientation="Horizontal" Canvas.Right="16" Canvas.Top="6">
                         <Grid x:Name="PrecisionHost" VerticalAlignment="Top" Background="Transparent">
                             <Grid.Style>
                                 <Style TargetType="Grid">
@@ -506,11 +691,11 @@
                             <!-- The panel sets the host's width, so the glyph stays pinned to the
                                  host's right edge instead of stretching to the widened row. -->
                             <Button x:Name="PrecisionButton" Style="{StaticResource GhostButton}"
-                                    Width="32" Height="32" Padding="0" Focusable="False"
+                                    Width="32" Height="32" Padding="0"
                                     HorizontalAlignment="Right" AutomationProperties.Name="预览精度">
                                 <iconPacks:PackIconLucide Kind="Eye" Width="18" Height="18" />
                             </Button>
-                            <Border Grid.Row="1" Width="248" Margin="0,6,0,0" Padding="16"
+                            <Border x:Name="PrecisionPanel" Grid.Row="1" Width="248" Margin="0,6,0,0" Padding="0"
                                     Background="{StaticResource Surface1Brush}"
                                     BorderBrush="{StaticResource DividerBrush}" BorderThickness="1"
                                     CornerRadius="12">
@@ -522,29 +707,37 @@
                                                          Value="True">
                                                 <Setter Property="Visibility" Value="Visible" />
                                             </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsKeyboardFocusWithin, ElementName=PrecisionHost}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
                                 </Border.Style>
                                 <Border.Effect>
                                     <DropShadowEffect ShadowDepth="6" BlurRadius="18" Opacity="0.45" Color="#000000" />
                                 </Border.Effect>
-                                <StackPanel>
+                                <ScrollViewer x:Name="PrecisionScroll" VerticalScrollBarVisibility="Auto"
+                                              HorizontalScrollBarVisibility="Disabled"
+                                              PreviewMouseWheel="NestedScroll_PreviewMouseWheel">
+                                <StackPanel Margin="16">
                                     <TextBlock Text="预览精度" Style="{StaticResource PanelHeading}" />
                                     <!-- CD preview output -->
                                     <StackPanel>
                                         <StackPanel.Style>
                                             <Style TargetType="StackPanel">
                                                 <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsDvdSelected}" Value="True">
+                                                    <DataTrigger Binding="{Binding IsCdSelected}" Value="False">
                                                         <Setter Property="Visibility" Value="Collapsed" />
                                                     </DataTrigger>
                                                 </Style.Triggers>
                                             </Style>
                                         </StackPanel.Style>
-                                        <TextBlock Style="{StaticResource PreviewFieldLabel}" Text="尺寸 (px)" />
-                                        <TextBox Text="{Binding State.CdPreviewSize, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBlock Style="{StaticResource PreviewFieldLabel}" Text="尺寸 (64–8192 px)" />
+                                        <TextBox Text="{Binding State.CdPreviewSize, UpdateSourceTrigger=PropertyChanged}"
+                                                 ToolTip="预览及导出使用此尺寸：64–8192 px" />
                                         <TextBlock Style="{StaticResource PreviewFieldLabel}" Text="每扇区采样" />
-                                        <TextBox Text="{Binding State.CdSamplesPerSector, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBox Text="{Binding State.CdSamplesPerSector, UpdateSourceTrigger=PropertyChanged}"
+                                                 ToolTip="每扇区采样数：1–2352" />
                                     </StackPanel>
                                     <!-- DVD preview output -->
                                     <StackPanel>
@@ -557,12 +750,21 @@
                                                 </Style.Triggers>
                                             </Style>
                                         </StackPanel.Style>
-                                        <TextBlock Style="{StaticResource PreviewFieldLabel}" Text="尺寸 (px)" />
-                                        <TextBox Text="{Binding State.DvdPreviewSize, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBlock Style="{StaticResource PreviewFieldLabel}" Text="尺寸 (64–8192 px)" />
+                                        <TextBox Text="{Binding State.DvdPreviewSize, UpdateSourceTrigger=PropertyChanged}"
+                                                 ToolTip="预览及导出使用此尺寸：64–8192 px" />
                                         <TextBlock Style="{StaticResource PreviewFieldLabel}" Text="每扇区采样" />
-                                        <TextBox Text="{Binding State.DvdSamplesPerSector, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBox Text="{Binding State.DvdSamplesPerSector, UpdateSourceTrigger=PropertyChanged}"
+                                                 ToolTip="每扇区采样数：1–2048" />
+                                    </StackPanel>
+                                    <!-- BD preview output -->
+                                    <StackPanel Style="{StaticResource BluRayGroup}">
+                                        <TextBlock Style="{StaticResource PreviewFieldLabel}" Text="尺寸 (64–8192 px)" />
+                                        <TextBox Text="{Binding BluRayPreviewSize, UpdateSourceTrigger=PropertyChanged}"
+                                                 ToolTip="预览及导出使用此尺寸：64–8192 px" />
                                     </StackPanel>
                                 </StackPanel>
+                                </ScrollViewer>
                             </Border>
                         </Grid>
                         <!-- No flyout here: a press writes the current preview next to its input. -->
@@ -575,8 +777,10 @@
                             <iconPacks:PackIconLucide Kind="Download" Width="18" Height="18" />
                         </Button>
                     </StackPanel>
+                    </Canvas>
                 </Grid>
             </Border>
         </Grid>
+        </ScrollViewer>
     </Grid>
 </UserControl>

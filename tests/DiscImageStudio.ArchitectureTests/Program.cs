@@ -1,4 +1,5 @@
 using DiscImageStudio.Burning;
+using DiscImageStudio.BluRay;
 using DiscImageStudio.Cd;
 using DiscImageStudio.Core;
 using DiscImageStudio.Dvd;
@@ -9,17 +10,67 @@ using System.Runtime.InteropServices.ComTypes;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
+// A bounded, hardware-free subset for checking burn fixes while a real burn
+// may be running. Avoid image-generation benchmarks and large-file fixtures.
+if (args is ["--image-processing-checks"])
+{
+    RingDitherTests.Run();
+    BinaryDitherTests.Run();
+    GammaDitherTests.Run();
+    ImageProcessingTests.Run();
+    ImageProcessingWorkflowTests.Run();
+    LivePreviewResolutionTests.Run();
+    LivePreviewViewportTests.Run();
+    Console.WriteLine("image-processing-selftest: all checks passed (no recorder access)");
+    return;
+}
+
+if (args is ["--burning-checks"])
+{
+    RunBurningChecks();
+    Console.WriteLine("burning-selftest: all checks passed (no recorder access)");
+    return;
+}
+
+if (args is ["--ui-checks"])
+{
+    MaximizedWindowBoundsTests.Run();
+    WindowWorkAreaNativeTests.Run();
+    BluRayPresetTests.Run();
+    ParameterNumberFormattingTests.Run();
+    LivePreviewViewportTests.Run();
+    Console.WriteLine("ui-selftest: all checks passed (no recorder access)");
+    return;
+}
+
+if (args is ["--calibration-checks"])
+{
+    CalibrationCoreTests.Run();
+    CalibrationCubicPitchTests.Run();
+    CalibrationCrossExtensionTests.Run();
+    CalibrationShapeSeedTests.Run();
+    BluRayObservedCurveRegressionTests.Run();
+    CalibrationPhotoViewModelTests.Run();
+    BluRayObservedCurveViewModelTests.Run();
+    Console.WriteLine("calibration-selftest: all checks passed (no recorder access)");
+    return;
+}
+
 DiscModuleCatalog catalog = new(
 [
     new CdDiscModule(),
     new DvdDiscModule(),
-    new FutureBluRayModule(),
+    new BluRayDiscModule(),
 ]);
+
+MaximizedWindowBoundsTests.Run();
+WindowWorkAreaNativeTests.Run();
 
 Equal(3, catalog.Modules.Count, "module count");
 Equal(OpticalDiscFamily.CompactDisc, catalog.Resolve("cd-generate").Descriptor.Family, "CD routing");
 Equal(OpticalDiscFamily.Dvd, catalog.Resolve("solve").Descriptor.Family, "DVD routing");
-Equal(OpticalDiscFamily.BluRay, catalog.Resolve("bd-generate").Descriptor.Family, "future Blu-ray routing");
+Equal(OpticalDiscFamily.BluRay, catalog.Resolve("bd-generate").Descriptor.Family, "Blu-ray routing");
+Equal(OpticalDiscFamily.BluRay, catalog.Resolve("bd-probe").Descriptor.Family, "Blu-ray probe routing");
 True(
     catalog.Resolve("cd-generate").Descriptor.SupportsCancellation,
     "CD module cancellation metadata");
@@ -28,32 +79,80 @@ True(
     "DVD module cancellation metadata");
 
 DiscJobResult bluRayResult = await catalog.ExecuteAsync(
-    new DiscJobRequest("bd-generate", ["--output", "future.iso"]));
-True(bluRayResult.Succeeded, "future module execution");
+    new DiscJobRequest("bd-generate", ["--input", "source.png", "--output", "picture.iso", "--total-sectors", "1024"]));
+True(!bluRayResult.Succeeded && bluRayResult.ExitCode == 2, "Blu-ray module without a host image loader reports missing decoder");
+True(bluRayResult.Summary!.Contains("image loader", StringComparison.Ordinal), "Blu-ray reports image loading requirement");
 
 Throws<ArgumentException>(
-    () => new DiscModuleCatalog([new FutureBluRayModule(), new ConflictingModule()]),
+    () => new DiscModuleCatalog([new BluRayDiscModule(), new ConflictingModule()]),
     "duplicate command rejection");
 Throws<ArgumentException>(() => catalog.Resolve("unknown-command"), "unknown command rejection");
+HomeBluRayTests.Run();
+RunBurningChecks();
+BluRayModuleTests.Run();
+BluRayEncodingTests.Run();
+BluRayViewModelTests.Run();
+BluRayPresetTests.Run();
+BluRayLivePreviewTests.Run();
+BluRayPreviewTests.Run();
+PreviewPresetSyncTests.Run();
+LivePreviewResolutionTests.Run();
+BluRayImageMappingTests.Run();
+BluRayParallelGenerationTests.Run();
+BluRayPixelReuseTests.Run();
+BluRayIsoTests.Run();
+BluRayDrawingModeTests.Run();
+UdfFilesystemTests.Run();
+UdfLargeFileTests.Run();
+BluRayCalibrationTests.Run();
 TestRingImageLayout();
+RingDitherTests.Run();
 TestDiscPresets();
 TestDiscPresetJson();
 CdAudioCompatibilityTests.Run();
 CdRawImageByteOrderTests.Run();
+CdBinaryTests.Run();
+CdSimdSamplingTests.Run();
+FourLevelPreviewTests.Run();
+FourLevelDitherTests.Run();
+ThreeLevelDitherTests.Run();
+BinaryDitherTests.Run();
+GammaDitherTests.Run();
+ImageProcessingTests.Run();
+ImageProcessingWorkflowTests.Run();
+DvdScrambledPatternTests.Run();
 DvdCubicPipelineTests.Run();
+DvdSimdSamplingTests.Run();
 AppCubicTests.Run();
 CalibrationEncoderTests.Run();
 CalibrationCoreTests.Run();
 CalibrationCubicPitchTests.Run();
 CalibrationCrossExtensionTests.Run();
+BluRayObservedCurveRegressionTests.Run();
 CalibrationShapeSeedTests.Run();
 CalibrationPhotoTests.Run();
 CalibrationPhotoCanvasTests.Run();
 CalibrationBurnWorkflowTests.Run();
 CalibrationOutputPublisherTests.Run();
 CalibrationPhotoViewModelTests.Run();
+BluRayObservedCurveViewModelTests.Run();
+ParameterNumberFormattingTests.Run();
+LivePreviewViewportTests.Run();
 
 Console.WriteLine("architecture-selftest: all checks passed");
+
+static void RunBurningChecks()
+{
+    GeneratedContentProgressTests.Run();
+    BurnRateViewModelTests.Run();
+    OpticalWriteProgressTests.Run();
+    OpticalBurnOperationGateTests.Run();
+    BluRayBurnTests.Run();
+    BluRaySequentialBurnTests.Run();
+    BluRayFlushDiagnosticsTests.Run();
+    BluRaySequentialWriterTests.Run();
+    BluRaySessionCleanupTests.Run();
+}
 return;
 
 static void Equal<T>(T expected, T actual, string name)
@@ -901,39 +1000,6 @@ sealed class ForwardOnlyWriteStream(Stream destination) : Stream
 
     public override void SetLength(long value)
         => throw new NotSupportedException();
-}
-
-sealed class FutureBluRayModule : IOpticalDiscModule
-{
-    public DiscModuleDescriptor Descriptor { get; } = new(
-        "bluray-future-test",
-        "Future Blu-ray module",
-        OpticalDiscFamily.BluRay,
-        "Proves that a Blu-ray implementation can join the catalog without changing CD or DVD.",
-        SupportsCancellation: true,
-        Commands:
-        [
-            new DiscCommandDescriptor(
-                "bd-generate",
-                "Generate Blu-ray image",
-                "Test-only future command.",
-                DiscModuleCapabilities.DataImageGeneration,
-                [new("output", "Output image", DiscOptionValueType.OutputFile, Required: true)]),
-        ]);
-
-    public Task<DiscJobResult> ExecuteAsync(
-        DiscJobRequest request,
-        IProgress<DiscJobProgress>? progress = null,
-        CancellationToken cancellationToken = default)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult(new DiscJobResult(
-            Descriptor.Id,
-            request.Command,
-            0,
-            "Future Blu-ray module test completed.",
-            "future.iso"));
-    }
 }
 
 sealed class RecordingCdRawSession : ICdRawSession

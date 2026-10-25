@@ -24,7 +24,7 @@
         </Grid.RowDefinitions>
         <StackPanel Margin="0,0,0,16">
             <TextBlock Text="辅助标定" Style="{StaticResource H1Title}" />
-            <TextBlock Text="1  照片矫正   →   2  描一条曲线，反推参数"
+            <TextBlock Text="CD / DVD / BD · 1  照片矫正   →   2  描一条曲线，反推参数"
                        Style="{StaticResource PageSubtitle}" Margin="0,6,0,0" TextWrapping="Wrap" />
         </StackPanel>
         <ScrollViewer x:Name="WorkScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
@@ -101,7 +101,8 @@
                         </StackPanel>
                     </Grid>
                 </Border>
-                <ScrollViewer x:Name="SettingsScroll" Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" MaxHeight="700">
+                <ScrollViewer x:Name="SettingsScroll" Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" MaxHeight="700"
+                              PreviewMouseWheel="OnSettingsPreviewMouseWheel">
                     <StackPanel>
 
                         <controls:SectionCard Header="1  照片矫正" Margin="0,0,0,12" Visibility="{Binding IsPhotoStep, Converter={StaticResource PhotoStepVisibility}}">

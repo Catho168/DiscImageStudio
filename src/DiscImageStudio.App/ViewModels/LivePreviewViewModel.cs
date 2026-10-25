@@ -18,7 +18,7 @@ namespace DiscImageStudio.ViewModels;
 ///   Rendering never touches the multi-hundred-megabyte artifact, which is what makes parameter
 ///   iteration cheap; the price is that the picture is a projection of the source, not a
 ///   read-back of the bytes that were actually written.
-/// - Read-back simulation: the input is the generated burn artifact (CD track or DVD ISO,
+/// - Read-back simulation: the input is the generated burn artifact (CD track, DVD or BD ISO,
 ///   matching the cdimage calibration model), so the picture shows what the disc really
 ///   carries. One parameter set describes the measured disc geometry.
 public partial class LivePreviewViewModel : ObservableObject
@@ -45,7 +45,18 @@ public partial class LivePreviewViewModel : ObservableObject
     private string? _calibratedIsoPath;
 
     [ObservableProperty]
-    private bool _isDvdSelected;
+    [NotifyPropertyChangedFor(nameof(IsCdSelected), nameof(IsDvdSelected), nameof(IsBluRaySelected))]
+    private int _selectedDiscTypeIndex;
+
+    public bool IsCdSelected => SelectedDiscTypeIndex == 0;
+
+    public bool IsDvdSelected
+    {
+        get => SelectedDiscTypeIndex == 1;
+        set => SelectedDiscTypeIndex = value ? 1 : 0;
+    }
+
+    public bool IsBluRaySelected => SelectedDiscTypeIndex == 2;
 
     /// <summary>False renders the generated artifact (read-back simulation), true renders the
     /// source picture through the generated/measured parameter pair.</summary>
@@ -229,10 +240,10 @@ public partial class LivePreviewViewModel : ObservableObject
     }
 
     private static string FormatNumber(double value)
-        => value.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+        => ParameterNumberText.ForInput(value);
 
     /// <summary>Disc-type radio semantics: clear the stale canvas and reschedule.</summary>
-    partial void OnIsDvdSelectedChanged(bool value)
+    partial void OnSelectedDiscTypeIndexChanged(int value)
     {
         if (_suppressDiscTypeAutoUpdate)
         {
@@ -245,11 +256,14 @@ public partial class LivePreviewViewModel : ObservableObject
 
     /// <summary>Configures the disc type without clearing the canvas (snapshot entry point).</summary>
     internal void SetDiscType(bool dvd, bool clearResult)
+        => SetDiscType(dvd ? 1 : 0, clearResult);
+
+    internal void SetDiscType(int discTypeIndex, bool clearResult)
     {
         _suppressDiscTypeAutoUpdate = true;
         try
         {
-            IsDvdSelected = dvd;
+            SelectedDiscTypeIndex = discTypeIndex;
         }
         finally
         {
@@ -296,10 +310,10 @@ public partial class LivePreviewViewModel : ObservableObject
 
     internal void UpdateMode(bool clearResult)
     {
-        string discName = IsDvdSelected ? "DVD" : "CD";
+        string discName = IsBluRaySelected ? "BD" : IsDvdSelected ? "DVD" : "CD";
         string inputName = IsCalibrationPreview
             ? $"{discName} 源图片"
-            : IsDvdSelected ? "生成的 DVD ISO" : "生成的 CD 音轨";
+            : IsBluRaySelected ? "生成的 BD ISO" : IsDvdSelected ? "生成的 DVD ISO" : "生成的 CD 音轨";
         ResultPreviewTitle = $"实时预览 - {discName}";
         ResultPreviewPlaceholderText = $"请先选择 {inputName}。";
         StatusText = $"等待 {inputName}";
@@ -357,7 +371,11 @@ public partial class LivePreviewViewModel : ObservableObject
             {
                 _livePreviewRefreshPending = false;
                 int revision = _livePreviewRevision;
-                if (IsDvdSelected)
+                if (IsBluRaySelected)
+                {
+                    await RefreshBluRayAsync(revision);
+                }
+                else if (IsDvdSelected)
                 {
                     await RefreshDvdAsync(revision);
                 }
@@ -493,17 +511,19 @@ public partial class LivePreviewViewModel : ObservableObject
             RingImagePreparation.LivePreviewDirectory,
             $"cd-live-warp-{revision}.png");
         StatusText = $"正在刷新 {outputSize} px 标定预览…";
+        bool imageProcessingEnabled = _state.CdImageProcessingEnabled;
+        bool gammaCorrectionEnabled = _state.CdGammaCorrectionEnabled;
         bool keepOutput = false;
         try
         {
             await StaWorker.RunAsync(() =>
             {
-                using RingImagePreparation.PreparedImage preparedImage = ringLayout is null
-                    ? RingImagePreparation.PreparedImage.Original(imagePath)
-                    : RingImagePreparation.PrepareRingImage(
+                using RingImagePreparation.PreparedImage preparedImage = RingImagePreparation.PrepareImage(
                         imagePath,
                         ringLayout,
                         "cd-live-warp",
+                        imageProcessingEnabled,
+                        gammaCorrectionEnabled,
                         cancellationToken,
                         writeLog: false);
                 CdTrackGenerator.PreviewWarp(
@@ -524,7 +544,7 @@ public partial class LivePreviewViewModel : ObservableObject
 
             PublishPreview(outputPath, imagePath, "实时预览 - CD");
             keepOutput = true;
-            StatusText = $"已实时更新 · 标定预览 · 灰度 · {outputSize} px"
+            StatusText = $"已实时更新 · 标定预览 · 黑白二阶 · {outputSize} px"
                 + $" · 每扇区 {samplesPerSector} 个采样";
         }
         catch (OperationCanceledException)
@@ -653,17 +673,19 @@ public partial class LivePreviewViewModel : ObservableObject
         }
 
         StatusText = $"正在刷新 {outputSize} px DVD 标定预览…";
+        bool imageProcessingEnabled = _state.DvdImageProcessingEnabled;
+        bool gammaCorrectionEnabled = _state.DvdGammaCorrectionEnabled;
         bool keepOutput = false;
         try
         {
             int exitCode = await StaWorker.RunAsync(() =>
             {
-                using RingImagePreparation.PreparedImage preparedImage = ringLayout is null
-                    ? RingImagePreparation.PreparedImage.Original(imagePath)
-                    : RingImagePreparation.PrepareRingImage(
+                using RingImagePreparation.PreparedImage preparedImage = RingImagePreparation.PrepareImage(
                         imagePath,
                         ringLayout,
                         "dvd-live-warp",
+                        imageProcessingEnabled,
+                        gammaCorrectionEnabled,
                         cancellationToken,
                         writeLog: false);
                 string[] effectiveArguments = (string[])arguments.Clone();
@@ -683,7 +705,7 @@ public partial class LivePreviewViewModel : ObservableObject
 
             PublishPreview(outputPath, imagePath, "实时预览 - DVD");
             keepOutput = true;
-            StatusText = $"已实时更新 · 标定预览 · CW · {outputSize} px · 每扇区 {samplesPerSector} 个采样";
+            StatusText = $"已实时更新 · 标定预览 · 黑白二阶 · CW · {outputSize} px · 每扇区 {samplesPerSector} 个采样";
         }
         catch (OperationCanceledException)
         {
@@ -714,6 +736,7 @@ public partial class LivePreviewViewModel : ObservableObject
         _isLivePreviewReady = true;
         ResultPreviewTitle = title;
         ResultPreviewPath = Path.GetFileName(inputPath);
+        DownloadPreviewCommand.NotifyCanExecuteChanged();
         RingImagePreparation.TryDeleteTemporaryFile(previousPath);
     }
 
@@ -749,10 +772,8 @@ public partial class LivePreviewViewModel : ObservableObject
                 sectors);
             parameters.Validate();
 
-            int configuredSize = ParameterParser.ParsePositiveInt(_state.CdPreviewSize, "预览尺寸");
-            int configuredSamples = ParameterParser.ParsePositiveInt(_state.CdSamplesPerSector, "每扇区采样");
-            outputSize = Math.Clamp(configuredSize, 256, 900);
-            samplesPerSector = Math.Clamp(configuredSamples, 1, 2);
+            outputSize = ParameterParser.ParsePreviewSize(_state.CdPreviewSize);
+            samplesPerSector = ParameterParser.ParsePreviewSamples(_state.CdSamplesPerSector, CdDiscParameters.BytesPerSector);
 
             message = string.Empty;
             return true;
@@ -810,10 +831,8 @@ public partial class LivePreviewViewModel : ObservableObject
             generated.Validate();
             actual.Validate();
 
-            int configuredSize = ParameterParser.ParsePositiveInt(_state.CdPreviewSize, "预览尺寸");
-            int configuredSamples = ParameterParser.ParsePositiveInt(_state.CdSamplesPerSector, "每扇区采样");
-            outputSize = Math.Clamp(configuredSize, 256, 900);
-            samplesPerSector = Math.Clamp(configuredSamples, 1, 2);
+            outputSize = ParameterParser.ParsePreviewSize(_state.CdPreviewSize);
+            samplesPerSector = ParameterParser.ParsePreviewSamples(_state.CdSamplesPerSector, CdDiscParameters.BytesPerSector);
 
             // The projection must start from the picture the generator would consume, so the
             // production page's image processing mode applies here unchanged.
@@ -825,7 +844,9 @@ public partial class LivePreviewViewModel : ObservableObject
                     generated.OuterRadiusMm,
                     _state.CdRingInnerMargin,
                     _state.CdRingOuterMargin,
-                    Math.Max(RingImageQuality.LivePreviewSize, outputSize));
+                    _state.CdImageProcessingEnabled
+                        ? RingImageQuality.GenerationSize
+                        : Math.Max(RingImageQuality.LivePreviewSize, outputSize));
             }
 
             message = string.Empty;
@@ -877,14 +898,8 @@ public partial class LivePreviewViewModel : ObservableObject
                 throw new ArgumentOutOfRangeException("半径", "内半径必须小于外半径。");
             }
 
-            outputSize = Math.Clamp(
-                ParameterParser.ParsePositiveInt(_state.DvdPreviewSize, "预览尺寸"),
-                256,
-                900);
-            samplesPerSector = Math.Clamp(
-                ParameterParser.ParsePositiveInt(_state.DvdSamplesPerSector, "每扇区采样"),
-                1,
-                2);
+            outputSize = ParameterParser.ParsePreviewSize(_state.DvdPreviewSize);
+            samplesPerSector = ParameterParser.ParsePreviewSamples(_state.DvdSamplesPerSector, 2048);
 
             // The simulate command falls back to the ISO's solve sidecar JSON for the
             // drawing range, so the app only passes the measured calibration geometry.
@@ -962,14 +977,8 @@ public partial class LivePreviewViewModel : ObservableObject
                 throw new ArgumentOutOfRangeException("半径", "内半径必须小于外半径。");
             }
 
-            outputSize = Math.Clamp(
-                ParameterParser.ParsePositiveInt(_state.DvdPreviewSize, "预览尺寸"),
-                256,
-                900);
-            samplesPerSector = Math.Clamp(
-                ParameterParser.ParsePositiveInt(_state.DvdSamplesPerSector, "每扇区采样"),
-                1,
-                2);
+            outputSize = ParameterParser.ParsePreviewSize(_state.DvdPreviewSize);
+            samplesPerSector = ParameterParser.ParsePreviewSamples(_state.DvdSamplesPerSector, 2048);
             if (_state.DvdImageProcessingModeIndex == 1)
             {
                 ringLayout = ParameterParser.CreateRingLayoutOptions(
@@ -978,7 +987,9 @@ public partial class LivePreviewViewModel : ObservableObject
                     generatedOuter,
                     _state.DvdRingInnerMargin,
                     _state.DvdRingOuterMargin,
-                    Math.Max(RingImageQuality.LivePreviewSize, outputSize));
+                    _state.DvdImageProcessingEnabled
+                        ? RingImageQuality.GenerationSize
+                        : Math.Max(RingImageQuality.LivePreviewSize, outputSize));
             }
 
             string totalSectors = totalSectorsValue.ToString(System.Globalization.CultureInfo.InvariantCulture);
@@ -1087,6 +1098,7 @@ public partial class LivePreviewViewModel : ObservableObject
 
     internal void OnWindowClosed()
     {
+        _shell.BluRay.PropertyChanged -= BluRay_PropertyChanged;
         _livePreviewTimer.Stop();
         _livePreviewCancellation?.Cancel();
         _livePreviewCancellation?.Dispose();
@@ -1138,6 +1150,11 @@ public partial class LivePreviewViewModel : ObservableObject
     /// source picture being projected.</summary>
     private string PreviewInputPath()
     {
+        if (IsBluRaySelected)
+        {
+            return (IsCalibrationPreview ? BluRay.ImagePath : BluRayIsoPath).Trim();
+        }
+
         if (IsDvdSelected)
         {
             return (IsCalibrationPreview ? _state.DvdImagePath : _state.DvdIsoPath).Trim();

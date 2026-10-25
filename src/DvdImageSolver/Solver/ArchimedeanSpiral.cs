@@ -1,3 +1,4 @@
+using System.Runtime.Intrinsics;
 using DiscImageStudio.Core;
 
 namespace DvdImageSolver.Solver;
@@ -6,6 +7,7 @@ namespace DvdImageSolver.Solver;
 internal sealed class ArchimedeanSpiral(DvdTrackGeometry geometry)
 {
     internal double TrackLengthMm => geometry.TrackLengthMm;
+    internal bool IsConstantPitch => geometry.IsConstantPitch;
     internal double InnerRadiusMm => geometry.InnerRadiusMm;
     internal double OuterRadiusMm => geometry.OuterRadiusMm;
     internal double RadialGrowthPerRadianMm => geometry.RadialGrowthPerRadianMm;
@@ -19,6 +21,8 @@ internal sealed class ArchimedeanSpiral(DvdTrackGeometry geometry)
     internal double RadiusAtArcLengthFast(double arcLengthMm) => geometry.RadiusAtArcLengthFast(arcLengthMm);
     internal double AngleAtArcLength(double arcLengthMm) => geometry.AngleAtArcLength(arcLengthMm);
     internal (double Radius, double Angle) AtArcLengthFast(double arcLengthMm) => geometry.AtArcLengthFast(arcLengthMm);
+    internal (Vector256<double> Radius, Vector256<double> Angle) AtArcLengthFast(
+        Vector256<double> arcLengthsMm) => geometry.AtArcLengthFast(arcLengthsMm);
     internal double AngleAtRadius(double radiusMm) => geometry.AngleAtRadius(radiusMm);
     internal double ArcLengthAtRadius(double radiusMm) => geometry.ArcLengthAtRadius(radiusMm);
     internal double ArcLengthAtAngle(double angleRadians) => geometry.ArcLengthAtAngle(angleRadians);

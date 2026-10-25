@@ -18,9 +18,17 @@
                         <Button Grid.Column="1" Style="{StaticResource BrowseButton}" Content="浏览…"
                                 Command="{Binding BrowseImageCommand}" />
                     </Grid>
-                    <TextBlock Style="{StaticResource FieldLabel}" Text="图片处理模式" />
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="图像处理" />
+                    <CheckBox Content="启用图像处理（黑白抖动）" Margin="0,0,0,10"
+                              IsChecked="{Binding State.CdImageProcessingEnabled}" />
+                    <CheckBox Content="sRGB 伽马校正" Margin="0,0,0,8"
+                              IsChecked="{Binding State.CdGammaCorrectionEnabled}"
+                              IsEnabled="{Binding State.CdImageProcessingEnabled}" />
+                    <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,14"
+                               Text="开启后，按所选布局处理，再通过蛇形 Floyd–Steinberg 抖动转换为黑白；可选伽马校正会在线性亮度下分配黑白像素。" />
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="图片布局" />
                     <ComboBox SelectedIndex="{Binding State.CdImageProcessingModeIndex}" Margin="0,0,0,12">
-                        <ComboBoxItem Content="原图直接映射" />
+                        <ComboBoxItem Content="直接映射" />
                         <ComboBoxItem Content="环形复制" />
                     </ComboBox>
                     <controls:RevealPanel IsExpanded="{Binding State.IsCdRingMode}"

@@ -38,18 +38,21 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-                    <StackPanel x:Name="TopNavPanel" Grid.Row="0" VerticalAlignment="Top" Margin="0,24,0,0">
-                        <controls:SideNavItem x:Name="NavHome" LabelText="主页" IconKind="House" />
-                        <controls:SideNavGroup x:Name="NavDiscGroup" LabelText="制作盘片" IconKind="Disc">
-                            <!-- Plain text rows by design: no icons next to the DVD/CD entries.
-                                 In the collapsed 72px bar they show their short label instead. -->
-                            <controls:SideNavItem x:Name="NavDvd" LabelText="DVD" Indent="22" LabelFontSize="15" />
-                            <controls:SideNavItem x:Name="NavCd" LabelText="CD" Indent="22" LabelFontSize="15" />
-                        </controls:SideNavGroup>
-                        <controls:SideNavItem x:Name="NavPreview" LabelText="实时预览" IconKind="Eye" />
-                        <controls:SideNavItem x:Name="NavCalibration" LabelText="辅助标定" IconKind="Target" />
-                        <controls:SideNavItem x:Name="NavBurn" LabelText="即时刻录" IconKind="Flame" />
-                    </StackPanel>
+                    <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel x:Name="TopNavPanel" VerticalAlignment="Top" Margin="0,24,0,0">
+                            <controls:SideNavItem x:Name="NavHome" LabelText="主页" IconKind="House" />
+                            <controls:SideNavGroup x:Name="NavDiscGroup" LabelText="制作盘片" IconKind="Disc">
+                                <!-- Plain text rows by design: no icons next to the DVD/CD entries.
+                                     In the collapsed 72px bar they show their short label instead. -->
+                                <controls:SideNavItem x:Name="NavDvd" LabelText="DVD" Indent="22" LabelFontSize="15" />
+                                <controls:SideNavItem x:Name="NavCd" LabelText="CD" Indent="22" LabelFontSize="15" />
+                                <controls:SideNavItem x:Name="NavBluRay" LabelText="BD" Indent="22" LabelFontSize="15" ToolTip="蓝光模式" />
+                            </controls:SideNavGroup>
+                            <controls:SideNavItem x:Name="NavPreview" LabelText="实时预览" IconKind="Eye" />
+                            <controls:SideNavItem x:Name="NavCalibration" LabelText="辅助标定" IconKind="Target" />
+                            <controls:SideNavItem x:Name="NavBurn" LabelText="即时刻录" IconKind="Flame" />
+                        </StackPanel>
+                    </ScrollViewer>
                     <StackPanel x:Name="BottomNavPanel" Grid.Row="1" VerticalAlignment="Bottom">
                         <controls:SideNavItem x:Name="NavLog" LabelText="运行日志" IconKind="Terminal" />
                         <controls:SideNavItem x:Name="NavAbout" LabelText="关于" IconKind="Info" />

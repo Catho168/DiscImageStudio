@@ -7,13 +7,15 @@ public sealed class ImageConstraint
     internal const sbyte Unconstrained = -1;
     private readonly sbyte[] _targets;
     private readonly sbyte[] _channelWordTargets;
+    private readonly sbyte[] _channelWordGrayscaleTargets;
     private readonly int[] _constrainedSectors;
 
     private ImageConstraint(
         sbyte[] targets,
         int constrainedBits,
         ImageMappingSummary? imageMapping,
-        sbyte[]? channelWordTargets = null)
+        sbyte[]? channelWordTargets = null,
+        sbyte[]? channelWordGrayscaleTargets = null)
     {
         _targets = targets;
         _channelWordTargets = channelWordTargets ?? BuildChannelWordTargets(
@@ -24,6 +26,18 @@ public sealed class ImageConstraint
             throw new ArgumentException(
                 "Unexpected channel-word target count.",
                 nameof(channelWordTargets));
+        }
+
+        // Dispersion uses sampled black/white levels; the full/state-control solvers
+        // retain their original binary channel-level and land-count targets.
+        _channelWordGrayscaleTargets = channelWordGrayscaleTargets ?? [];
+        if (_channelWordGrayscaleTargets.Length != 0
+            && (_channelWordGrayscaleTargets.Length != _channelWordTargets.Length
+                || _channelWordGrayscaleTargets.Any(value => value is < -1 or > 1)))
+        {
+            throw new ArgumentException(
+                "Grayscale targets must contain one level (-1 or 0..1) per channel word.",
+                nameof(channelWordGrayscaleTargets));
         }
 
         ConstrainedBits = constrainedBits;
@@ -166,7 +180,8 @@ public sealed class ImageConstraint
     internal static ImageConstraint Create(
         sbyte[] targets,
         ImageMappingSummary imageMapping,
-        sbyte[]? channelWordTargets = null)
+        sbyte[]? channelWordTargets = null,
+        sbyte[]? channelWordGrayscaleTargets = null)
     {
         if (targets.Length != DvdEccBlockEncoder.ChannelBitsPerBlock)
         {
@@ -174,12 +189,15 @@ public sealed class ImageConstraint
         }
 
         int constrained = targets.Count(value => value != Unconstrained);
-        return new ImageConstraint(targets, constrained, imageMapping, channelWordTargets);
+        return new ImageConstraint(
+            targets, constrained, imageMapping, channelWordTargets, channelWordGrayscaleTargets);
     }
 
     internal sbyte TargetAt(int index) => _targets[index];
 
     internal ReadOnlySpan<sbyte> ChannelWordTargets => _channelWordTargets;
+
+    internal ReadOnlySpan<sbyte> ChannelWordGrayscaleTargets => _channelWordGrayscaleTargets;
 
     private static sbyte[] BuildChannelWordTargets(
         ReadOnlySpan<sbyte> channelTargets,

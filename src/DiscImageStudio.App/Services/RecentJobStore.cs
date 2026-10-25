@@ -13,12 +13,18 @@ public sealed record RecentJobEntry(
 {
     public const string DvdFamily = "dvd";
     public const string CdFamily = "cd";
+    public const string BluRayFamily = "bd";
 
-    public bool IsDvd => string.Equals(DiscFamily, DvdFamily, StringComparison.Ordinal);
+    public bool IsDvd => string.Equals(DiscFamily, DvdFamily, StringComparison.OrdinalIgnoreCase);
+
+    public bool IsBluRay => string.Equals(DiscFamily, BluRayFamily, StringComparison.OrdinalIgnoreCase);
+
+    public int DiscTypeIndex => IsBluRay ? 2 : IsDvd ? 1 : 0;
 
     public static bool IsKnownFamily(string? family)
         => string.Equals(family, DvdFamily, StringComparison.OrdinalIgnoreCase)
-           || string.Equals(family, CdFamily, StringComparison.OrdinalIgnoreCase);
+           || string.Equals(family, CdFamily, StringComparison.OrdinalIgnoreCase)
+           || string.Equals(family, BluRayFamily, StringComparison.OrdinalIgnoreCase);
 }
 
 /// <summary>
