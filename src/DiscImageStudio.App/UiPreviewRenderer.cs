@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using DiscImageStudio.Core;
 using DiscImageStudio.ViewModels;
 
 namespace DiscImageStudio;
@@ -158,10 +159,11 @@ internal static class UiPreviewRenderer
         state.TryLoadPresets();
         ProjectDialogViewModel viewModel = new(
             state,
-            new ProjectDialogRequest(EditMode: mode == "edit", PreselectDvd: false));
+            new ProjectDialogRequest(EditMode: mode == "edit",
+                PreselectFamily: OpticalDiscFamily.Dvd));
         if (mode == "edit")
         {
-            viewModel.IsDvd = true;
+            viewModel.Family = OpticalDiscFamily.Dvd;
             viewModel.Name = "示例工程";
             viewModel.InnerRadiusText = "24.0";
             viewModel.OuterRadiusText = "58.0";

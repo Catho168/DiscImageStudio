@@ -302,6 +302,9 @@ public partial class LivePreviewViewModel : ObservableObject
     }
 
     /// <summary>Configures the disc type without clearing the canvas (snapshot entry point).</summary>
+    internal void SetDiscType(Core.OpticalDiscFamily family, bool clearResult)
+        => SetDiscType(family == Core.OpticalDiscFamily.Dvd, clearResult);
+
     internal void SetDiscType(bool dvd, bool clearResult)
     {
         _suppressDiscTypeAutoUpdate = true;

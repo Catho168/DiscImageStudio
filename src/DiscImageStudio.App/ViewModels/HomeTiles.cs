@@ -1,5 +1,6 @@
 using System.IO;
 using System.Windows.Media.Imaging;
+using DiscImageStudio.Core;
 using DiscImageStudio.Services;
 using MahApps.Metro.IconPacks;
 
@@ -13,7 +14,7 @@ public sealed record HomeTemplateTile(
     string Title,
     string Detail,
     PackIconLucideKind Icon,
-    bool IsDvd,
+    OpticalDiscFamily Family,
     bool IsBlank)
 {
     public static HomeTemplateTile Blank { get; } = new(
@@ -21,8 +22,15 @@ public sealed record HomeTemplateTile(
         "空白工程",
         "从默认参数开始",
         PackIconLucideKind.SquarePen,
-        IsDvd: false,
+        OpticalDiscFamily.CompactDisc,
         IsBlank: true);
+
+    public string FamilyLabel => Family switch
+    {
+        OpticalDiscFamily.Dvd => "DVD",
+        OpticalDiscFamily.BluRay => "BD",
+        _ => "CD",
+    };
 
     public string ToolTipText => string.IsNullOrWhiteSpace(Detail)
         ? Title
@@ -51,7 +59,7 @@ public sealed class RecentProjectTile
 
     public string Title => Entry.Name;
 
-    public string FamilyLabel => Entry.IsDvd ? "DVD" : "CD";
+    public string FamilyLabel => Entry.FamilyLabel;
 
     public string LocationText => _projectExists
         ? Path.GetDirectoryName(Entry.ProjectPath) ?? Entry.ProjectPath

@@ -36,10 +36,18 @@ public sealed record ProjectOutputs(
     string VolumeLabel,
     bool Interleave);
 
+/// <summary>Generation settings that exist only for BD-R: the 3T/6T mapping polarity.
+/// This is deliberately separate from <see cref="ToneProfile"/>: polarity selects which
+/// run-length class a payload bit drives, while tone decides how a source grey becomes
+/// that bit.</summary>
+public sealed record ProjectBluRaySettings(bool InvertMapping = false);
+
 /// <summary>The on-disk project (.discproj): everything needed to reopen a disc design and
 /// regenerate its outputs. Images stay referenced by absolute path.
 /// <see cref="Tone"/> is null for files written before tone mapping existed; those projects
-/// keep the original hard-threshold output until their tone slider is touched.</summary>
+/// keep the original hard-threshold output until their tone slider is touched.
+/// Schema 1 held CD/DVD only; schema 2 adds <see cref="BluRay"/> and reads schema 1 by
+/// treating it as a CD/DVD project.</summary>
 public sealed record ProjectDocument(
     int SchemaVersion,
     string Name,
@@ -51,10 +59,14 @@ public sealed record ProjectDocument(
     string? ThumbnailPngBase64,
     DateTimeOffset CreatedUtc,
     DateTimeOffset ModifiedUtc,
-    ToneProfile? Tone = null)
+    ToneProfile? Tone = null,
+    ProjectBluRaySettings? BluRay = null)
 {
     public const string CdFamily = "cd";
     public const string DvdFamily = "dvd";
+    public const string BluRayFamily = "bd";
+    public const int BluRaySectorsPerCluster = 32;
+    public const long BluRaySectorsPerLayer = 12_219_392;
     // Sized for the home page's recent-project disc (176px display): the face is shown near
     // this resolution, so a 96px thumbnail would visibly blur.
     public const int ThumbnailDecodeSize = 256;
@@ -66,9 +78,25 @@ public sealed record ProjectDocument(
     /// still rejected by <see cref="ProjectJsonStore.Validate"/>.</summary>
     public const string LegacyImageProcessingKey = "imageProcessing";
 
-    public bool IsDvd => string.Equals(DiscFamily, DvdFamily, StringComparison.Ordinal);
+    public OpticalDiscFamily Family => DiscFamily switch
+    {
+        DvdFamily => OpticalDiscFamily.Dvd,
+        BluRayFamily => OpticalDiscFamily.BluRay,
+        _ => OpticalDiscFamily.CompactDisc,
+    };
 
-    public string FamilyLabel => IsDvd ? "DVD" : "CD";
+    public bool IsCd => Family == OpticalDiscFamily.CompactDisc;
+
+    public bool IsDvd => Family == OpticalDiscFamily.Dvd;
+
+    public bool IsBluRay => Family == OpticalDiscFamily.BluRay;
+
+    public string FamilyLabel => Family switch
+    {
+        OpticalDiscFamily.Dvd => "DVD",
+        OpticalDiscFamily.BluRay => "BD",
+        _ => "CD",
+    };
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
@@ -79,7 +107,8 @@ public sealed record ProjectDocument(
 /// can never leave a half-written project behind.</summary>
 public static class ProjectJsonStore
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
+    private const int LegacySchemaVersion = 1;
     public const string FileExtension = ".discproj";
     public const string FileFilter = "Disc Image Studio 工程|*.discproj";
 
@@ -126,9 +155,11 @@ public static class ProjectJsonStore
         Directory.CreateDirectory(directory);
         // Legacy extension members (the removed imageProcessing section) are accepted on load
         // but never written back: saving is what migrates an old file to the current schema.
-        ProjectDocument clean = document.ExtensionData is { Count: > 0 }
-            ? document with { ExtensionData = null }
-            : document;
+        ProjectDocument clean = document with
+        {
+            SchemaVersion = CurrentSchemaVersion,
+            ExtensionData = document.ExtensionData is { Count: > 0 } ? null : document.ExtensionData,
+        };
         string temporaryPath = Path.Combine(directory, $".{Path.GetFileName(fullPath)}.{Guid.NewGuid():N}.tmp");
         try
         {
@@ -156,10 +187,21 @@ public static class ProjectJsonStore
     public static void Validate(ProjectDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);
-        if (document.SchemaVersion != CurrentSchemaVersion)
+        if (document.SchemaVersion is not (LegacySchemaVersion or CurrentSchemaVersion))
         {
             throw new InvalidDataException(
-                $"不支持 schemaVersion={document.SchemaVersion}；当前支持 {CurrentSchemaVersion}。");
+                $"不支持 schemaVersion={document.SchemaVersion}；当前支持 {LegacySchemaVersion} 与 {CurrentSchemaVersion}。");
+        }
+
+        if (document.SchemaVersion == LegacySchemaVersion
+            && (document.IsBluRay || document.BluRay is not null))
+        {
+            throw new InvalidDataException("schemaVersion 1 只包含 CD/DVD 工程，不能声明蓝光字段。");
+        }
+
+        if (!document.IsBluRay && document.BluRay is not null)
+        {
+            throw new InvalidDataException("bluRay 设置只用于蓝光工程。");
         }
 
         if (string.IsNullOrWhiteSpace(document.Name))
@@ -170,7 +212,8 @@ public static class ProjectJsonStore
         if (!IsKnownFamily(document.DiscFamily))
         {
             throw new InvalidDataException(
-                $"discFamily '{document.DiscFamily}' 无效；仅支持 '{ProjectDocument.CdFamily}' 与 '{ProjectDocument.DvdFamily}'。");
+                $"discFamily '{document.DiscFamily}' 无效；仅支持 '{ProjectDocument.CdFamily}'、"
+                + $"'{ProjectDocument.DvdFamily}' 与 '{ProjectDocument.BluRayFamily}'。");
         }
 
         if (document.Geometry is null)
@@ -228,7 +271,8 @@ public static class ProjectJsonStore
 
     public static bool IsKnownFamily(string? family)
         => string.Equals(family, ProjectDocument.CdFamily, StringComparison.OrdinalIgnoreCase)
-           || string.Equals(family, ProjectDocument.DvdFamily, StringComparison.OrdinalIgnoreCase);
+           || string.Equals(family, ProjectDocument.DvdFamily, StringComparison.OrdinalIgnoreCase)
+           || string.Equals(family, ProjectDocument.BluRayFamily, StringComparison.OrdinalIgnoreCase);
 
     private static void ValidateGeometry(ProjectDocument document)
     {
@@ -248,6 +292,30 @@ public static class ProjectJsonStore
         if (document.IsDvd && geometry.Sectors % 16 != 0)
         {
             throw new InvalidDataException("DVD 的 sectors 必须是 16 的倍数。");
+        }
+
+        if (document.IsBluRay)
+        {
+            if (geometry.Sectors % ProjectDocument.BluRaySectorsPerCluster != 0)
+            {
+                throw new InvalidDataException("蓝光的 sectors 必须是 32 的倍数。");
+            }
+
+            if (geometry.Sectors > ProjectDocument.BluRaySectorsPerLayer)
+            {
+                throw new InvalidDataException(
+                    $"蓝光 sectors 不能超过单层容量 {ProjectDocument.BluRaySectorsPerLayer:N0}。");
+            }
+
+            if (geometry.OuterRadiusMm > 60)
+            {
+                throw new InvalidDataException("蓝光外半径不能超过 60 mm。");
+            }
+
+            if (geometry.PitchLinear != 0 || geometry.PitchQuadratic != 0 || geometry.PitchCubic != 0)
+            {
+                throw new InvalidDataException("蓝光使用恒定轨距，pitch 系数必须为 0。");
+            }
         }
 
         try
@@ -345,7 +413,10 @@ public static class ProjectJsonStore
             }
 
             Validate(document);
-            return document;
+            // Schema 1 is read as its current equivalent; the next save writes version 2.
+            return document.SchemaVersion == LegacySchemaVersion
+                ? document with { SchemaVersion = CurrentSchemaVersion }
+                : document;
         }
         catch (JsonException exception)
         {

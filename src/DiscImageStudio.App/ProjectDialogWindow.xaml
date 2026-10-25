@@ -42,7 +42,8 @@
                 <StackPanel Grid.Column="0" Width="252"
                             Visibility="{Binding ShowTemplatesVisibility}">
                     <TextBlock Style="{StaticResource FieldLabel}" Text="盘型" />
-                    <controls:SegmentedControl IsSecondSelected="{Binding IsDvd}"
+                    <controls:SegmentedControl LabelA="CD" LabelB="DVD" LabelC="蓝光"
+                                               SelectedIndex="{Binding FamilyIndex}"
                                                IsEnabled="{Binding FamilySwitchEnabled}" />
                     <TextBlock Style="{StaticResource FieldLabel}" Margin="0,20,0,6"
                                Text="模板" Visibility="{Binding ShowTemplatesVisibility}" />
@@ -121,6 +122,10 @@
                                     <TextBlock Style="{StaticResource FieldLabel}" Text="相对三次项" />
                                     <TextBox Text="{Binding PitchCubicText, UpdateSourceTrigger=PropertyChanged}" />
                                 </StackPanel>
+                                <TextBlock Style="{StaticResource CompactHint}"
+                                           Margin="0,0,0,14" TextWrapping="Wrap"
+                                           Visibility="{Binding IsBluRayFieldsVisibility}"
+                                           Text="单层 BD-R：扇区数须为 32 的倍数，使用恒定轨距与 0° 起始角。" />
                             </WrapPanel>
                         </ScrollViewer>
                         <StackPanel Grid.Row="1" Margin="0,12,0,0">

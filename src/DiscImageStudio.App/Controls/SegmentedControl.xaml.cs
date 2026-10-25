@@ -7,9 +7,10 @@ using System.Windows.Media.Animation;
 
 namespace DiscImageStudio.Controls;
 
-/// Two-option selector (CD/DVD) rendered as a 12px-radius rounded-rectangle track with a
-/// thumb that slides to the checked option. Selection state surfaces as a two-way bool so
-/// pages bind the existing VM flags directly (no inverse binding needed for the first option).
+/// Two- or three-option selector rendered as a 12px-radius rounded-rectangle track with a
+/// thumb that slides to the checked option. The two-option form keeps the original
+/// <see cref="IsSecondSelected"/> bool binding; the three-option form (CD/DVD/BD) binds
+/// <see cref="SelectedIndex"/>. A blank <see cref="LabelC"/> collapses the third cell.
 public partial class SegmentedControl : UserControl
 {
     public static readonly DependencyProperty LabelAProperty = DependencyProperty.Register(
@@ -18,10 +19,28 @@ public partial class SegmentedControl : UserControl
     public static readonly DependencyProperty LabelBProperty = DependencyProperty.Register(
         nameof(LabelB), typeof(string), typeof(SegmentedControl), new PropertyMetadata("DVD"));
 
+    public static readonly DependencyProperty LabelCProperty = DependencyProperty.Register(
+        nameof(LabelC), typeof(string), typeof(SegmentedControl),
+        new PropertyMetadata(string.Empty, static (sender, _) => ((SegmentedControl)sender).ApplyLayout(animate: false)));
+
+    public static readonly DependencyProperty SelectedIndexProperty = DependencyProperty.Register(
+        nameof(SelectedIndex), typeof(int), typeof(SegmentedControl),
+        new FrameworkPropertyMetadata(0, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault,
+            static (sender, _) => ((SegmentedControl)sender).OnSelectedIndexChanged()));
+
     public static readonly DependencyProperty IsSecondSelectedProperty = DependencyProperty.Register(
         nameof(IsSecondSelected), typeof(bool), typeof(SegmentedControl),
         new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault,
-            static (sender, _) => ((SegmentedControl)sender).SyncVisuals()));
+            static (sender, _) =>
+            {
+                SegmentedControl control = (SegmentedControl)sender;
+                if (!control._updatingSelection)
+                {
+                    control.SelectedIndex = control.IsSecondSelected ? 1 : 0;
+                }
+
+                control.SyncVisuals();
+            }));
 
     // Motion and color idiom mirrored from SideNavItem: the fast duration for label
     // emphasis, one step slower so the thumb visibly travels the shared track.
@@ -33,8 +52,11 @@ public partial class SegmentedControl : UserControl
     private readonly Color _idleTextColor;
     private readonly SolidColorBrush _labelABrush;
     private readonly SolidColorBrush _labelBBrush;
+    private readonly SolidColorBrush _labelCBrush;
     private bool _hoverA;
     private bool _hoverB;
+    private bool _hoverC;
+    private bool _updatingSelection;
 
     public SegmentedControl()
     {
@@ -43,10 +65,13 @@ public partial class SegmentedControl : UserControl
         _idleTextColor = ThemeValues.Color("TextSecondaryColor", Color.FromRgb(0xA1, 0xA1, 0xAA));
         _labelABrush = new SolidColorBrush(_idleTextColor);
         _labelBBrush = new SolidColorBrush(_idleTextColor);
+        _labelCBrush = new SolidColorBrush(_idleTextColor);
         OptionAText.Foreground = _labelABrush;
         OptionBText.Foreground = _labelBBrush;
+        OptionCText.Foreground = _labelCBrush;
         Loaded += (_, _) => ApplyLayout(animate: false);
         Cells.SizeChanged += (_, _) => ApplyLayout(animate: false);
+        ApplyLayout(animate: false);
     }
 
     public string LabelA
@@ -61,6 +86,19 @@ public partial class SegmentedControl : UserControl
         set => SetValue(LabelBProperty, value);
     }
 
+    public string LabelC
+    {
+        get => (string)GetValue(LabelCProperty);
+        set => SetValue(LabelCProperty, value);
+    }
+
+    /// <summary>0 = first option, 1 = second, 2 = third when <see cref="LabelC"/> is set.</summary>
+    public int SelectedIndex
+    {
+        get => (int)GetValue(SelectedIndexProperty);
+        set => SetValue(SelectedIndexProperty, value);
+    }
+
     /// True when the right-hand option is the active one (the left option is its inverse),
     /// so a "DVD selected" VM flag binds one-to-one.
     public bool IsSecondSelected
@@ -69,34 +107,68 @@ public partial class SegmentedControl : UserControl
         set => SetValue(IsSecondSelectedProperty, value);
     }
 
+    private bool HasThird => !string.IsNullOrWhiteSpace(LabelC);
+
     private bool Realized => IsLoaded && Cells.ActualWidth > 0;
+
+    private int OptionCount => HasThird ? 3 : 2;
+
+    private void OnSelectedIndexChanged()
+    {
+        int max = OptionCount - 1;
+        int index = Math.Clamp(SelectedIndex, 0, max);
+        if (index != SelectedIndex)
+        {
+            SelectedIndex = index;
+            return;
+        }
+
+        _updatingSelection = true;
+        try
+        {
+            IsSecondSelected = index == 1;
+        }
+        finally
+        {
+            _updatingSelection = false;
+        }
+
+        SyncVisuals();
+    }
 
     private void SyncVisuals()
     {
         // No GroupName: several instances can stay alive across pages, and a shared group
         // name would let an invisible page uncheck the visible one. State is owned here.
-        OptionARadio.IsChecked = !IsSecondSelected;
-        OptionBRadio.IsChecked = IsSecondSelected;
-        AnimateThumb(IsSecondSelected);
+        int index = Math.Clamp(SelectedIndex, 0, OptionCount - 1);
+        OptionARadio.IsChecked = index == 0;
+        OptionBRadio.IsChecked = index == 1;
+        OptionCRadio.IsChecked = index == 2;
+        AnimateThumb(index);
         UpdateLabelColors();
     }
 
     private void ApplyLayout(bool animate)
     {
+        bool hasThird = HasThird;
+        ThirdColumn.Width = hasThird ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+        OptionCRadio.Visibility = hasThird ? Visibility.Visible : Visibility.Collapsed;
+
         if (!Realized)
         {
             return;
         }
 
+        int index = Math.Clamp(SelectedIndex, 0, OptionCount - 1);
         // Retarget instantly on first layout and on live resizes; only user-driven
         // selection changes travel along the animated slide.
-        AnimateThumb(IsSecondSelected, animate);
+        AnimateThumb(index, animate);
         UpdateLabelColors(animate);
     }
 
-    private void AnimateThumb(bool second, bool animate = true)
+    private void AnimateThumb(int index, bool animate = true)
     {
-        double target = second ? Cells.ActualWidth / 2.0 : 0.0;
+        double target = OptionCount == 0 ? 0 : Cells.ActualWidth * index / OptionCount;
         if (!animate || !Realized)
         {
             ThumbShift.BeginAnimation(TranslateTransform.XProperty, null);
@@ -111,8 +183,10 @@ public partial class SegmentedControl : UserControl
 
     private void UpdateLabelColors(bool animate = true)
     {
-        AnimateColor(_labelABrush, !IsSecondSelected || _hoverA ? _activeTextColor : _idleTextColor, animate);
-        AnimateColor(_labelBBrush, IsSecondSelected || _hoverB ? _activeTextColor : _idleTextColor, animate);
+        int index = Math.Clamp(SelectedIndex, 0, OptionCount - 1);
+        AnimateColor(_labelABrush, index == 0 || _hoverA ? _activeTextColor : _idleTextColor, animate);
+        AnimateColor(_labelBBrush, index == 1 || _hoverB ? _activeTextColor : _idleTextColor, animate);
+        AnimateColor(_labelCBrush, index == 2 || _hoverC ? _activeTextColor : _idleTextColor, animate);
     }
 
     private void AnimateColor(SolidColorBrush brush, Color target, bool animate)
@@ -135,40 +209,50 @@ public partial class SegmentedControl : UserControl
         }
     }
 
-    private void Select(bool second)
+    private void Select(int index)
     {
-        if (IsSecondSelected == second)
+        if (SelectedIndex == index)
         {
             return;
         }
 
-        IsSecondSelected = second; // DP callback applies visuals
+        SelectedIndex = index; // DP callback applies visuals
     }
 
     private void OptionAClick(object sender, RoutedEventArgs e)
     {
-        Select(false);
+        Select(0);
     }
 
     private void OptionBClick(object sender, RoutedEventArgs e)
     {
-        Select(true);
+        Select(1);
+    }
+
+    private void OptionCClick(object sender, RoutedEventArgs e)
+    {
+        Select(2);
     }
 
     private void OptionKeyDown(object sender, KeyEventArgs e)
     {
         // Without a radio group, arrow keys do not move the check natively; keep the
-        // native two-arrow gesture: Right from option A and Left from option B swap.
-        bool moveToSecond = (sender == OptionARadio && e.Key == Key.Right)
-                            || (sender == OptionBRadio && e.Key == Key.Left);
-        if (!moveToSecond)
+        // native arrow gesture across the visible options.
+        int current = sender == OptionARadio ? 0 : sender == OptionBRadio ? 1 : 2;
+        int next = e.Key switch
+        {
+            Key.Left => Math.Max(0, current - 1),
+            Key.Right => Math.Min(OptionCount - 1, current + 1),
+            _ => current,
+        };
+        if (next == current)
         {
             return;
         }
 
         e.Handled = true;
-        Select(sender == OptionARadio);
-        RadioButton target = sender == OptionARadio ? OptionBRadio : OptionARadio;
+        Select(next);
+        RadioButton target = next == 0 ? OptionARadio : next == 1 ? OptionBRadio : OptionCRadio;
         target.Focus();
     }
 
@@ -176,6 +260,7 @@ public partial class SegmentedControl : UserControl
     {
         _hoverA = sender == OptionARadio;
         _hoverB = sender == OptionBRadio;
+        _hoverC = sender == OptionCRadio;
         UpdateLabelColors();
     }
 
@@ -185,9 +270,13 @@ public partial class SegmentedControl : UserControl
         {
             _hoverA = false;
         }
-        else
+        else if (sender == OptionBRadio)
         {
             _hoverB = false;
+        }
+        else
+        {
+            _hoverC = false;
         }
 
         UpdateLabelColors();

@@ -99,16 +99,28 @@ public partial class DesignViewModel : ObservableObject
 
     /// <summary>Set by the shell when a project opens; the composite's target State path and
     /// the canvas mapping depend on the family.</summary>
-    public bool IsDvd { get; private set; }
+    public OpticalDiscFamily Family { get; private set; } = OpticalDiscFamily.CompactDisc;
+
+    public bool IsCd => Family == OpticalDiscFamily.CompactDisc;
+
+    public bool IsDvd => Family == OpticalDiscFamily.Dvd;
+
+    public bool IsBluRay => Family == OpticalDiscFamily.BluRay;
 
     /// <summary>Family chip in the page header.</summary>
-    public string FamilyLabel => IsDvd ? "DVD" : "CD";
+    public string FamilyLabel => Family switch
+    {
+        OpticalDiscFamily.Dvd => "DVD",
+        OpticalDiscFamily.BluRay => "BD",
+        _ => "CD",
+    };
 
-    /// <summary>CD composes against the scheme's fixed image outer radius; DVD against the
-    /// generated outer radius, matching what the generation pages feed the engines.</summary>
-    public double CanvasOuterRadiusMm => IsDvd
-        ? ContentOuterRadiusMm
-        : CdDiscParameters.StandardImageOuterRadiusMm;
+    /// <summary>CD composes against the scheme's fixed image outer radius; DVD and BD
+    /// against the generated outer radius, matching what the generation pages feed the
+    /// engines.</summary>
+    public double CanvasOuterRadiusMm => IsCd
+        ? CdDiscParameters.StandardImageOuterRadiusMm
+        : ContentOuterRadiusMm;
 
     // Geometry snapshot: parsed from State with last-valid-value fallback so the canvas and
     // composer keep working while a field is mid-edit.
@@ -276,13 +288,14 @@ public partial class DesignViewModel : ObservableObject
     /// shell when geometry-affecting State properties change.</summary>
     public void RefreshGeometry()
     {
-        bool dvd = IsDvd;
-        double defaultInner = dvd ? 24.0 : 24.5;
-        double defaultOuter = dvd ? 58.0 : 56.8;
-        ContentInnerRadiusMm = ParseMm(
-            dvd ? _state.DvdInnerRadius : _state.CdInnerRadius, defaultInner);
-        ContentOuterRadiusMm = ParseMm(
-            dvd ? _state.DvdOuterRadius : _state.CdOuterRadius, defaultOuter);
+        (string innerText, string outerText, double defaultInner, double defaultOuter) = Family switch
+        {
+            OpticalDiscFamily.Dvd => (_state.DvdInnerRadius, _state.DvdOuterRadius, 24.0, 58.0),
+            OpticalDiscFamily.BluRay => (_state.BdInnerRadius, _state.BdOuterRadius, 24.0, 58.0),
+            _ => (_state.CdInnerRadius, _state.CdOuterRadius, 24.5, 56.8),
+        };
+        ContentInnerRadiusMm = ParseMm(innerText, defaultInner);
+        ContentOuterRadiusMm = ParseMm(outerText, defaultOuter);
         if (ContentOuterRadiusMm <= ContentInnerRadiusMm)
         {
             ContentOuterRadiusMm = defaultOuter;
@@ -291,11 +304,15 @@ public partial class DesignViewModel : ObservableObject
         CanvasChanged?.Invoke();
     }
 
-    public void SetDiscFamily(bool dvd)
+    public void SetDiscFamily(OpticalDiscFamily family)
     {
-        IsDvd = dvd;
+        Family = family;
+        OnPropertyChanged(nameof(Family));
+        OnPropertyChanged(nameof(IsCd));
         OnPropertyChanged(nameof(IsDvd));
+        OnPropertyChanged(nameof(IsBluRay));
         OnPropertyChanged(nameof(FamilyLabel));
+        OnPropertyChanged(nameof(CanvasOuterRadiusMm));
         RefreshGeometry();
     }
 
@@ -442,7 +459,12 @@ public partial class DesignViewModel : ObservableObject
             Directory.CreateDirectory(TempFiles.LivePreviewDirectory);
             outputPath = Path.Combine(
                 TempFiles.LivePreviewDirectory,
-                IsDvd ? "design-composite-dvd.png" : "design-composite-cd.png");
+                Family switch
+                {
+                    OpticalDiscFamily.Dvd => "design-composite-dvd.png",
+                    OpticalDiscFamily.BluRay => "design-composite-bd.png",
+                    _ => "design-composite-cd.png",
+                });
             try
             {
                 await StaWorker.RunAsync(() =>
@@ -486,7 +508,12 @@ public partial class DesignViewModel : ObservableObject
         Directory.CreateDirectory(TempFiles.LivePreviewDirectory);
         string outputPath = Path.Combine(
             TempFiles.LivePreviewDirectory,
-            IsDvd ? "design-composite-dvd-export.png" : "design-composite-cd-export.png");
+            Family switch
+            {
+                OpticalDiscFamily.Dvd => "design-composite-dvd-export.png",
+                OpticalDiscFamily.BluRay => "design-composite-bd-export.png",
+                _ => "design-composite-cd-export.png",
+            });
         await StaWorker.RunAsync(() =>
         {
             DesignComposer.Render(items, CanvasOuterRadiusMm, RingImageQuality.GenerationSize, outputPath);

@@ -40,7 +40,8 @@ internal static class AppCubicTests
             DvdDiscPresetDefinition definition = new(preset.Id, preset.DisplayName, preset.Description,
                 preset.TotalSectors, preset.InnerRadiusMm, preset.OuterRadiusMm,
                 PitchLinear: preset.PitchLinear, PitchQuadratic: preset.PitchQuadratic, PitchCubic: preset.PitchCubic);
-            DiscPresetJsonStore.Save(path, new(DiscPresetJsonStore.CurrentSchemaVersion, [], [definition]));
+            DiscPresetJsonStore.Save(path, new(
+                DiscPresetJsonStore.CurrentSchemaVersion, [], [definition], BluRayPresets: []));
             Require(DiscPresetJsonStore.Load(path).DvdPresets.Single() == definition,
                 "preset JSON round-trips all cubic coefficients");
             string legacy = File.ReadAllText(path);

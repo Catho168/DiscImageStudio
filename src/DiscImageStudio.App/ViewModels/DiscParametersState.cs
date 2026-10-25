@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.IO;
+using DiscImageStudio.BluRay;
 using DiscImageStudio.Cd;
 using DiscImageStudio.Core;
 using DiscImageStudio.Core.Calibration;
@@ -16,11 +17,13 @@ namespace DiscImageStudio.ViewModels;
 public partial class DiscParametersState : ObservableObject
 {
     private const string DefaultDvdVolumeLabel = "DISC_IMAGE";
+    private const string DefaultBluRayVolumeLabel = "BD_IMAGE";
 
     private readonly string _discPresetJsonPath = DiscPresetJsonStore.GetDefaultPath();
 
     private IReadOnlyList<CdDiscPreset> _cdPresets = [CdDiscPreset.Manual];
     private IReadOnlyList<DvdDiscPreset> _dvdPresets = [DvdDiscPreset.Manual];
+    private IReadOnlyList<BluRayDiscPreset> _bluRayPresets = [BluRayDiscPreset.Manual];
 
     private bool _isApplyingDiscPreset;
 
@@ -71,10 +74,27 @@ public partial class DiscParametersState : ObservableObject
     [ObservableProperty, NotifyPropertyChangedFor(nameof(DvdActualPitchSummary))] private string _dvdActualPitchQuadratic = "0";
     [ObservableProperty, NotifyPropertyChangedFor(nameof(DvdActualPitchSummary))] private string _dvdActualPitchCubic = "0";
 
+    // BD-R page / live preview shared fields. Channel-bit length (74.5 nm), start angle
+    // (0°) and single-layer capacity are fixed physical constants of the current module.
+    [ObservableProperty] private string _bdImagePath = string.Empty;
+    [ObservableProperty] private string _bdIsoPath = string.Empty;
+    [ObservableProperty] private string _bdOutputPath = string.Empty;
+    [ObservableProperty] private string _bdDataDirectory = string.Empty;
+    [ObservableProperty] private string _bdVolumeLabel = DefaultBluRayVolumeLabel;
+    [ObservableProperty] private string _bdTotalSectors = "12219392";
+    [ObservableProperty] private string _bdInnerRadius = "24.0";
+    [ObservableProperty] private string _bdOuterRadius = "58.0";
+    [ObservableProperty] private string _bdPreviewSize = "2048";
+    [ObservableProperty] private string _bdActualInnerRadius = "24.0";
+    [ObservableProperty] private string _bdActualOuterRadius = "58.0";
+    [ObservableProperty] private bool _bdInvertMapping;
+
     [ObservableProperty] private string _cdPresetHint = string.Empty;
     [ObservableProperty] private string _dvdPresetHint = string.Empty;
+    [ObservableProperty] private string _bluRayPresetHint = string.Empty;
     [ObservableProperty] private CdDiscPreset _selectedCdPreset = CdDiscPreset.Manual;
     [ObservableProperty] private DvdDiscPreset _selectedDvdPreset = DvdDiscPreset.Manual;
+    [ObservableProperty] private BluRayDiscPreset _selectedBluRayPreset = BluRayDiscPreset.Manual;
 
     // Tone mapping shared by both families. New projects open at 75% dither: enough to keep
     // midtones at viewing distance without the grain full strength adds. A project file
@@ -109,6 +129,9 @@ public partial class DiscParametersState : ObservableObject
     /// <summary>DVD's dispersion pool has only the black and white textures; a CD project's
     /// 4-level setting must not leak into a DVD job.</summary>
     public ToneProfile DvdTone => Tone with { Levels = ToneProfile.TwoLevels };
+
+    /// <summary>BD runs a single binary pixel pipeline; intermediate CD levels do not apply.</summary>
+    public ToneProfile BluRayTone => Tone with { Levels = ToneProfile.TwoLevels };
 
     public string ToneDitherText => $"{ToneDitherStrength * 100:0}%";
 
@@ -149,6 +172,8 @@ public partial class DiscParametersState : ObservableObject
 
     public IReadOnlyList<DvdDiscPreset> DvdPresets => _dvdPresets;
 
+    public IReadOnlyList<BluRayDiscPreset> BluRayPresets => _bluRayPresets;
+
     /// <summary>
     /// Loads built-in + user presets (LoadBuiltIn + LoadOrCreate + Merge). Throws when the
     /// JSON cannot be parsed; the caller keeps the previously valid lists in that case.
@@ -180,7 +205,8 @@ public partial class DiscParametersState : ObservableObject
                 DiscPresetJsonStore.CurrentSchemaVersion,
                 [],
                 [],
-                FallbackLanguage: "zh-CN");
+                FallbackLanguage: "zh-CN",
+                BluRayPresets: []);
             ApplyPresetDocuments(MergePresets(builtIn, emptyUser));
             return $"用户预设 JSON 无法加载，已继续使用程序内置参数。\n\n{exception.Message}\n\n文件位置：\n{_discPresetJsonPath}";
         }
@@ -206,7 +232,7 @@ public partial class DiscParametersState : ObservableObject
     /// the caller surfaces the message.
     /// </summary>
     public string AddUserPreset(
-        bool isDvd,
+        OpticalDiscFamily family,
         string displayName,
         string description,
         double innerRadiusMm,
@@ -214,7 +240,8 @@ public partial class DiscParametersState : ObservableObject
         long sectors,
         double pitchLinear = 0,
         double pitchQuadratic = 0,
-        double pitchCubic = 0)
+        double pitchCubic = 0,
+        bool invertMapping = false)
     {
         string name = displayName.Trim();
         if (name.Length == 0)
@@ -225,10 +252,17 @@ public partial class DiscParametersState : ObservableObject
         EnsurePresetsJsonExists();
         DiscPresetJsonDocument user = DiscPresetJsonStore.Load(_discPresetJsonPath);
         DateTime now = DateTime.Now;
-        string id = $"user-{(isDvd ? "dvd" : "cd")}-{now:yyyyMMdd-HHmmss}-{Guid.NewGuid().ToString("N")[..4]}";
+        string familyToken = family switch
+        {
+            OpticalDiscFamily.Dvd => "dvd",
+            OpticalDiscFamily.BluRay => "bd",
+            _ => "cd",
+        };
+        string id = $"user-{familyToken}-{now:yyyyMMdd-HHmmss}-{Guid.NewGuid().ToString("N")[..4]}";
         string note = description.Trim();
-        DiscPresetJsonDocument updated = isDvd
-            ? user with
+        DiscPresetJsonDocument updated = family switch
+        {
+            OpticalDiscFamily.Dvd => user with
             {
                 SchemaVersion = DiscPresetJsonStore.CurrentSchemaVersion,
                 DvdPresets =
@@ -245,8 +279,24 @@ public partial class DiscParametersState : ObservableObject
                         PitchQuadratic: pitchQuadratic,
                         PitchCubic: pitchCubic),
                 ],
-            }
-            : user with
+            },
+            OpticalDiscFamily.BluRay => user with
+            {
+                SchemaVersion = DiscPresetJsonStore.CurrentSchemaVersion,
+                BluRayPresets =
+                [
+                    .. user.BluRayPresets ?? [],
+                    new BluRayDiscPresetDefinition(
+                        id,
+                        name,
+                        note,
+                        checked((uint)sectors),
+                        innerRadiusMm,
+                        outerRadiusMm,
+                        invertMapping),
+                ],
+            },
+            _ => user with
             {
                 SchemaVersion = DiscPresetJsonStore.CurrentSchemaVersion,
                 CdPresets =
@@ -260,14 +310,15 @@ public partial class DiscParametersState : ObservableObject
                         innerRadiusMm,
                         outerRadiusMm),
                 ],
-            };
+            },
+        };
 
         DiscPresetJsonStore.Save(_discPresetJsonPath, updated);
         LoadPresets();
         return displayName;
     }
 
-    private (IReadOnlyList<CdDiscPreset> Cd, IReadOnlyList<DvdDiscPreset> Dvd) MergePresets(
+    private (IReadOnlyList<CdDiscPreset> Cd, IReadOnlyList<DvdDiscPreset> Dvd, IReadOnlyList<BluRayDiscPreset> BluRay) MergePresets(
         DiscPresetJsonDocument builtIn,
         DiscPresetJsonDocument user)
     {
@@ -300,15 +351,32 @@ public partial class DiscParametersState : ObservableObject
                 PitchCubic: value.PitchCubic))
             .ToList();
         dvdPresets.Add(DvdDiscPreset.Manual);
-        return (cdPresets, dvdPresets);
+
+        List<BluRayDiscPreset> bluRayPresets = (merged.BluRayPresets ?? [])
+            .Select(value => new BluRayDiscPreset(
+                value.Id,
+                value.DisplayName,
+                1,
+                new BluRayDiscParameters(
+                    value.TotalSectors,
+                    1,
+                    value.InnerRadiusMm,
+                    value.OuterRadiusMm),
+                value.InvertMapping))
+            .ToList();
+        bluRayPresets.Add(BluRayDiscPreset.Manual);
+        return (cdPresets, dvdPresets, bluRayPresets);
     }
 
-    private void ApplyPresetDocuments((IReadOnlyList<CdDiscPreset> Cd, IReadOnlyList<DvdDiscPreset> Dvd) presets)
+    private void ApplyPresetDocuments(
+        (IReadOnlyList<CdDiscPreset> Cd, IReadOnlyList<DvdDiscPreset> Dvd, IReadOnlyList<BluRayDiscPreset> BluRay) presets)
     {
         _cdPresets = presets.Cd;
         _dvdPresets = presets.Dvd;
+        _bluRayPresets = presets.BluRay;
         OnPropertyChanged(nameof(CdPresets));
         OnPropertyChanged(nameof(DvdPresets));
+        OnPropertyChanged(nameof(BluRayPresets));
     }
 
     /// <summary>Initial selection: the first JSON preset for each disc family.</summary>
@@ -316,6 +384,7 @@ public partial class DiscParametersState : ObservableObject
     {
         ApplyCdDiscPreset(_cdPresets[0]);
         ApplyDvdDiscPreset(_dvdPresets[0]);
+        ApplyBluRayDiscPreset(_bluRayPresets[0]);
     }
 
     // Only the four generation fields per disc family switch the preset to "custom"
@@ -336,6 +405,14 @@ public partial class DiscParametersState : ObservableObject
     partial void OnDvdPitchQuadraticChanged(string value) => OnDvdParameterEdited(presetField: true);
     partial void OnDvdPitchCubicChanged(string value) => OnDvdParameterEdited(presetField: true);
 
+    partial void OnBdTotalSectorsChanged(string value) => OnBluRayParameterEdited();
+
+    partial void OnBdInnerRadiusChanged(string value) => OnBluRayParameterEdited();
+
+    partial void OnBdOuterRadiusChanged(string value) => OnBluRayParameterEdited();
+
+    partial void OnBdInvertMappingChanged(bool value) => OnBluRayParameterEdited();
+
     /// <summary>Writing through the selector applies the preset, mirroring SelectionChanged.</summary>
     partial void OnSelectedCdPresetChanged(CdDiscPreset value)
     {
@@ -350,6 +427,14 @@ public partial class DiscParametersState : ObservableObject
         if (!_isApplyingDiscPreset)
         {
             ApplyDvdDiscPreset(value);
+        }
+    }
+
+    partial void OnSelectedBluRayPresetChanged(BluRayDiscPreset value)
+    {
+        if (!_isApplyingDiscPreset)
+        {
+            ApplyBluRayDiscPreset(value);
         }
     }
 
@@ -371,6 +456,16 @@ public partial class DiscParametersState : ObservableObject
         }
 
         SelectedDvdPreset = DvdDiscPreset.Manual;
+    }
+
+    private void OnBluRayParameterEdited()
+    {
+        if (_isApplyingDiscPreset || SelectedBluRayPreset.IsCustom)
+        {
+            return;
+        }
+
+        SelectedBluRayPreset = BluRayDiscPreset.Manual;
     }
 
     public void ApplyCdDiscPreset(CdDiscPreset preset)
@@ -410,6 +505,29 @@ public partial class DiscParametersState : ObservableObject
                 DvdPitchLinear = FormatPresetNumber(preset.PitchLinear);
                 DvdPitchQuadratic = FormatPresetNumber(preset.PitchQuadratic);
                 DvdPitchCubic = FormatPresetNumber(preset.PitchCubic);
+            }
+        }
+        finally
+        {
+            _isApplyingDiscPreset = previous;
+        }
+    }
+
+    public void ApplyBluRayDiscPreset(BluRayDiscPreset preset)
+    {
+        bool previous = _isApplyingDiscPreset;
+        _isApplyingDiscPreset = true;
+        try
+        {
+            SelectedBluRayPreset = preset;
+            BluRayPresetHint = preset.IsCustom ? string.Empty : $"{preset.DisplayName} · 单层";
+            if (!preset.IsCustom)
+            {
+                BluRayDiscParameters geometry = preset.CreateParameters();
+                BdTotalSectors = geometry.TotalSectors.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                BdInnerRadius = FormatPresetNumber(geometry.InnerRadiusMm);
+                BdOuterRadius = FormatPresetNumber(geometry.OuterRadiusMm);
+                BdInvertMapping = preset.InvertMapping;
             }
         }
         finally

@@ -146,6 +146,7 @@ static void TestDiscPresets()
     DiscPresetJsonDocument builtIn = DiscPresetJsonStore.LoadBuiltIn();
     Equal(4, builtIn.CdPresets.Count, "built-in CD preset count");
     Equal(3, builtIn.DvdPresets.Count, "built-in DVD preset count");
+    Equal(2, builtIn.BluRayPresets?.Count, "built-in Blu-ray preset count");
     Equal("zh-CN", builtIn.FallbackLanguage!, "built-in preset fallback language");
     True(
         builtIn.CdPresets.All(value =>
@@ -165,8 +166,14 @@ static void TestDiscPresets()
         builtIn.DvdPresets.Count,
         builtIn.DvdPresets.Select(value => value.Id).Distinct(StringComparer.Ordinal).Count(),
         "DVD preset IDs are unique");
+    True(
+        builtIn.BluRayPresets!.All(value =>
+            !string.IsNullOrWhiteSpace(value.DisplayName)
+            && value.TotalSectors % ProjectDocument.BluRaySectorsPerCluster == 0),
+        "built-in Blu-ray presets carry 32-sector-aligned geometry");
     True(CdDiscPreset.Manual.IsCustom, "CD manual state is separate from JSON presets");
     True(DvdDiscPreset.Manual.IsCustom, "DVD manual state is separate from JSON presets");
+    True(BluRayDiscPreset.Manual.IsCustom, "Blu-ray manual state is separate from JSON presets");
 
     double cdVelocity = CdDiscParameters.StandardLinearVelocityMmPerSecond;
     True(
@@ -184,6 +191,15 @@ static void TestDiscPresets()
     {
         new DvdStreamingOptions(
             preset.TotalSectors,
+            preset.InnerRadiusMm,
+            preset.OuterRadiusMm).Validate();
+    }
+
+    foreach (BluRayDiscPresetDefinition preset in builtIn.BluRayPresets!)
+    {
+        new DiscImageStudio.BluRay.BluRayDiscParameters(
+            preset.TotalSectors,
+            1,
             preset.InnerRadiusMm,
             preset.OuterRadiusMm).Validate();
     }
@@ -235,6 +251,7 @@ static void TestDiscPresetJson()
         True(File.Exists(path), "user preset JSON is created on first load");
         Equal(1, created.CdPresets.Count, "initial user CD preset count");
         Equal(1, created.DvdPresets.Count, "initial user DVD preset count");
+        Equal(1, created.BluRayPresets?.Count, "initial user Blu-ray preset count");
         True(
             File.ReadAllText(path).Contains("自定义 DVD 参数", StringComparison.Ordinal),
             "initial user JSON keeps custom preset names readable");
@@ -255,6 +272,7 @@ static void TestDiscPresetJson()
         DiscPresetJsonDocument merged = DiscPresetJsonStore.Merge(builtIn, created);
         Equal(5, merged.CdPresets.Count, "merged CD preset count");
         Equal(4, merged.DvdPresets.Count, "merged DVD preset count");
+        Equal(3, merged.BluRayPresets?.Count, "merged Blu-ray preset count");
         DvdDiscPresetDefinition verbatim = merged.DvdPresets.Single(
             value => value.Id == "verbatim-dvd-r-azo-43533");
         Equal(2_297_888U, verbatim.TotalSectors, "merged Verbatim DVD sectors");
@@ -401,6 +419,46 @@ static void TestDiscPresetJson()
             133.3,
             interim.DvdPresets[0].ChannelBitLengthNm,
             "interim schema without the field falls back to the DVD standard");
+        Equal(
+            2,
+            DiscPresetJsonStore.Merge(builtIn, interim).BluRayPresets?.Count,
+            "pre-BD schema still receives the built-in Blu-ray catalog");
+
+        File.WriteAllText(
+            path,
+            """
+            {
+              "schemaVersion": 4,
+              "cdPresets": [],
+              "dvdPresets": []
+            }
+            """);
+        Throws<InvalidDataException>(
+            () => DiscPresetJsonStore.Load(path),
+            "schema 4 without a Blu-ray catalog is rejected");
+
+        File.WriteAllText(
+            path,
+            """
+            {
+              "schemaVersion": 4,
+              "cdPresets": [],
+              "dvdPresets": [],
+              "bluRayPresets": [
+                {
+                  "id": "bad-bd",
+                  "displayName": "非法蓝光扇区",
+                  "description": "扇区数必须按 32 对齐。",
+                  "totalSectors": 1000,
+                  "innerRadiusMm": 24.0,
+                  "outerRadiusMm": 58.0
+                }
+              ]
+            }
+            """);
+        Throws<InvalidDataException>(
+            () => DiscPresetJsonStore.Load(path),
+            "Blu-ray preset sectors must align to 32");
 
         File.WriteAllText(
             path,

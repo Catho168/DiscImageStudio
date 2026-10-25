@@ -38,6 +38,19 @@ public sealed record DvdDiscPresetDefinition(
     double PitchQuadratic = 0,
     double PitchCubic = 0);
 
+public sealed record BluRayDiscPresetDefinition(
+    string Id,
+    string DisplayName,
+    string Description,
+    uint TotalSectors,
+    double InnerRadiusMm,
+    double OuterRadiusMm,
+    bool InvertMapping = false,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? DisplayNameResourceKey = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? DescriptionResourceKey = null);
+
 public sealed record DiscPresetJsonDocument(
     int SchemaVersion,
     IReadOnlyList<CdDiscPresetDefinition> CdPresets,
@@ -47,16 +60,22 @@ public sealed record DiscPresetJsonDocument(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     IReadOnlyList<string>? DisabledDvdPresetIds = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    string? FallbackLanguage = null);
+    string? FallbackLanguage = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<BluRayDiscPresetDefinition>? BluRayPresets = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<string>? DisabledBluRayPresetIds = null);
 
 public static class DiscPresetJsonStore
 {
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 4;
 
     /// <summary>Schema 3 was written by a build that dropped <c>linearVelocityMmPerSecond</c>
-    /// and <c>channelBitLengthNm</c> from the preset shape. Those files stay readable so a
-    /// version bump cannot strand presets a user already saved.</summary>
+    /// and <c>channelBitLengthNm</c> from the preset shape. Schema 2 predates the BD catalog.
+    /// Both stay readable so a version bump cannot strand presets a user already saved.
+    /// Schema 4 adds <c>bluRayPresets</c>.</summary>
     private const int InterimSchemaVersion = 3;
+    private const int LegacySchemaVersion = 2;
 
     public const string FileName = "disc-presets.json";
 
@@ -112,7 +131,18 @@ public static class DiscPresetJsonStore
                     133.3),
             ],
             DisabledCdPresetIds: [],
-            DisabledDvdPresetIds: []);
+            DisabledDvdPresetIds: [],
+            BluRayPresets:
+            [
+                new BluRayDiscPresetDefinition(
+                    "user-custom-bd",
+                    "自定义蓝光参数",
+                    "用户预设，可直接修改或复制后添加更多蓝光参数。",
+                    12_219_392,
+                    24.0,
+                    58.0),
+            ],
+            DisabledBluRayPresetIds: []);
 
     public static DiscPresetJsonDocument LoadOrCreate(
         string path,
@@ -151,6 +181,11 @@ public static class DiscPresetJsonStore
         HashSet<string> disabledDvdIds = new(
             user.DisabledDvdPresetIds ?? [],
             StringComparer.Ordinal);
+        HashSet<string> disabledBluRayIds = new(
+            user.DisabledBluRayPresetIds ?? [],
+            StringComparer.Ordinal);
+        IReadOnlyList<BluRayDiscPresetDefinition> builtInBluRay = builtIn.BluRayPresets ?? [];
+        IReadOnlyList<BluRayDiscPresetDefinition> userBluRay = user.BluRayPresets ?? [];
         DiscPresetJsonDocument merged = new(
             CurrentSchemaVersion,
             MergePresets(
@@ -163,7 +198,13 @@ public static class DiscPresetJsonStore
                 user.DvdPresets,
                 disabledDvdIds,
                 value => value.Id),
-            FallbackLanguage: builtIn.FallbackLanguage);
+            FallbackLanguage: builtIn.FallbackLanguage,
+            BluRayPresets: MergePresets(
+                builtInBluRay,
+                userBluRay,
+                disabledBluRayIds,
+                value => value.Id),
+            DisabledBluRayPresetIds: null);
         Validate(merged);
         return merged;
     }
@@ -172,7 +213,14 @@ public static class DiscPresetJsonStore
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         ArgumentNullException.ThrowIfNull(document);
-        Validate(document);
+        // Older schemas are migrated on write; the BD catalog starts empty until merged
+        // with the built-in presets on the next load.
+        DiscPresetJsonDocument migrated = document with
+        {
+            SchemaVersion = CurrentSchemaVersion,
+            BluRayPresets = document.BluRayPresets ?? [],
+        };
+        Validate(migrated);
 
         string fullPath = Path.GetFullPath(path);
         string? directory = Path.GetDirectoryName(fullPath);
@@ -191,7 +239,7 @@ public static class DiscPresetJsonStore
                 FileAccess.Write,
                 FileShare.None))
             {
-                JsonSerializer.Serialize(stream, document, JsonOptions);
+                JsonSerializer.Serialize(stream, migrated, JsonOptions);
                 stream.Flush(flushToDisk: true);
             }
 
@@ -209,13 +257,17 @@ public static class DiscPresetJsonStore
     public static void Validate(DiscPresetJsonDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);
-        if (document.SchemaVersion != CurrentSchemaVersion
-            && document.SchemaVersion != InterimSchemaVersion)
+        if (document.SchemaVersion is not (LegacySchemaVersion or InterimSchemaVersion or CurrentSchemaVersion))
         {
             throw new InvalidDataException(
                 $"不支持 schemaVersion={document.SchemaVersion}；当前支持 "
-                + $"{CurrentSchemaVersion} 与 {InterimSchemaVersion}。请把顶层 schemaVersion 改为受支持的值，"
+                + $"{LegacySchemaVersion}、{InterimSchemaVersion} 与 {CurrentSchemaVersion}。请把顶层 schemaVersion 改为受支持的值，"
                 + "或删除该文件让程序重新生成分层配置模板。");
+        }
+
+        if (document.SchemaVersion == CurrentSchemaVersion && document.BluRayPresets is null)
+        {
+            throw new InvalidDataException("schemaVersion 4 必须包含 bluRayPresets 列表。");
         }
 
         if (document.CdPresets is null)
@@ -230,8 +282,10 @@ public static class DiscPresetJsonStore
 
         ValidateUniqueIds(document.CdPresets.Select(value => value?.Id), "CD");
         ValidateUniqueIds(document.DvdPresets.Select(value => value?.Id), "DVD");
+        ValidateUniqueIds((document.BluRayPresets ?? []).Select(value => value?.Id), "Blu-ray");
         ValidateUniqueIds(document.DisabledCdPresetIds ?? [], "disabled CD");
         ValidateUniqueIds(document.DisabledDvdPresetIds ?? [], "disabled DVD");
+        ValidateUniqueIds(document.DisabledBluRayPresetIds ?? [], "disabled Blu-ray");
         if (document.FallbackLanguage is not null)
         {
             ValidateText(document.FallbackLanguage, "document", "fallbackLanguage");
@@ -245,6 +299,11 @@ public static class DiscPresetJsonStore
         foreach (string id in document.DisabledDvdPresetIds ?? [])
         {
             ValidateText(id, "disabled DVD", "id");
+        }
+
+        foreach (string id in document.DisabledBluRayPresetIds ?? [])
+        {
+            ValidateText(id, "disabled Blu-ray", "id");
         }
 
         foreach (CdDiscPresetDefinition? preset in document.CdPresets)
@@ -316,6 +375,36 @@ public static class DiscPresetJsonStore
             catch (ArgumentException exception)
             {
                 throw new InvalidDataException($"预设 '{preset.Id}' 的轨距系数无效：{exception.Message}", exception);
+            }
+        }
+
+        foreach (BluRayDiscPresetDefinition? preset in document.BluRayPresets ?? [])
+        {
+            if (preset is null)
+            {
+                throw new InvalidDataException("蓝光预设不能是 null。");
+            }
+
+            ValidateText(preset.Id, "Blu-ray", "id");
+            ValidateText(preset.DisplayName, preset.Id, "displayName");
+            ValidateText(preset.Description, preset.Id, "description");
+            ValidateOptionalText(preset.DisplayNameResourceKey, preset.Id, "displayNameResourceKey");
+            ValidateOptionalText(preset.DescriptionResourceKey, preset.Id, "descriptionResourceKey");
+            ValidateReservedId(preset.Id, "Blu-ray");
+            if (preset.TotalSectors == 0
+                || preset.TotalSectors > ProjectDocument.BluRaySectorsPerLayer
+                || preset.TotalSectors % ProjectDocument.BluRaySectorsPerCluster != 0)
+            {
+                throw InvalidValue(
+                    preset.Id,
+                    "totalSectors",
+                    $"必须是 32 的倍数且不超过 {ProjectDocument.BluRaySectorsPerLayer:N0}");
+            }
+
+            ValidateRadiusRange(preset.Id, preset.InnerRadiusMm, preset.OuterRadiusMm);
+            if (preset.OuterRadiusMm > 60)
+            {
+                throw InvalidValue(preset.Id, "outerRadiusMm", "不能超过 60");
             }
         }
     }

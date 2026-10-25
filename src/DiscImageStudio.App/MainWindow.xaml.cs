@@ -9,6 +9,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using DiscImageStudio.Controls;
+using DiscImageStudio.Core;
 using DiscImageStudio.Services;
 using DiscImageStudio.ViewModels;
 using DiscImageStudio.Views;
@@ -639,9 +640,9 @@ public partial class MainWindow : Window
         if (request.EditMode && _shell.CurrentProject is { } project)
         {
             // Prefill from State so calibration-updated geometry shows its live values.
-            viewModel.IsDvd = project.IsDvd;
+            viewModel.Family = project.Family;
             viewModel.Name = project.Name;
-            if (project.IsDvd)
+            if (project.Family == OpticalDiscFamily.Dvd)
             {
                 viewModel.InnerRadiusText = _shell.State.DvdInnerRadius;
                 viewModel.OuterRadiusText = _shell.State.DvdOuterRadius;
@@ -649,6 +650,12 @@ public partial class MainWindow : Window
                 viewModel.PitchLinearText = _shell.State.DvdPitchLinear;
                 viewModel.PitchQuadraticText = _shell.State.DvdPitchQuadratic;
                 viewModel.PitchCubicText = _shell.State.DvdPitchCubic;
+            }
+            else if (project.Family == OpticalDiscFamily.BluRay)
+            {
+                viewModel.InnerRadiusText = _shell.State.BdInnerRadius;
+                viewModel.OuterRadiusText = _shell.State.BdOuterRadius;
+                viewModel.SectorsText = _shell.State.BdTotalSectors;
             }
             else
             {

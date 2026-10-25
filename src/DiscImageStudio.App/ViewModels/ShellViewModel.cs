@@ -354,7 +354,7 @@ public partial class ShellViewModel : ObservableObject
 
     /// <summary>Opens the project dialog (create mode) and, on confirm, saves and opens the
     /// new project. Optionally preselects a family/template from a home tile.</summary>
-    private async Task RequestNewProjectAsync(bool? preselectDvd, string? presetId)
+    private async Task RequestNewProjectAsync(OpticalDiscFamily? preselectFamily, string? presetId)
     {
         if (_isBusy)
         {
@@ -368,17 +368,25 @@ public partial class ShellViewModel : ObservableObject
         }
 
         ProjectDialogResult? result = ShowProjectDialogHandler?.Invoke(
-            new ProjectDialogRequest(EditMode: false, preselectDvd, presetId));
+            new ProjectDialogRequest(EditMode: false, preselectFamily, presetId));
         if (result is null)
         {
             return;
         }
 
         DateTimeOffset now = DateTimeOffset.Now;
+        string family = result.Family switch
+        {
+            OpticalDiscFamily.Dvd => ProjectDocument.DvdFamily,
+            OpticalDiscFamily.BluRay => ProjectDocument.BluRayFamily,
+            _ => ProjectDocument.CdFamily,
+        };
+        bool compactDisc = result.Family == OpticalDiscFamily.CompactDisc;
+        bool bluRay = result.Family == OpticalDiscFamily.BluRay;
         ProjectDocument document = new(
             ProjectJsonStore.CurrentSchemaVersion,
             result.Name,
-            result.IsDvd ? ProjectDocument.DvdFamily : ProjectDocument.CdFamily,
+            family,
             new ProjectGeometry(
                 result.InnerRadiusMm,
                 result.OuterRadiusMm,
@@ -390,17 +398,17 @@ public partial class ShellViewModel : ObservableObject
             new ProjectOutputs(
                 Path.Combine(
                     Path.GetDirectoryName(result.SavePath) ?? string.Empty,
-                    result.Name
-                    + (result.IsDvd ? ".iso" : ".wav")),
-                WriteCue: true,
+                    result.Name + (compactDisc ? ".wav" : ".iso")),
+                WriteCue: compactDisc,
                 DataDirectory: string.Empty,
-                VolumeLabel: "DISC_IMAGE",
-                Interleave: true),
+                VolumeLabel: bluRay ? "BD_IMAGE" : "DISC_IMAGE",
+                Interleave: compactDisc),
             CalibrationSessionPath: null,
             ThumbnailPngBase64: null,
             now,
             now,
-            Tone: ToneProfile.Photo);
+            Tone: ToneProfile.Photo,
+            BluRay: bluRay ? new ProjectBluRaySettings(result.BluRayInvertMapping) : null);
         try
         {
             ProjectJsonStore.Save(result.SavePath, document);
@@ -418,8 +426,8 @@ public partial class ShellViewModel : ObservableObject
 
     /// <summary>Home page template cards: opens the create dialog with a family/template
     /// preselected.</summary>
-    internal Task RequestNewProjectFromTemplateAsync(bool? preselectDvd, string? presetId)
-        => RequestNewProjectAsync(preselectDvd, presetId);
+    internal Task RequestNewProjectFromTemplateAsync(OpticalDiscFamily? preselectFamily, string? presetId)
+        => RequestNewProjectAsync(preselectFamily, presetId);
 
     private async Task OpenProjectAsync()
     {
@@ -481,8 +489,8 @@ public partial class ShellViewModel : ObservableObject
             ProjectFilePath = Path.GetFullPath(path);
             IsProjectOpen = true;
             IsDirty = false;
-            Design.SetDiscFamily(document.IsDvd);
-            LivePreview.SetDiscType(document.IsDvd, clearResult: true);
+            Design.SetDiscFamily(document.Family);
+            LivePreview.SetDiscType(document.Family, clearResult: true);
             ProjectSession.ApplyToState(document, State);
             Design.LoadLayers(document.Layers);
         }
@@ -509,7 +517,7 @@ public partial class ShellViewModel : ObservableObject
         }
 
         ProjectDialogResult? result = ShowProjectDialogHandler?.Invoke(
-            new ProjectDialogRequest(EditMode: true, PreselectDvd: CurrentProject!.IsDvd));
+            new ProjectDialogRequest(EditMode: true, PreselectFamily: CurrentProject!.Family));
         if (result is null)
         {
             return;
@@ -520,20 +528,26 @@ public partial class ShellViewModel : ObservableObject
         {
             // Geometry writes flow through State so every page (and the dirty marker) sees
             // them; the name lives only in the document.
-            if (CurrentProject!.IsDvd)
+            switch (CurrentProject!.Family)
             {
-                State.DvdInnerRadius = ProjectSession.Format(result.InnerRadiusMm);
-                State.DvdOuterRadius = ProjectSession.Format(result.OuterRadiusMm);
-                State.DvdTotalSectors = result.Sectors.ToString(System.Globalization.CultureInfo.InvariantCulture);
-                State.DvdPitchLinear = ProjectSession.Format(result.PitchLinear);
-                State.DvdPitchQuadratic = ProjectSession.Format(result.PitchQuadratic);
-                State.DvdPitchCubic = ProjectSession.Format(result.PitchCubic);
-            }
-            else
-            {
-                State.CdInnerRadius = ProjectSession.Format(result.InnerRadiusMm);
-                State.CdOuterRadius = ProjectSession.Format(result.OuterRadiusMm);
-                State.CdSectors = result.Sectors.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                case OpticalDiscFamily.Dvd:
+                    State.DvdInnerRadius = ProjectSession.Format(result.InnerRadiusMm);
+                    State.DvdOuterRadius = ProjectSession.Format(result.OuterRadiusMm);
+                    State.DvdTotalSectors = result.Sectors.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    State.DvdPitchLinear = ProjectSession.Format(result.PitchLinear);
+                    State.DvdPitchQuadratic = ProjectSession.Format(result.PitchQuadratic);
+                    State.DvdPitchCubic = ProjectSession.Format(result.PitchCubic);
+                    break;
+                case OpticalDiscFamily.BluRay:
+                    State.BdInnerRadius = ProjectSession.Format(result.InnerRadiusMm);
+                    State.BdOuterRadius = ProjectSession.Format(result.OuterRadiusMm);
+                    State.BdTotalSectors = result.Sectors.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    break;
+                default:
+                    State.CdInnerRadius = ProjectSession.Format(result.InnerRadiusMm);
+                    State.CdOuterRadius = ProjectSession.Format(result.OuterRadiusMm);
+                    State.CdSectors = result.Sectors.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    break;
             }
 
             CurrentProject = CurrentProject with { Name = result.Name };
@@ -599,6 +613,7 @@ public partial class ShellViewModel : ObservableObject
             Geometry = ProjectSession.CaptureGeometry(current, State),
             Outputs = ProjectSession.CaptureOutputs(current, State),
             Tone = ProjectSession.CaptureTone(current, State),
+            BluRay = ProjectSession.CaptureBluRay(current, State),
             Layers = Design.CaptureLayers(),
             ThumbnailPngBase64 = await Design.RenderThumbnailAsync() ?? current.ThumbnailPngBase64,
             ModifiedUtc = DateTimeOffset.Now,
@@ -649,6 +664,7 @@ public partial class ShellViewModel : ObservableObject
         Design.ClearLayers();
         State.CdImagePath = string.Empty;
         State.DvdImagePath = string.Empty;
+        State.BdImagePath = string.Empty;
     }
 
     private void MarkProjectDirty()
@@ -669,13 +685,17 @@ public partial class ShellViewModel : ObservableObject
         _isWritingComposite = true;
         try
         {
-            if (CurrentProject!.IsDvd)
+            switch (CurrentProject!.Family)
             {
-                State.DvdImagePath = compositePath ?? string.Empty;
-            }
-            else
-            {
-                State.CdImagePath = compositePath ?? string.Empty;
+                case OpticalDiscFamily.Dvd:
+                    State.DvdImagePath = compositePath ?? string.Empty;
+                    break;
+                case OpticalDiscFamily.BluRay:
+                    State.BdImagePath = compositePath ?? string.Empty;
+                    break;
+                default:
+                    State.CdImagePath = compositePath ?? string.Empty;
+                    break;
             }
         }
         finally
@@ -706,6 +726,14 @@ public partial class ShellViewModel : ObservableObject
         nameof(DiscParametersState.DvdOutputPath),
         nameof(DiscParametersState.DvdDataDirectory),
         nameof(DiscParametersState.DvdVolumeLabel),
+        nameof(DiscParametersState.BdInnerRadius),
+        nameof(DiscParametersState.BdOuterRadius),
+        nameof(DiscParametersState.BdTotalSectors),
+        nameof(DiscParametersState.BdImagePath),
+        nameof(DiscParametersState.BdOutputPath),
+        nameof(DiscParametersState.BdDataDirectory),
+        nameof(DiscParametersState.BdVolumeLabel),
+        nameof(DiscParametersState.BdInvertMapping),
         nameof(DiscParametersState.ToneDitherStrength),
         nameof(DiscParametersState.ToneLevels),
         nameof(DiscParametersState.ToneBrightness),
@@ -720,7 +748,9 @@ public partial class ShellViewModel : ObservableObject
         if (e.PropertyName is nameof(DiscParametersState.CdInnerRadius)
             or nameof(DiscParametersState.CdOuterRadius)
             or nameof(DiscParametersState.DvdInnerRadius)
-            or nameof(DiscParametersState.DvdOuterRadius))
+            or nameof(DiscParametersState.DvdOuterRadius)
+            or nameof(DiscParametersState.BdInnerRadius)
+            or nameof(DiscParametersState.BdOuterRadius))
         {
             Design?.RefreshGeometry();
         }
@@ -1002,13 +1032,17 @@ public partial class ShellViewModel : ObservableObject
             return;
         }
 
-        if (CurrentProject?.IsDvd == true)
+        switch (CurrentProject?.Family)
         {
-            State.DvdIsoPath = _lastOutputPath;
-        }
-        else
-        {
-            State.CdTrackPath = _lastOutputPath;
+            case OpticalDiscFamily.Dvd:
+                State.DvdIsoPath = _lastOutputPath;
+                break;
+            case OpticalDiscFamily.BluRay:
+                State.BdIsoPath = _lastOutputPath;
+                break;
+            default:
+                State.CdTrackPath = _lastOutputPath;
+                break;
         }
 
         LivePreview.SetPreviewMode(calibration: false, clearResult: true);

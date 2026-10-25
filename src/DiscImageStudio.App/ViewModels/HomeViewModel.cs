@@ -3,7 +3,9 @@ using System.ComponentModel;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using DiscImageStudio.BluRay;
 using DiscImageStudio.Cd;
+using DiscImageStudio.Core;
 using DiscImageStudio.Dvd;
 using DiscImageStudio.Services;
 using MahApps.Metro.IconPacks;
@@ -133,7 +135,7 @@ public partial class HomeViewModel : ObservableObject
                 preset.DisplayName,
                 $"{preset.TotalSectors:N0} 扇区 · {preset.InnerRadiusMm:0.#}–{preset.OuterRadiusMm:0.#} mm");
             Templates.Add(new HomeTemplateTile(
-                preset.Id, title, detail, PackIconLucideKind.Disc, IsDvd: true, IsBlank: false));
+                preset.Id, title, detail, PackIconLucideKind.Disc, OpticalDiscFamily.Dvd, IsBlank: false));
         }
 
         foreach (CdDiscPreset preset in _state.CdPresets.Where(value => !value.IsCustom).Take(PresetsPerFamily))
@@ -142,7 +144,19 @@ public partial class HomeViewModel : ObservableObject
                 preset.DisplayName,
                 $"{preset.Sectors:N0} 扇区 · {preset.InnerRadiusMm:0.#}–{preset.OuterRadiusMm:0.#} mm");
             Templates.Add(new HomeTemplateTile(
-                preset.Id, title, detail, PackIconLucideKind.Disc3, IsDvd: false, IsBlank: false));
+                preset.Id, title, detail, PackIconLucideKind.Disc3,
+                OpticalDiscFamily.CompactDisc, IsBlank: false));
+        }
+
+        foreach (BluRayDiscPreset preset in _state.BluRayPresets.Where(value => !value.IsCustom).Take(PresetsPerFamily))
+        {
+            BluRayDiscParameters geometry = preset.CreateParameters();
+            (string title, string detail) = SplitPresetName(
+                preset.DisplayName,
+                $"{geometry.TotalSectors:N0} 扇区 · {geometry.InnerRadiusMm:0.#}–{geometry.OuterRadiusMm:0.#} mm");
+            Templates.Add(new HomeTemplateTile(
+                preset.Id, title, detail, PackIconLucideKind.DiscAlbum,
+                OpticalDiscFamily.BluRay, IsBlank: false));
         }
     }
 
@@ -150,7 +164,9 @@ public partial class HomeViewModel : ObservableObject
     {
         // The user can add or drop presets in the JSON while the app runs and reload them
         // from the preview page; the template row follows the same catalog.
-        if (e.PropertyName is nameof(DiscParametersState.CdPresets) or nameof(DiscParametersState.DvdPresets))
+        if (e.PropertyName is nameof(DiscParametersState.CdPresets)
+            or nameof(DiscParametersState.DvdPresets)
+            or nameof(DiscParametersState.BluRayPresets))
         {
             BuildTemplates();
         }
@@ -166,7 +182,7 @@ public partial class HomeViewModel : ObservableObject
             return;
         }
 
-        await _shell.RequestNewProjectFromTemplateAsync(tile.IsDvd, tile.PresetId);
+        await _shell.RequestNewProjectFromTemplateAsync(tile.Family, tile.PresetId);
     }
 
     private async Task OpenRecent(RecentProjectTile? tile)

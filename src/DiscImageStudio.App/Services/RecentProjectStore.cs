@@ -13,7 +13,21 @@ public sealed record RecentProjectEntry(
     string? ThumbnailPngBase64,
     DateTimeOffset LastOpenedUtc)
 {
-    public bool IsDvd => string.Equals(DiscFamily, ProjectDocument.DvdFamily, StringComparison.Ordinal);
+    public OpticalDiscFamily Family => DiscFamily switch
+    {
+        ProjectDocument.DvdFamily => OpticalDiscFamily.Dvd,
+        ProjectDocument.BluRayFamily => OpticalDiscFamily.BluRay,
+        _ => OpticalDiscFamily.CompactDisc,
+    };
+
+    public bool IsDvd => Family == OpticalDiscFamily.Dvd;
+
+    public string FamilyLabel => Family switch
+    {
+        OpticalDiscFamily.Dvd => "DVD",
+        OpticalDiscFamily.BluRay => "BD",
+        _ => "CD",
+    };
 }
 
 /// <summary>

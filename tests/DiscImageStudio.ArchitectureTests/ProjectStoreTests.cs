@@ -6,6 +6,8 @@ internal static class ProjectStoreTests
     public static void Run()
     {
         TestRoundtrip();
+        TestBluRayRoundtrip();
+        TestLegacySchemaUpgrade();
         TestOverwritePreservesSingleFile();
         TestLegacyImageProcessingSection();
         TestValidation();
@@ -77,6 +79,106 @@ internal static class ProjectStoreTests
         Require(!ProjectJsonStore.Load(cdPath).IsDvd, "cd family");
     }
 
+    private static void TestBluRayRoundtrip()
+    {
+        ProjectDocument bluRay = CreateDocument("蓝光工程") with
+        {
+            DiscFamily = ProjectDocument.BluRayFamily,
+            Geometry = new ProjectGeometry(24.0, 58.0, ProjectDocument.BluRaySectorsPerLayer),
+            Outputs = new ProjectOutputs(@"C:\out\蓝光.iso", false, @"C:\data", "BD_IMAGE", false),
+            BluRay = new ProjectBluRaySettings(InvertMapping: true),
+        };
+        string path = Path.Combine(CreateTempDirectory(), "bluray.discproj");
+        ProjectJsonStore.Save(path, bluRay);
+        ProjectDocument loaded = ProjectJsonStore.Load(path);
+        Require(loaded.IsBluRay && loaded.Family == OpticalDiscFamily.BluRay, "bd family");
+        Require(loaded.SchemaVersion == ProjectJsonStore.CurrentSchemaVersion, "bd schema");
+        Require(loaded.BluRay?.InvertMapping == true, "bd polarity");
+        Require(loaded.Geometry.Sectors == ProjectDocument.BluRaySectorsPerLayer, "bd sectors");
+        Require(loaded.Geometry.PitchLinear == 0 && loaded.Geometry.PitchCubic == 0, "bd constant pitch");
+
+        ThrowsInvalidData("bd sectors not 32-aligned", bluRay with
+        {
+            Geometry = bluRay.Geometry with { Sectors = ProjectDocument.BluRaySectorsPerLayer - 1 },
+        });
+        ThrowsInvalidData("bd sectors over single layer", bluRay with
+        {
+            Geometry = bluRay.Geometry with { Sectors = ProjectDocument.BluRaySectorsPerLayer + 32 },
+        });
+        ThrowsInvalidData("bd pitch coefficient", bluRay with
+        {
+            Geometry = bluRay.Geometry with { PitchLinear = 0.001 },
+        });
+        ThrowsInvalidData("bd outer radius over 60 mm", bluRay with
+        {
+            Geometry = bluRay.Geometry with { OuterRadiusMm = 60.5 },
+        });
+        ThrowsInvalidData("cd carries bd settings", CreateDocument() with
+        {
+            DiscFamily = ProjectDocument.CdFamily,
+            Geometry = new ProjectGeometry(24.5, 56.8, 359_849),
+            BluRay = new ProjectBluRaySettings(),
+        });
+    }
+
+    private static void TestLegacySchemaUpgrade()
+    {
+        string directory = CreateTempDirectory();
+        string path = Path.Combine(directory, "legacy-schema.discproj");
+        ProjectDocument cd = CreateDocument() with
+        {
+            DiscFamily = ProjectDocument.CdFamily,
+            Geometry = new ProjectGeometry(24.5, 56.8, 359_849),
+        };
+        ProjectJsonStore.Save(path, cd);
+        string json = File.ReadAllText(path)
+            .Replace(
+                $"\"schemaVersion\": {ProjectJsonStore.CurrentSchemaVersion}",
+                "\"schemaVersion\": 1",
+                StringComparison.Ordinal);
+        File.WriteAllText(path, json);
+        ProjectDocument upgraded = ProjectJsonStore.Load(path);
+        Require(upgraded.SchemaVersion == ProjectJsonStore.CurrentSchemaVersion, "schema 1 reads as current");
+        Require(upgraded.IsCd, "schema 1 keeps its CD family");
+
+        ProjectJsonStore.Save(path, upgraded with
+        {
+            DiscFamily = ProjectDocument.BluRayFamily,
+            Geometry = new ProjectGeometry(24.0, 58.0, ProjectDocument.BluRaySectorsPerLayer),
+            Outputs = upgraded.Outputs with { OutputPath = @"C:\out\sample.iso" },
+            BluRay = new ProjectBluRaySettings(),
+        });
+        string bluRayJson = File.ReadAllText(path);
+        File.WriteAllText(
+            path,
+            System.Text.RegularExpressions.Regex.Replace(
+                bluRayJson,
+                $"\"schemaVersion\": {ProjectJsonStore.CurrentSchemaVersion}",
+                "\"schemaVersion\": 1"));
+        try
+        {
+            ProjectJsonStore.Load(path);
+            throw new InvalidOperationException("ProjectStore: schema 1 accepted a Blu-ray family.");
+        }
+        catch (InvalidDataException)
+        {
+        }
+    }
+
+    private static void ThrowsInvalidData(string name, ProjectDocument document)
+    {
+        try
+        {
+            ProjectJsonStore.Validate(document);
+        }
+        catch (InvalidDataException)
+        {
+            return;
+        }
+
+        throw new InvalidOperationException($"ProjectStore validation '{name}' passed but should fail.");
+    }
+
     private static void TestOverwritePreservesSingleFile()
     {
         string directory = CreateTempDirectory();
@@ -133,7 +235,7 @@ internal static class ProjectStoreTests
     {
         ThrowsInvalidData("wrong schema", static document => document with { SchemaVersion = 99 });
         ThrowsInvalidData("empty name", static document => document with { Name = " " });
-        ThrowsInvalidData("unknown family", static document => document with { DiscFamily = "bd" });
+        ThrowsInvalidData("unknown family", static document => document with { DiscFamily = "hdd" });
         ThrowsInvalidData("inverted radii", static document => document with
         {
             Geometry = document.Geometry with { InnerRadiusMm = 60, OuterRadiusMm = 58 },

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using DiscImageStudio.BluRay;
 using DiscImageStudio.Cd;
 using DiscImageStudio.Core;
 using DiscImageStudio.Dvd;
@@ -13,20 +14,21 @@ namespace DiscImageStudio.ViewModels;
 /// preselecting a family and template preset) or edit the open project's settings.</summary>
 public sealed record ProjectDialogRequest(
     bool EditMode,
-    bool? PreselectDvd = null,
+    OpticalDiscFamily? PreselectFamily = null,
     string? PresetId = null);
 
 /// <summary>The dialog's outcome. Null (from the handler) means the user cancelled.</summary>
 public sealed record ProjectDialogResult(
     string Name,
-    bool IsDvd,
+    OpticalDiscFamily Family,
     double InnerRadiusMm,
     double OuterRadiusMm,
     long Sectors,
     double PitchLinear,
     double PitchQuadratic,
     double PitchCubic,
-    string SavePath);
+    string SavePath,
+    bool BluRayInvertMapping = false);
 
 /// <summary>The name and optional note the user gave a preset in the save dialog. Null (from
 /// the handler) means the user cancelled.</summary>
@@ -48,7 +50,7 @@ public partial class ProjectDialogViewModel : ObservableObject
         ConfirmCommand = new RelayCommand(Confirm, CanConfirm);
         BrowseSavePathCommand = new RelayCommand(BrowseSavePath);
         SaveAsPresetCommand = new RelayCommand(SaveAsPreset);
-        IsDvd = request.PreselectDvd ?? false;
+        FamilyIndex = (int)(request.PreselectFamily ?? OpticalDiscFamily.CompactDisc);
         BuildTemplates();
         if (_editMode)
         {
@@ -59,7 +61,7 @@ public partial class ProjectDialogViewModel : ObservableObject
             ProjectTemplateTile? tile = Templates.FirstOrDefault(t => t.PresetId == request.PresetId);
             if (tile is not null)
             {
-                IsDvd = tile.IsDvd;
+                Family = tile.Family;
                 SelectedTemplate = tile;
             }
         }
@@ -87,9 +89,11 @@ public partial class ProjectDialogViewModel : ObservableObject
 
     /// <summary>Live values for the annulus diagram; unparsable fields fall back to the
     /// blank-project defaults so the diagram never blanks out mid-edit.</summary>
-    public double InnerRadiusValue => TryParseMm(InnerRadiusText) ?? 24.5;
+    public double InnerRadiusValue => TryParseMm(InnerRadiusText)
+        ?? (IsBluRay ? 24.0 : IsDvd ? 24.0 : 24.5);
 
-    public double OuterRadiusValue => TryParseMm(OuterRadiusText) ?? 56.8;
+    public double OuterRadiusValue => TryParseMm(OuterRadiusText)
+        ?? (IsBluRay ? 58.0 : IsDvd ? 58.0 : 56.8);
 
     public string SaveFileNameHint
     {
@@ -118,8 +122,24 @@ public partial class ProjectDialogViewModel : ObservableObject
     private string _savedPresetMessage = string.Empty;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(FamilySwitchEnabled), nameof(ShowTemplates), nameof(IsCdFieldsVisible), nameof(IsDvdFieldsVisible), nameof(IsDvdFieldsVisibility))]
-    private bool _isDvd;
+    [NotifyPropertyChangedFor(nameof(IsCd), nameof(IsDvd), nameof(IsBluRay), nameof(FamilyIndex),
+        nameof(FamilySwitchEnabled), nameof(ShowTemplates), nameof(IsCdFieldsVisible),
+        nameof(IsDvdFieldsVisible), nameof(IsDvdFieldsVisibility), nameof(IsBluRayFieldsVisibility),
+        nameof(InnerRadiusValue), nameof(OuterRadiusValue))]
+    private OpticalDiscFamily _family = OpticalDiscFamily.CompactDisc;
+
+    public bool IsCd => Family == OpticalDiscFamily.CompactDisc;
+
+    public bool IsDvd => Family == OpticalDiscFamily.Dvd;
+
+    public bool IsBluRay => Family == OpticalDiscFamily.BluRay;
+
+    /// <summary>Three-option segmented selector binding.</summary>
+    public int FamilyIndex
+    {
+        get => (int)Family;
+        set => Family = (OpticalDiscFamily)Math.Clamp(value, 0, 2);
+    }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SaveFileNameHint))]
@@ -157,9 +177,13 @@ public partial class ProjectDialogViewModel : ObservableObject
 
     public bool HasSelection => SelectedTemplate is not null;
 
-    public bool IsCdFieldsVisible => !IsDvd;
+    public bool IsCdFieldsVisible => IsCd;
 
     public bool IsDvdFieldsVisible => IsDvd;
+
+    public System.Windows.Visibility IsBluRayFieldsVisibility => IsBluRay
+        ? System.Windows.Visibility.Visible
+        : System.Windows.Visibility.Collapsed;
 
     public IReadOnlyList<ProjectTemplateTile> Templates { get; private set; } = [];
 
@@ -184,16 +208,43 @@ public partial class ProjectDialogViewModel : ObservableObject
     /// <summary>The result, valid after ConfirmCommand succeeded and the dialog closed.</summary>
     public ProjectDialogResult? Result { get; private set; }
 
-    partial void OnSelectedTemplateChanged(ProjectTemplateTile? value) => ApplyTemplate();
+    private bool _templateInvertMapping;
+    private bool _suppressFamilyRebuild;
 
-    partial void OnIsDvdChanged(bool value)
+    partial void OnSelectedTemplateChanged(ProjectTemplateTile? value)
     {
+        if (value is not null && value.Family != Family)
+        {
+            // Selecting another family's template switches the form too, without letting
+            // the family handler rebuild the list and drop the selection being applied.
+            _suppressFamilyRebuild = true;
+            try
+            {
+                Family = value.Family;
+            }
+            finally
+            {
+                _suppressFamilyRebuild = false;
+            }
+        }
+
+        ApplyTemplate();
+    }
+
+    partial void OnFamilyChanged(OpticalDiscFamily value)
+    {
+        if (_suppressFamilyRebuild)
+        {
+            return;
+        }
+
         BuildTemplates();
         if (!_editMode)
         {
             // Family switch snaps the selection to that family's blank template; the fields
             // then take the blank or preset geometry.
-            SelectedTemplate = Templates.FirstOrDefault(t => t.PresetId is null);
+            SelectedTemplate = Templates.FirstOrDefault(
+                t => t.PresetId is null && t.Family == value);
         }
 
         ApplyTemplate();
@@ -207,7 +258,7 @@ public partial class ProjectDialogViewModel : ObservableObject
         // where a preset saved from the project settings gets picked again.
         List<ProjectTemplateTile> templates =
         [
-            new(null, "空白工程", "从默认参数开始", IsDvd),
+            new(null, "空白工程", "从默认参数开始", Family),
         ];
         foreach (DvdDiscPreset preset in _state.DvdPresets.Where(p => !p.IsCustom))
         {
@@ -215,7 +266,7 @@ public partial class ProjectDialogViewModel : ObservableObject
                 preset.Id,
                 preset.DisplayName,
                 $"{preset.TotalSectors:N0} 扇区 · {preset.InnerRadiusMm:0.#}–{preset.OuterRadiusMm:0.#} mm",
-                IsDvd: true));
+                OpticalDiscFamily.Dvd));
         }
 
         foreach (CdDiscPreset preset in _state.CdPresets.Where(p => !p.IsCustom))
@@ -224,7 +275,18 @@ public partial class ProjectDialogViewModel : ObservableObject
                 preset.Id,
                 preset.DisplayName,
                 $"{preset.Sectors:N0} 扇区 · {preset.InnerRadiusMm:0.#}–{preset.OuterRadiusMm:0.#} mm",
-                IsDvd: false));
+                OpticalDiscFamily.CompactDisc));
+        }
+
+        foreach (BluRayDiscPreset preset in _state.BluRayPresets.Where(p => !p.IsCustom))
+        {
+            BluRayDiscParameters geometry = preset.CreateParameters();
+            templates.Add(new(
+                preset.Id,
+                preset.DisplayName,
+                $"{geometry.TotalSectors:N0} 扇区 · {geometry.InnerRadiusMm:0.#}–{geometry.OuterRadiusMm:0.#} mm"
+                + (preset.InvertMapping ? " · 反转 3T/6T" : string.Empty),
+                OpticalDiscFamily.BluRay));
         }
 
         Templates = templates;
@@ -241,49 +303,76 @@ public partial class ProjectDialogViewModel : ObservableObject
         }
 
         ProjectTemplateTile? tile = SelectedTemplate;
-        if (tile?.PresetId is null)
-        {
-            if (IsDvd)
+        _templateInvertMapping = Family == OpticalDiscFamily.BluRay && _state.BdInvertMapping;
+            if (tile?.PresetId is null)
             {
-                InnerRadiusText = "24.0";
-                OuterRadiusText = "58.0";
-                SectorsText = "2295104";
-                PitchLinearText = "0";
-                PitchQuadraticText = "0";
-                PitchCubicText = "0";
+                switch (Family)
+                {
+                    case OpticalDiscFamily.Dvd:
+                        InnerRadiusText = "24.0";
+                        OuterRadiusText = "58.0";
+                        SectorsText = "2295104";
+                        PitchLinearText = "0";
+                        PitchQuadraticText = "0";
+                        PitchCubicText = "0";
+                        break;
+                    case OpticalDiscFamily.BluRay:
+                        InnerRadiusText = "24.0";
+                        OuterRadiusText = "58.0";
+                        SectorsText = "12219392";
+                        PitchLinearText = "0";
+                        PitchQuadraticText = "0";
+                        PitchCubicText = "0";
+                        _templateInvertMapping = false;
+                        break;
+                    default:
+                        InnerRadiusText = "24.5";
+                        OuterRadiusText = "56.8";
+                        SectorsText = "359849";
+                        break;
+                }
+            }
+            else if (Family == OpticalDiscFamily.Dvd)
+            {
+                DvdDiscPreset preset = _state.DvdPresets.FirstOrDefault(p => p.Id == tile.PresetId)
+                    ?? DvdDiscPreset.Manual;
+                if (!preset.IsCustom)
+                {
+                    InnerRadiusText = preset.InnerRadiusMm.ToString("R", CultureInfo.InvariantCulture);
+                    OuterRadiusText = preset.OuterRadiusMm.ToString("R", CultureInfo.InvariantCulture);
+                    SectorsText = preset.TotalSectors.ToString(CultureInfo.InvariantCulture);
+                    PitchLinearText = preset.PitchLinear.ToString("R", CultureInfo.InvariantCulture);
+                    PitchQuadraticText = preset.PitchQuadratic.ToString("R", CultureInfo.InvariantCulture);
+                    PitchCubicText = preset.PitchCubic.ToString("R", CultureInfo.InvariantCulture);
+                }
+            }
+            else if (Family == OpticalDiscFamily.BluRay)
+            {
+                BluRayDiscPreset preset = _state.BluRayPresets.FirstOrDefault(p => p.Id == tile.PresetId)
+                    ?? BluRayDiscPreset.Manual;
+                if (!preset.IsCustom)
+                {
+                    BluRayDiscParameters geometry = preset.CreateParameters();
+                    InnerRadiusText = geometry.InnerRadiusMm.ToString("R", CultureInfo.InvariantCulture);
+                    OuterRadiusText = geometry.OuterRadiusMm.ToString("R", CultureInfo.InvariantCulture);
+                    SectorsText = geometry.TotalSectors.ToString(CultureInfo.InvariantCulture);
+                    PitchLinearText = "0";
+                    PitchQuadraticText = "0";
+                    PitchCubicText = "0";
+                    _templateInvertMapping = preset.InvertMapping;
+                }
             }
             else
             {
-                InnerRadiusText = "24.5";
-                OuterRadiusText = "56.8";
-                SectorsText = "359849";
+                CdDiscPreset preset = _state.CdPresets.FirstOrDefault(p => p.Id == tile.PresetId)
+                    ?? CdDiscPreset.Manual;
+                if (!preset.IsCustom)
+                {
+                    InnerRadiusText = preset.InnerRadiusMm.ToString("R", CultureInfo.InvariantCulture);
+                    OuterRadiusText = preset.OuterRadiusMm.ToString("R", CultureInfo.InvariantCulture);
+                    SectorsText = preset.Sectors.ToString(CultureInfo.InvariantCulture);
+                }
             }
-        }
-        else if (IsDvd)
-        {
-            DvdDiscPreset preset = _state.DvdPresets.FirstOrDefault(p => p.Id == tile.PresetId)
-                ?? DvdDiscPreset.Manual;
-            if (!preset.IsCustom)
-            {
-                InnerRadiusText = preset.InnerRadiusMm.ToString("R", CultureInfo.InvariantCulture);
-                OuterRadiusText = preset.OuterRadiusMm.ToString("R", CultureInfo.InvariantCulture);
-                SectorsText = preset.TotalSectors.ToString(CultureInfo.InvariantCulture);
-                PitchLinearText = preset.PitchLinear.ToString("R", CultureInfo.InvariantCulture);
-                PitchQuadraticText = preset.PitchQuadratic.ToString("R", CultureInfo.InvariantCulture);
-                PitchCubicText = preset.PitchCubic.ToString("R", CultureInfo.InvariantCulture);
-            }
-        }
-        else
-        {
-            CdDiscPreset preset = _state.CdPresets.FirstOrDefault(p => p.Id == tile.PresetId)
-                ?? CdDiscPreset.Manual;
-            if (!preset.IsCustom)
-            {
-                InnerRadiusText = preset.InnerRadiusMm.ToString("R", CultureInfo.InvariantCulture);
-                OuterRadiusText = preset.OuterRadiusMm.ToString("R", CultureInfo.InvariantCulture);
-                SectorsText = preset.Sectors.ToString(CultureInfo.InvariantCulture);
-            }
-        }
     }
 
     private bool CanConfirm() => !string.IsNullOrWhiteSpace(Name);
@@ -334,14 +423,16 @@ public partial class ProjectDialogViewModel : ObservableObject
         string savePath = Path.Combine(directory, fileName);
         return new ProjectDialogResult(
             name,
-            IsDvd,
+            Family,
             inner,
             outer,
             sectors,
             pitchLinear,
             pitchQuadratic,
             pitchCubic,
-            savePath);
+            savePath,
+            BluRayInvertMapping: Family == OpticalDiscFamily.BluRay
+                && (_editMode ? _state.BdInvertMapping : _templateInvertMapping));
     }
 
     /// <summary>Shared by confirming the dialog and saving a preset: the geometry fields with
@@ -360,6 +451,25 @@ public partial class ProjectDialogViewModel : ObservableObject
         if (IsDvd && sectors % 16 != 0)
         {
             throw new ArgumentException("DVD 的扇区数必须是 16 的倍数。");
+        }
+
+        if (IsBluRay)
+        {
+            if (sectors % ProjectDocument.BluRaySectorsPerCluster != 0)
+            {
+                throw new ArgumentException("蓝光的扇区数必须是 32 的倍数。");
+            }
+
+            if (sectors > ProjectDocument.BluRaySectorsPerLayer)
+            {
+                throw new ArgumentException(
+                    $"蓝光扇区数不能超过单层容量 {ProjectDocument.BluRaySectorsPerLayer:N0}。");
+            }
+
+            if (outer > 60)
+            {
+                throw new ArgumentException("蓝光外半径不能超过 60 mm。");
+            }
         }
 
         if (outer <= inner)
@@ -396,7 +506,7 @@ public partial class ProjectDialogViewModel : ObservableObject
             }
 
             string displayName = _state.AddUserPreset(
-                IsDvd,
+                Family,
                 confirmed.Name,
                 confirmed.Comment,
                 inner,
@@ -404,7 +514,8 @@ public partial class ProjectDialogViewModel : ObservableObject
                 sectors,
                 pitchLinear,
                 pitchQuadratic,
-                pitchCubic);
+                pitchCubic,
+                invertMapping: Family == OpticalDiscFamily.BluRay && _state.BdInvertMapping);
             ErrorMessage = string.Empty;
             SavedPresetMessage = $"已保存为预设：{displayName}";
         }
@@ -465,7 +576,12 @@ public sealed record ProjectTemplateTile(
     string? PresetId,
     string Title,
     string Detail,
-    bool IsDvd)
+    OpticalDiscFamily Family)
 {
-    public string FamilyLabel => IsDvd ? "DVD" : "CD";
+    public string FamilyLabel => Family switch
+    {
+        OpticalDiscFamily.Dvd => "DVD",
+        OpticalDiscFamily.BluRay => "BD",
+        _ => "CD",
+    };
 }
