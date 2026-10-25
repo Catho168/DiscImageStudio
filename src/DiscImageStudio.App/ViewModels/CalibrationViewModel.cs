@@ -399,7 +399,12 @@ public partial class CalibrationViewModel : ObservableObject
             CalibrationFitResult result = CalibrationCrossFitter.Fit(target, traces,
                 options with { RadiusRangeMm = range }, token);
             last = result;
-            if (result.Succeeded && !result.BoundaryLimited)
+            // BD's observed curve continues beyond the drawing band, so a narrow box can
+            // return an interior solution with a visibly unusable residual instead of a
+            // boundary-clamped one. Keep widening while the fit is that poor.
+            bool unusableBluRay = target.Parameters.Kind == CalibrationDiscKind.BluRay
+                && result.RmsErrorMm > 0.8;
+            if (result.Succeeded && !result.BoundaryLimited && !unusableBluRay)
                 return new(result, range, range > options.RadiusRangeMm);
             if (result.Succeeded && (best is null || result.RmsErrorMm < best.RmsErrorMm))
             {
