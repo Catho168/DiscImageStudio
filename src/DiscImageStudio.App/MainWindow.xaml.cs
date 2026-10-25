@@ -19,6 +19,7 @@ namespace DiscImageStudio;
 public partial class MainWindow : Window
 {
     private readonly ShellViewModel _shell;
+    private readonly WindowWorkArea _workArea;
     private readonly UserControl[] _pages;
     private readonly (SideNavItem Item, Workspace Workspace)[] _navItems;
     private readonly PageHeader?[] _pageHeaders = new PageHeader?[6];
@@ -31,6 +32,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        _workArea = new WindowWorkArea(this);
         _shell = new ShellViewModel(Dispatcher)
         {
             Dialogs = new FileDialogService(() => this),
@@ -77,7 +79,6 @@ public partial class MainWindow : Window
         SizeChanged += (_, _) => UpdateSidebarCollapse();
         PreviewKeyDown += MainWindow_PreviewKeyDown;
         SourceInitialized += (_, _) => WindowCorners.Apply(this);
-        StateChanged += (_, _) => UpdateMaximizedMargin();
         Loaded += MainWindow_Loaded;
         Closing += MainWindow_Closing;
         Closed += MainWindow_Closed;
@@ -85,17 +86,6 @@ public partial class MainWindow : Window
         {
             Application.Current.SessionEnding += OnSessionEnding;
         }
-        UpdateMaximizedMargin();
-    }
-
-    // When maximized, a borderless WindowChrome window extends past the work area by the
-    // system resize border on each side; padding the root back keeps the title bar fully
-    // on screen.
-    private void UpdateMaximizedMargin()
-    {
-        RootGrid.Margin = WindowState == WindowState.Maximized
-            ? SystemParameters.WindowResizeBorderThickness
-            : default;
     }
 
     // ---- Snapshot hooks (used by UiPreviewRenderer / CLI ui-snapshot) ----
@@ -394,6 +384,7 @@ public partial class MainWindow : Window
 
     private void MainWindow_Closed(object? sender, EventArgs e)
     {
+        _workArea.Dispose();
         _shell.LivePreview.OnWindowClosed();
         _shell.Calibration.OnWindowClosed();
     }

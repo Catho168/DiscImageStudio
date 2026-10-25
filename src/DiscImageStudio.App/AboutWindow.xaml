@@ -3,9 +3,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="clr-namespace:DiscImageStudio.Controls"
         Title="关于 Disc Image Studio"
-        Width="560" Height="430"
+        Width="720" Height="640" MinWidth="620" MinHeight="520"
         WindowStartupLocation="CenterOwner"
-        WindowStyle="None" ResizeMode="NoResize"
+        WindowStyle="None" ResizeMode="CanResize"
         Background="{StaticResource BackgroundBrush}"
         FontFamily="{StaticResource AppFontFamily}"
         UseLayoutRounding="True" SnapsToDevicePixels="True">
@@ -25,28 +25,54 @@
 
         <!-- About is a dialog, not a workspace: it has no task of its own and does not belong
              in the navigation the way a work surface does. -->
-        <StackPanel Grid.Row="1" Margin="28,20,28,24">
-            <StackPanel Orientation="Horizontal">
-                <Image Source="{StaticResource AppIconSource}" Width="64" Height="64" VerticalAlignment="Center" />
-                <StackPanel Margin="16,0,0,0" VerticalAlignment="Center">
-                    <TextBlock Text="Disc Image Studio" Style="{StaticResource CardTitle}" FontWeight="Medium"
-                               Foreground="{StaticResource TextPrimaryBrush}" />
-                    <TextBlock Text="{Binding VersionText}" Style="{StaticResource HintText}" Margin="0,6,0,0" />
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="28,20,28,24">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Image Source="{StaticResource AppIconSource}" Width="64" Height="64" VerticalAlignment="Center" />
+                    <StackPanel Margin="16,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="Disc Image Studio" Style="{StaticResource CardTitle}" FontWeight="Medium"
+                                   Foreground="{StaticResource TextPrimaryBrush}" />
+                        <TextBlock Text="{Binding VersionText}" Style="{StaticResource HintText}" Margin="0,6,0,0" />
+                    </StackPanel>
                 </StackPanel>
-            </StackPanel>
 
-            <TextBlock Style="{StaticResource BodyText}" Margin="0,24,0,0"
-                       Text="Disc Image Studio是帮助您在光盘表面印刷图案的一站式工作台。" />
+                <TextBlock Style="{StaticResource BodyText}" Margin="0,24,0,0"
+                           Text="Disc Image Studio是帮助您在光盘表面印刷图案的一站式工作台。" />
+                <TextBlock Style="{StaticResource CompactHint}" Margin="0,8,0,0" TextWrapping="Wrap"
+                           Text="本项目以 GNU General Public License v3.0 or later 发布；重新分发二进制时须随附对应源代码并保留第三方声明。" />
 
-            <StackPanel Margin="0,20,0,0">
-                <TextBlock Style="{StaticResource FieldLabel}" Text="开源组件" />
-                <TextBlock Style="{StaticResource BodyText}"
-                           Text="HarmonyOS Sans SC — HarmonyOS Sans 字体许可协议" />
-                <TextBlock Style="{StaticResource BodyText}" Margin="0,4,0,0"
-                           Text="MahApps.Metro.IconPacks.Lucide（Lucide Icons）— MIT 许可协议" />
-                <TextBlock Style="{StaticResource BodyText}" Margin="0,4,0,0"
-                           Text="CommunityToolkit.Mvvm — Apache 许可协议 2.0" />
+                <StackPanel Margin="0,20,0,0">
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="开源组件" />
+                    <TextBlock Style="{StaticResource BodyText}"
+                               Text="HarmonyOS Sans SC — HarmonyOS Sans 字体许可协议" />
+                    <TextBlock Style="{StaticResource BodyText}" Margin="0,4,0,0"
+                               Text="MahApps.Metro.IconPacks.Lucide（Lucide Icons）— MIT 许可协议" />
+                    <TextBlock Style="{StaticResource BodyText}" Margin="0,4,0,0"
+                               Text="CommunityToolkit.Mvvm — Apache 许可协议 2.0" />
+                </StackPanel>
+
+                <Expander Header="GNU GPL v3.0 或更新版本（项目许可证）" Margin="0,20,0,0">
+                    <TextBox Text="{Binding LicenseText, Mode=OneWay}" IsReadOnly="True" Height="240"
+                             Margin="0,8,0,0" Style="{StaticResource BareTextBox}"
+                             FontFamily="{StaticResource MonoFontFamily}" FontSize="11"
+                             TextWrapping="NoWrap"
+                             HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" />
+                </Expander>
+                <Expander Header="第三方声明" Margin="0,8,0,0">
+                    <TextBox Text="{Binding ThirdPartyNoticesText, Mode=OneWay}" IsReadOnly="True" Height="240"
+                             Margin="0,8,0,0" Style="{StaticResource BareTextBox}"
+                             FontFamily="{StaticResource MonoFontFamily}" FontSize="11"
+                             TextWrapping="NoWrap"
+                             HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" />
+                </Expander>
+                <Expander Header="HarmonyOS Sans 字体协议" Margin="0,8,0,0">
+                    <TextBox Text="{Binding FontLicenseText, Mode=OneWay}" IsReadOnly="True" Height="180"
+                             Margin="0,8,0,0" Style="{StaticResource BareTextBox}"
+                             FontFamily="{StaticResource MonoFontFamily}" FontSize="11"
+                             TextWrapping="NoWrap"
+                             HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" />
+                </Expander>
             </StackPanel>
-        </StackPanel>
+        </ScrollViewer>
     </Grid>
 </Window>

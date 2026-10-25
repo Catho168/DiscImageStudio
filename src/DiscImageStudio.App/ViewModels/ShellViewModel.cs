@@ -521,6 +521,7 @@ public partial class ShellViewModel : ObservableObject
             Design.SetDiscFamily(document.Family);
             LivePreview.SetDiscType(document.Family, clearResult: true);
             ProjectSession.ApplyToState(document, State);
+            Calibration.ClearTargetForProjectChange();
             Design.LoadLayers(document.Layers);
         }
         finally
@@ -691,6 +692,7 @@ public partial class ShellViewModel : ObservableObject
         ProjectFilePath = null;
         IsDirty = false;
         Design.ClearLayers();
+        Calibration.ClearTargetForProjectChange();
         State.CdImagePath = string.Empty;
         State.DvdImagePath = string.Empty;
         State.BdImagePath = string.Empty;

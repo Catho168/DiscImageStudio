@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace DiscImageStudio.Core;
 
 /// <summary>
@@ -27,9 +29,11 @@ public readonly record struct ToneProfile(
     public static ToneProfile Photo { get; } = new(0.75, TwoLevels, 0);
 
     /// <summary>True when mapping is exactly the old <c>grey &lt; 128 ? black : white</c> rule.</summary>
+    [JsonIgnore]
     public bool IsLegacyBinary
         => DitherStrength <= 0 && Levels == TwoLevels && Brightness == 0 && !SrgbLinearization;
 
+    [JsonIgnore]
     public bool IsDvdCompatible => Levels == TwoLevels;
 
     /// <summary>Source grey → sRGB-linear light (when enabled) → brightness offset. This is

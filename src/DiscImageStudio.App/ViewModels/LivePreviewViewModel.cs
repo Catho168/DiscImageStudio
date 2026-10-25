@@ -354,6 +354,10 @@ public partial class LivePreviewViewModel : ObservableObject
         state.BdActualInnerRadius = innerRadius;
         state.BdActualOuterRadius = outerRadius;
         state.BdInvertMapping = metadata.InvertMapping;
+        state.BdDrawingStartSector = metadata.DrawingStartSector.ToString(
+            System.Globalization.CultureInfo.InvariantCulture);
+        state.BdDrawingEndSectorExclusive = metadata.DrawingEndSectorExclusive.ToString(
+            System.Globalization.CultureInfo.InvariantCulture);
         state.ToneDitherStrength = metadata.Tone.DitherStrength;
         state.ToneLevels = ToneProfile.TwoLevels;
         state.ToneBrightness = metadata.Tone.Brightness;
@@ -889,10 +893,14 @@ public partial class LivePreviewViewModel : ObservableObject
             tone = _state.BluRayTone;
             invert = _state.BdInvertMapping;
             string dataDirectory = _state.BdDataDirectory.Trim();
-            plan = BluRayIsoGenerator.PrepareDrawing(
-                generated,
-                dataDirectory.Length == 0 ? null : dataDirectory,
-                string.IsNullOrWhiteSpace(_state.BdVolumeLabel) ? "BD_IMAGE" : _state.BdVolumeLabel.Trim());
+            long sidecarStart = ParameterParser.ParseNonNegativeLong(_state.BdDrawingStartSector, "绘图起始扇区");
+            long sidecarEnd = ParameterParser.ParseNonNegativeLong(_state.BdDrawingEndSectorExclusive, "绘图结束扇区");
+            plan = sidecarEnd > sidecarStart && sidecarEnd <= generated.TotalSectors
+                ? BluRayIsoGenerator.PrepareRaw(generated, checked((uint)sidecarStart), checked((uint)sidecarEnd))
+                : BluRayIsoGenerator.PrepareDrawing(
+                    generated,
+                    dataDirectory.Length == 0 ? null : dataDirectory,
+                    string.IsNullOrWhiteSpace(_state.BdVolumeLabel) ? "BD_IMAGE" : _state.BdVolumeLabel.Trim());
         }
         catch (Exception exception) when (exception is FormatException
                                               or OverflowException

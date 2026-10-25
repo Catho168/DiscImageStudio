@@ -78,6 +78,7 @@ public sealed record ProjectDocument(
     /// still rejected by <see cref="ProjectJsonStore.Validate"/>.</summary>
     public const string LegacyImageProcessingKey = "imageProcessing";
 
+    [JsonIgnore]
     public OpticalDiscFamily Family => DiscFamily switch
     {
         DvdFamily => OpticalDiscFamily.Dvd,
@@ -85,12 +86,16 @@ public sealed record ProjectDocument(
         _ => OpticalDiscFamily.CompactDisc,
     };
 
+    [JsonIgnore]
     public bool IsCd => Family == OpticalDiscFamily.CompactDisc;
 
+    [JsonIgnore]
     public bool IsDvd => Family == OpticalDiscFamily.Dvd;
 
+    [JsonIgnore]
     public bool IsBluRay => Family == OpticalDiscFamily.BluRay;
 
+    [JsonIgnore]
     public string FamilyLabel => Family switch
     {
         OpticalDiscFamily.Dvd => "DVD",

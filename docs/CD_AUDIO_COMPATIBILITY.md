@@ -23,28 +23,29 @@ DiscImageStudio.exe cd-generate --input picture.png --output cd-track.wav --inte
 
 WAV 的文件长度为 `扇区数 × 2352 + 44`；音频长度、生成进度和流式刻录容量仍为 `扇区数 × 2352`。文件头不占盘片音轨扇区，也不改变图案几何。
 
-## 影调（抖动、灰阶与亮度）
+## 影调（抖动、sRGB 线性化、灰阶与亮度）
 
 CD 的每个音频字节对应约 6.8 µm 的盘面长度；正常观看距离下，眼睛会把成百上千个字节积分成一个色调。因此“每个字节只有黑白两种图案”不等于“画面只有黑白两色”，中间调靠相邻字节的黑白比例还原。
 
 | 参数 | 含义 |
 | --- | --- |
 | 抖动强度 0–100% | 0% 按 128 的硬阈值输出（旧行为）；100% 逐字节在相邻档位间按比例选择，中间调由黑白字节的空间比例形成 |
-| 灰阶档位（仅 CD） | 2 级用 `0x10` / `0xAA`；4 级增加 `0x21` / `0x28` 两档中间色（低对比度调色板），实盘网点更细 |
+| 灰阶档位（仅 CD） | 2 级用 `0x0D` / `0xAA`；4 级用 `0x0D` / `0x10` / `0x63` / `0xAA`（`0x0D` 为黑、`0xAA` 为白） |
+| sRGB 线性化（伽马） | 先按 sRGB 传递函数解码再抖动；改变黑白点密度，不改变输出电平 |
 | 亮度 | 整体平移灰阶，范围 −64…+64（0..255 单位） |
 
 命令行参数（`cd-generate` 与 `cd-preview-warp` 都接受）：
 
 ```powershell
 DiscImageStudio.exe cd-generate --input picture.png --output cd-track.wav `
-  --tone-dither 1 --tone-levels 2 --tone-brightness 0
+  --tone-dither 1 --tone-levels 2 --tone-brightness 0 --tone-gamma false
 ```
 
-缺省值是 `--tone-dither 0 --tone-levels 2 --tone-brightness 0`，与旧版逐字节一致。新建工程在设计页右栏的「影调」模块里默认 75% / 2 级；没有 `tone` 节的旧工程按 0% 载入，保存后写入 `tone` 节。导出页只保留输出选项，并在输出卡内提示影调归设计页。
+缺省值是 `--tone-dither 0 --tone-levels 2 --tone-brightness 0 --tone-gamma false`，与旧版逐字节一致。新建工程在设计页右栏的「影调」模块里默认 75% / 2 级；没有 `tone` 节的旧工程按 0% 载入，保存后写入 `tone` 节。导出页只保留输出选项，并在输出卡内提示影调归设计页。
 
 抖动相位由**逻辑字节索引**决定（`globalByte`），而不是屏幕坐标。延迟交织把字节在文件中挪位后，读回预览仍按同一逻辑索引还原，因此生成、标定投影和读回看到的是同一套图案。标定图案（`GeneratePattern`）固定使用硬阈值，不参与抖动。
 
-音轨旁的同名 `.json` 记录 `toneDitherStrength`、`toneLevels`、`toneBrightness`；预览页载入外部音轨时会连同几何、交织一起同步这些值。
+音轨旁的同名 `.json` 记录 `toneDitherStrength`、`toneLevels`、`toneBrightness`、`toneSrgbLinearization`；预览页载入外部音轨时会连同几何、交织一起同步这些值。
 
 读回预览默认 1600 px、每扇区 16 个采样，并把落在同一像素的采样**累加平均**。旧版固定 900 px、每扇区 2 个采样且后写覆盖，稀疏采样会在中间调留下白点，看起来像报纸网点；提高采样密度后同一盘面才呈现连续影调。预览页的“设计投影”默认把实测几何设为与工程几何一致，打开工程即得到中性投影；填入实测半径后才会显示两套几何的偏差。
 

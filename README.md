@@ -47,7 +47,7 @@ Disc Image Studio 提供了一套智能且精准的辅助标定流程，相较�
 
 ## 概述
 
-Disc Image Studio 可将一张图片转换成符合 CD、DVD、蓝光（暂不支持）光盘物理层约束的数据，刻录后将使光盘盘面呈现肉眼可见的图案。
+Disc Image Studio 可将一张图片转换成符合 CD、DVD 与单层 BD-R 光盘物理层约束的数据，刻录后将使光盘盘面呈现肉眼可见的图案。
 
 ## 功能
 
@@ -55,26 +55,27 @@ Disc Image Studio 可将一张图片转换成符合 CD、DVD、蓝光（暂不�
 
 - **CD-DA 支持**：可导出带格式头的 WAV 音轨及配套 CUE，兼容 cdrecord, ImgBurn等刻录软件；也允许导出 RAW 音轨。详见 [CD 刻录兼容说明](docs/CD_AUDIO_COMPATIBILITY.md)。
 - **DVD 支持**：支持导出 ISO 纯绘图盘与"内圈文件、外圈绘图"的混合数据盘镜像。
-- **盘片预设**：内置 JSON + 用户层 JSON 分层配置。详见[预设维护说明](docs/DISC_PRESETS.md)。
+- **蓝光支持**：单层 BD-R 25 GB，按 17PP/ECC 约束把图像映射为 3T/6T run-count 偏向；支持纯绘图与 UDF 2.01 内圈文件，生成时写出可恢复几何与极性的 sidecar。详见 [ADDING_BLURAY.md](docs/ADDING_BLURAY.md)。
+- **盘片预设**：内置 JSON + 用户层 JSON 分层配置，覆盖 CD/DVD/BD。详见[预设维护说明](docs/DISC_PRESETS.md)。
 - **辅助标定**：通过 Disc Image Studio 内置的智能算法，您可以利用数张实拍图片轻松确定盘片的真实物理数据。详见[辅助标定说明](docs/CALIBRATION.md)。
 
 ### 刻录
 
 - **镜像文件输出**：您可以导出完整 ISO / RAW 文件并使用合适的刻录软件手动刻录。
-- **即时流式刻录（实验性）**：CD、纯绘图 DVD 与混合 DVD 边生成边刻录，使用 64 MiB 有界内存缓冲（开刻前预填充 32 MiB），不保存完整镜像；
+- **即时流式刻录（实验性）**：CD、DVD 与 BD-R 边生成边刻录，使用 64 MiB 有界内存缓冲（开刻前预填充 32 MiB），不保存完整镜像；BD-R 走 MMC 顺序写入；
 - **不要使用非空白介质！**
 
 ### 应用形态
 
 - 双入口：不带参数将打开 GUI；带参数则进入统一命令行。
 - 启动后选定光盘类型后可直接新建或打开源图片，也可以按盘片预设快速创建，并回访最近生成的任务。
-- 模块化：CD 与 DVD 通过 `IOpticalDiscModule` 接入；蓝光暂未实现。
+- 模块化：CD、DVD 与蓝光通过 `IOpticalDiscModule` 接入，统一命令目录与任务契约。
 
 ## 系统与设备要求
 
 - Windows 10 2004（2004/20H1，19041）及以上，或 Windows 11。
 - 构建：.NET 9 SDK（`global.json` 锁定 9.0.x）；自行构建的非自包含 GUI 需要 .NET 9 Windows 桌面运行时。Release EXE 已包含运行时，无需另行安装 .NET。
-- “即时刻录”功能需要一台 Windows 可识别的 CD / DVD 刻录机与空白盘片。
+- “即时刻录”功能需要一台 Windows 可识别的 CD / DVD / BD 刻录机与空白盘片；BD-R 需要支持顺序写入的单层空白盘。
 
 ## 下载与发布
 
@@ -112,19 +113,23 @@ MSIX 打包、测试包签名与发布流程见[发布指南](docs/RELEASING.md)
 | `cd-generate` | 将图片映射为 WAV + CUE 或旧 RAW CD-DA 音轨，可选延迟交织与影调 |
 | `cd-preview-warp` | 标定投影：按生成几何从 CD 源图片取样，按实测几何投到盘面（`--actual-r0` / `--actual-r1`） |
 | `cd-preview-track` | 按标定几何渲染已有的 WAV 或 RAW CD-DA 音轨（读回模拟，默认逆交织） |
+| `bd-generate` | 生成完整 BD-R ISO（纯绘图或 UDF 2.01 内圈文件），并写出 `<iso>.json` sidecar |
+| `bd-info` / `bd-probe` / `bd-encode` | 导出 BD 参数、原始负载探针或单个 ECC 簇诊断 |
 
-设计页右栏的「影调」模块可调抖动强度（默认 75%）、灰阶档位（CD 2/4 级）与亮度，并在模块内实时投影当前合成图。参数写入工程的 `tone` 节，生成、流式刻录、读回与标定投影共用；旧工程没有该节时保持原来的硬阈值输出。细节见 [CD_AUDIO_COMPATIBILITY.md](docs/CD_AUDIO_COMPATIBILITY.md) 与 [DVD_ENGINE.md](docs/DVD_ENGINE.md)。
+设计页右栏的「影调」模块可调抖动强度（默认 75%）、sRGB 线性化（伽马）、灰阶档位（CD 2/4 级；DVD/BD 固定 2 级）与亮度，并在模块内实时投影当前合成图；BD 另有 3T/6T 映射极性开关。参数写入工程的 `tone` 节，生成、流式刻录、读回与标定投影共用；旧工程没有该节时保持原来的硬阈值输出。BD 的影调在源图分辨率一次性量化，预览、生成和刻录共用同一张二值栅格。细节见 [CD_AUDIO_COMPATIBILITY.md](docs/CD_AUDIO_COMPATIBILITY.md)、[DVD_ENGINE.md](docs/DVD_ENGINE.md) 与 [ADDING_BLURAY.md](docs/ADDING_BLURAY.md)。
 
 完整 DVD 引擎说明见 [DVD_ENGINE.md](docs/DVD_ENGINE.md)。
 
 ## 源码结构
 
 ```text
-src/DiscImageStudio.Core/    介质无关的模块契约、元数据、任务与命令目录
-src/DiscImageStudio.Imaging/ CD/DVD/未来蓝光可复用的图片预处理层
-src/DiscImageStudio.Burning/ Windows IMAPI2 设备枚举、流缓冲与安全刻录层
+src/DiscImageStudio.Core/    介质无关的模块契约、工程/预设模型、任务与命令目录
+src/DiscImageStudio.Imaging/ CD/DVD/BD 共用的图片预处理与抖动辅助
+src/DiscImageStudio.Burning/ Windows IMAPI2 设备枚举、流缓冲与安全刻录层（含 BD-R MMC 顺序写入）
 src/DiscImageStudio.Cd/      CD-DA 生成核心与 CD 模块
 src/DiscImageStudio.Dvd/     DVD 引擎适配模块
+src/DiscImageStudio.BluRay/  BD-R 几何、17PP/ECC、3T/6T 映射、流式生成与 ISO
+src/DiscImageStudio.Iso/     UDF 2.01 / ISO9660 写入器
 src/DiscImageStudio.App/     WPF GUI、统一命令行与商店资源
 src/DvdImageSolver/          保持隔离的 DVD 编码/求解引擎
 tests/                       无第三方测试框架的架构回归测试
@@ -141,7 +146,7 @@ docs/                        架构、引擎、预设、发布等文档
 | [DVD_ENGINE.md](docs/DVD_ENGINE.md) | DVD NRZI 图像约束求解器的约定、编码链与自检覆盖 |
 | [DISC_PRESETS.md](docs/DISC_PRESETS.md) | 可编辑盘片预设的分层 JSON 格式与合并规则 |
 | [CALIBRATION.md](docs/CALIBRATION.md) | 照片矫正、曲线标定与 DVD 三次轨距拟合 |
-| [ADDING_BLURAY.md](docs/ADDING_BLURAY.md) | 在不改动 CD/DVD 的前提下接入蓝光模块的步骤 |
+| [ADDING_BLURAY.md](docs/ADDING_BLURAY.md) | 蓝光模块的物理模型、生成/刻录链路与扩展点 |
 | [VALIDATION.md](docs/VALIDATION.md) | 各轮构建、回归与实盘测试的本地验证记录 |
 | [RELEASING.md](docs/RELEASING.md) | GitHub Release、MSIX 打包、签名测试与商店提交流程 |
 | [CHANGELOG.md](CHANGELOG.md) | 版本变更记录 |
@@ -152,6 +157,7 @@ docs/                        架构、引擎、预设、发布等文档
 - “即时刻录”功能已有部分实盘反馈，对不同设备、介质与刻录入口的验证覆盖仍有限，属于实验性功能，请只使用可报废的测试介质。刻录中断、断电或生成速度不足仍可能使盘片报废！
 - 实际可见效果取决于盘片、刻录机、固件与写入策略。
 - DVD 混合文件夹会在开始刻录前扫描目录并固定布局；期间源文件大小改变会安全终止任务，但已开始写入的盘片仍可能报废。
+- BD-R 顺序写入不提供备用区重映射；中断后同一盘片通常不能继续写入。BD 的 3T/6T 类别是生成约定，实际明暗极性需按实盘标定确认。
 
 ## 隐私与安全
 
@@ -164,7 +170,7 @@ docs/                        架构、引擎、预设、发布等文档
 
 ## 许可证
 
-仓库尚未选择开源许可证：在补上明确的 `LICENSE` 文件之前，公开可见不等于授权复制、修改或再发布。该决定需由项目所有者做出，详见 [LICENSE-NOTICE.md](LICENSE-NOTICE.md)。
+本项目以 **GNU General Public License v3.0 or later（GPL-3.0-or-later）** 发布，许可证全文见 [LICENSE](LICENSE)。重新分发修改版或二进制时，须遵守 GPL 对版权声明、许可证、修改说明与对应源代码的要求；第三方组件与字体继续适用其原许可证，详见 [LICENSE-NOTICE.md](LICENSE-NOTICE.md) 与 [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt)。
 
 ---
 

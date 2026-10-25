@@ -88,6 +88,9 @@ public partial class DiscParametersState : ObservableObject
     [ObservableProperty] private string _bdActualInnerRadius = "24.0";
     [ObservableProperty] private string _bdActualOuterRadius = "58.0";
     [ObservableProperty] private bool _bdInvertMapping;
+    // Preview-only drawing range restored from a sidecar; "0"/"0" means the full data zone.
+    [ObservableProperty] private string _bdDrawingStartSector = "0";
+    [ObservableProperty] private string _bdDrawingEndSectorExclusive = "0";
 
     [ObservableProperty] private string _cdPresetHint = string.Empty;
     [ObservableProperty] private string _dvdPresetHint = string.Empty;

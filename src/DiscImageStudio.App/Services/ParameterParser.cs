@@ -41,6 +41,14 @@ internal static class ParameterParser
             : throw new FormatException($"{fieldName}必须是正整数。");
     }
 
+    internal static long ParseNonNegativeLong(string raw, string fieldName)
+    {
+        string value = raw.Trim();
+        return long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out long result) && result >= 0
+            ? result
+            : throw new FormatException($"{fieldName}必须是非负整数。");
+    }
+
     internal static int ParsePreviewSize(string raw)
     {
         int size = ParsePositiveInt(raw, "预览尺寸");

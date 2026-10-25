@@ -31,6 +31,7 @@ public sealed record BluRayIsoMetadata(
     [JsonPropertyName("format")]
     public string Format { get; init; } = FormatName;
 
+    [JsonIgnore]
     public long ContentLength => checked((long)TotalSectors * BluRayDiscParameters.BytesPerSector);
 
     public static BluRayIsoMetadata FromPlan(BluRayIsoPlan plan, string sourceImage,

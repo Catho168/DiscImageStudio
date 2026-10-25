@@ -60,6 +60,8 @@ internal static class ProjectSession
                 state.BdDataDirectory = outputs.DataDirectory;
                 state.BdVolumeLabel = outputs.VolumeLabel;
                 state.BdInvertMapping = document.BluRay?.InvertMapping ?? false;
+                state.BdDrawingStartSector = "0";
+                state.BdDrawingEndSectorExclusive = "0";
                 state.BdImagePath = string.Empty;
                 break;
             default:

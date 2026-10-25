@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.IO;
 using System.Reflection;
+using DiscImageStudio.BluRay;
 using DiscImageStudio.Burning;
 using DiscImageStudio.Cd;
 using DiscImageStudio.Core.Calibration;
@@ -21,6 +22,7 @@ internal static class CalibrationBurnWorkflowTests
             }
 
             TestCapturedRequest(directory, CalibrationDiscKind.Dvd, false);
+            TestCapturedRequest(directory, CalibrationDiscKind.BluRay, false);
         }
         finally
         {
@@ -46,6 +48,8 @@ internal static class CalibrationBurnWorkflowTests
             DvdInnerRadius = "24.5", DvdOuterRadius = "56.8", DvdTotalSectors = "16",
             DvdImagePath = "unused-dvd-image-must-not-be-read.png",
             DvdDataDirectory = "unused-folder-must-not-be-read",
+            BdInnerRadius = "24.0", BdOuterRadius = "58.0", BdTotalSectors = "64",
+            BdImagePath = "unused-bd-image-must-not-be-read.png",
         };
         CalibrationParameters generated = ReadParameters(state, kind);
         CalibrationTarget target = CalibrationTarget.Create(generated);
@@ -66,8 +70,12 @@ internal static class CalibrationBurnWorkflowTests
         request.Validate();
         Require(request.DeviceId == "memory-only-test-device" && request.WriteSpeed == speed,
             "request preserves selected device and speed without accessing hardware");
-        Require(request.MediaKind == (kind == CalibrationDiscKind.Cd
-                ? OpticalBurnMediaKind.CdAudio : OpticalBurnMediaKind.DvdData),
+        Require(request.MediaKind == kind switch
+            {
+                CalibrationDiscKind.Cd => OpticalBurnMediaKind.CdAudio,
+                CalibrationDiscKind.BluRay => OpticalBurnMediaKind.BluRayData,
+                _ => OpticalBurnMediaKind.DvdData,
+            },
             "request media type comes from the saved target");
 
         byte[] expected = GenerateDirect(target, interleave);
@@ -83,6 +91,9 @@ internal static class CalibrationBurnWorkflowTests
         state.DvdInnerRadius = "25.2";
         state.DvdOuterRadius = "57.3";
         state.DvdTotalSectors = "32";
+        state.BdInnerRadius = "25.2";
+        state.BdOuterRadius = "57.3";
+        state.BdInvertMapping = true;
         CalibrationTarget replacement = CalibrationTarget.Create(ReadParameters(state, kind));
         CalibrationSessionJson.Save(path, new(replacement, [], CdInterleave: state.CdInterleave));
         activeSession = CalibrationSessionJson.Load(path);
@@ -125,11 +136,21 @@ internal static class CalibrationBurnWorkflowTests
     }
 
     private static CalibrationParameters ReadParameters(DiscParametersState state, CalibrationDiscKind kind)
-        => kind == CalibrationDiscKind.Cd
-            ? new(kind, Number(state.CdInnerRadius), Number(state.CdOuterRadius),
-                long.Parse(state.CdSectors, CultureInfo.InvariantCulture), CdDiscParameters.StandardLinearVelocityMmPerSecond)
-            : new(kind, Number(state.DvdInnerRadius), Number(state.DvdOuterRadius),
-                long.Parse(state.DvdTotalSectors, CultureInfo.InvariantCulture), DvdStreamingOptions.StandardChannelBitLengthNm);
+        => kind switch
+        {
+            CalibrationDiscKind.Cd => new(kind, Number(state.CdInnerRadius), Number(state.CdOuterRadius),
+                long.Parse(state.CdSectors, CultureInfo.InvariantCulture),
+                CdDiscParameters.StandardLinearVelocityMmPerSecond),
+            CalibrationDiscKind.BluRay => new(kind, Number(state.BdInnerRadius), Number(state.BdOuterRadius),
+                long.Parse(state.BdTotalSectors, CultureInfo.InvariantCulture),
+                BluRayDiscParameters.ChannelBitLengthNm,
+                BluRayInvertMapping: state.BdInvertMapping,
+                DrawingStartSector: 0,
+                DrawingEndSectorExclusive: long.Parse(state.BdTotalSectors, CultureInfo.InvariantCulture)),
+            _ => new(kind, Number(state.DvdInnerRadius), Number(state.DvdOuterRadius),
+                long.Parse(state.DvdTotalSectors, CultureInfo.InvariantCulture),
+                DvdStreamingOptions.StandardChannelBitLengthNm),
+        };
 
     private static double Number(string value) => double.Parse(value, CultureInfo.InvariantCulture);
 
@@ -143,6 +164,15 @@ internal static class CalibrationBurnWorkflowTests
                 StartAngleRadians: 0, ImageOuterRadiusMm: p.OuterRadiusMm);
             CdTrackGenerator.GeneratePatternToStream(target.Sample, output, cd, interleave,
                 audioByteOrder: CdAudioByteOrder.LittleEndian);
+        }
+        else if (p.Kind == CalibrationDiscKind.BluRay)
+        {
+            BluRayDiscParameters disc = CalibrationViewModel.BluRayParameters(p);
+            BluRayPatternRangeMapping mapping = CalibrationViewModel.BluRayPatternMapping(target);
+            BluRayStreamingGenerator.GenerateToStream(
+                output,
+                new BluRayStreamingOptions(disc, 0, disc.TotalSectors),
+                mapping);
         }
         else
         {

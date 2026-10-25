@@ -7,7 +7,7 @@
         <StackPanel Margin="{StaticResource PagePadding}">
             <controls:PageHeader Title="导出" Badge="{Binding FamilyLabel}"
                                  Workspace="{x:Static vm:Workspace.Export}"
-                                 Hint="把设计页的合成图写成 CD 音轨或 DVD 镜像文件。要把内容直接写入空白盘片，请前往刻录工作区；几何参数在工程设置中修改。">
+                                 Hint="把设计页的合成图写成 CD 音轨、DVD 镜像或蓝光 ISO。要把内容直接写入空白盘片，请前往刻录工作区；几何参数在工程设置中修改。">
                 <controls:PageHeader.Actions>
                     <Button Style="{StaticResource CompactButton}" Content="下一步：刻录"
                             Command="{Binding NavigateCommand}"
@@ -44,7 +44,7 @@
                  carries the byte-level output choices. -->
             <controls:SectionCard Header="输出文件" IconKind="Folder">
                 <StackPanel>
-                    <controls:VisibilityGate IsOpen="{Binding IsDvd}" Inverted="True">
+                    <controls:VisibilityGate IsOpen="{Binding IsCd}">
                         <StackPanel>
                             <controls:PathField Label="输出音轨 (.wav / .raw)"
                                                 Text="{Binding State.CdOutputPath}"
@@ -83,8 +83,27 @@
                         </StackPanel>
                     </controls:VisibilityGate>
 
+                    <controls:VisibilityGate IsOpen="{Binding IsBluRay}">
+                        <StackPanel>
+                            <controls:PathField Label="输出 ISO"
+                                                Text="{Binding State.BdOutputPath}"
+                                                ButtonLabel="选择…"
+                                                Command="{Binding BrowseOutputCommand}"
+                                                Margin="0,0,0,14" />
+                            <controls:PathField Label="可选：放入内圈的文件夹（留空则整盘只绘图）"
+                                                Text="{Binding State.BdDataDirectory}"
+                                                ButtonLabel="选择…"
+                                                Command="{Binding BrowseDataCommand}" />
+                            <TextBlock Style="{StaticResource FieldLabel}" Margin="0,14,0,6" Text="卷标" />
+                            <TextBox Text="{Binding State.BdVolumeLabel, UpdateSourceTrigger=PropertyChanged}" MaxLength="32" />
+                            <TextBlock Style="{StaticResource CompactHint}" Margin="0,12,0,0"
+                                       TextWrapping="Wrap"
+                                       Text="单层 BD-R：扇区按 32 对齐，绘图区外的内圈文件由 UDF 2.01 承载。生成 ISO 同目录会写出同名 .json sidecar，预览可据此恢复几何与极性。" />
+                        </StackPanel>
+                    </controls:VisibilityGate>
+
                     <TextBlock Style="{StaticResource CompactHint}" Margin="0,14,0,0"
-                               Text="影调（抖动、灰阶、亮度）在设计页右栏的「影调」中调整。" />
+                               Text="影调（抖动、sRGB 线性化、亮度）与蓝光 3T/6T 极性在设计页右栏的「影调」中调整。" />
                     <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
                         <Button Style="{StaticResource PrimaryButton}" Content="{Binding GenerateButtonText}"
                                 Command="{Binding GenerateCommand}" />

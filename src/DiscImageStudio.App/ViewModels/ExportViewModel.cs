@@ -34,6 +34,7 @@ public partial class ExportViewModel : ObservableObject
             if (args.PropertyName is nameof(ShellViewModel.IsProjectOpen)
                 or nameof(ShellViewModel.CurrentProject))
             {
+                OnPropertyChanged(nameof(IsCd));
                 OnPropertyChanged(nameof(IsDvd));
                 OnPropertyChanged(nameof(IsBluRay));
                 OnPropertyChanged(nameof(FamilyLabel));
@@ -44,6 +45,8 @@ public partial class ExportViewModel : ObservableObject
         _design.DesignEdited += UpdateSourceSummary;
         _design.CanvasChanged += UpdateSourceSummary;
     }
+
+    public bool IsCd => _shell.CurrentProject?.IsCd ?? true;
 
     public bool IsDvd => _shell.CurrentProject?.IsDvd ?? false;
 

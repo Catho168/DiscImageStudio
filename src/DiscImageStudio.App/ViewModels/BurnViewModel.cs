@@ -298,7 +298,7 @@ public partial class BurnViewModel : ObservableObject
             Devices = devices;
             SelectedDevice = devices.Count == 0 ? null : devices[0];
             DeviceStatusText = devices.Count == 0
-                ? "未检测到支持 IMAPI2 的 CD/DVD 刻录机。"
+                ? "未检测到支持 IMAPI2 的 CD/DVD/BD 刻录机。"
                 : $"检测到 {devices.Count} 台刻录机";
         }
         catch (Exception exception)
@@ -425,11 +425,6 @@ public partial class BurnViewModel : ObservableObject
             {
                 CalibrationTarget target = _shell.Calibration.Target
                     ?? throw new ArgumentException("请先在辅助标定工作区创建图案。");
-                if (target.Parameters.Kind == CalibrationDiscKind.BluRay)
-                {
-                    throw new InvalidOperationException("蓝光标定图案的刻录接入尚未完成，请使用项目文件生成 ISO 后校验。");
-                }
-
                 bool interleave = _shell.Calibration.CdInterleave;
                 if (!_shell.Calibration.EnsureSessionSavedForBurn())
                 {
@@ -443,7 +438,13 @@ public partial class BurnViewModel : ObservableObject
                 }
 
                 request = CreateCalibrationBurnRequest(target, interleave, device.Id, selectedWriteSpeed.Speed);
-                contentDescription = $"{(dvd ? "DVD" : "CD")} 标定图案 · {target.Id[..8]}"
+                string family = target.Parameters.Kind switch
+                {
+                    CalibrationDiscKind.Dvd => "DVD",
+                    CalibrationDiscKind.BluRay => "BD",
+                    _ => "CD",
+                };
+                contentDescription = $"{family} 标定图案 · {target.Id[..8]}"
                     + $" · {target.Parameters.Sectors} 扇区 · {request.ContentLength / (1024.0 * 1024.0):F1} MiB";
             }
             else
@@ -640,6 +641,20 @@ public partial class BurnViewModel : ObservableObject
         OpticalWriteSpeed? writeSpeed)
     {
         ArgumentNullException.ThrowIfNull(target);
+        if (target.Parameters.Kind == CalibrationDiscKind.BluRay)
+        {
+            BluRayDiscParameters disc = CalibrationViewModel.BluRayParameters(target.Parameters);
+            BluRayPatternRangeMapping mapping = CalibrationViewModel.BluRayPatternMapping(target);
+            return new OpticalBurnRequest(deviceId, OpticalBurnMediaKind.BluRayData, disc.ContentLength,
+                (output, token) => BluRayStreamingGenerator.GenerateToStream(
+                    output,
+                    new BluRayStreamingOptions(disc, 0, disc.TotalSectors),
+                    mapping,
+                    progress: null,
+                    cancellationToken: token),
+                writeSpeed);
+        }
+
         if (target.Parameters.Kind == CalibrationDiscKind.Dvd)
         {
             DvdStreamingOptions options = CalibrationViewModel.DvdOptions(target);

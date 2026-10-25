@@ -150,17 +150,22 @@ internal static class UiPreviewRenderer
         int height,
         Application application)
     {
-        if (mode is not ("new" or "edit"))
+        if (mode is not ("new" or "edit" or "bd"))
         {
-            throw new ArgumentException("Project dialog snapshot mode must be new or edit.");
+            throw new ArgumentException("Project dialog snapshot mode must be new, edit or bd.");
         }
 
         DiscParametersState state = new();
         state.TryLoadPresets();
+        OpticalDiscFamily family = mode switch
+        {
+            "edit" => OpticalDiscFamily.Dvd,
+            "bd" => OpticalDiscFamily.BluRay,
+            _ => OpticalDiscFamily.CompactDisc,
+        };
         ProjectDialogViewModel viewModel = new(
             state,
-            new ProjectDialogRequest(EditMode: mode == "edit",
-                PreselectFamily: OpticalDiscFamily.Dvd));
+            new ProjectDialogRequest(EditMode: mode == "edit", PreselectFamily: family));
         if (mode == "edit")
         {
             viewModel.Family = OpticalDiscFamily.Dvd;
