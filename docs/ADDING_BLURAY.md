@@ -12,7 +12,7 @@
 - **刻录**：把同一 ISO 流直接送入 MMC 顺序写入，不保存完整镜像；任务坞支持进度与取消。
 - **标定**：BD 目标覆盖完整数据区，保存扇区、半径、极性、绘图起止与 ISO 时间戳；拟合使用恒定轨距并回到 BD 参数。
 
-BD 预设与 CD/DVD 一起存放在 `disc-presets.json`（schema 4）的 `bluRayPresets` 中。内置“BD-R 单层 25 GB”和“铼德 BD-R 10x”两条；用户预设可在工程设置对话框底部保存。
+BD 预设与 CD/DVD 一起存放在 `disc-presets.json`（schema 4）的 `bluRayPresets` 中。内置「标准 25GB 单层 BD」和「铼德 BD-R 10x」两条；用户预设可在工程设置对话框底部保存。
 
 ## 容量与几何
 

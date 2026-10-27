@@ -63,6 +63,7 @@ BluRaySessionCleanupTests.Run();
 RunStreamingGenerationTests();
 TestDiscPresets();
 TestDiscPresetJson();
+UserPresetDeleteTests.Run();
 ProjectStoreTests.Run();
 ProjectSessionTests.Run();
 FilePlacementProjectTests.Run();
@@ -97,6 +98,7 @@ BluRayObservedCurveRegressionTests.Run();
 CalibrationShapeSeedTests.Run();
 CalibrationPhotoTests.Run();
 CalibrationPhotoCanvasTests.Run();
+DesignCanvasZoomTests.Run();
 CalibrationBurnWorkflowTests.Run();
 CalibrationOutputPublisherTests.Run();
 CalibrationPhotoViewModelTests.Run();
@@ -217,6 +219,9 @@ static void TestDiscPresets()
     }
 
     CdDiscPresetDefinition cd80 = builtIn.CdPresets.Single(value => value.Id == "cd-80");
+    True(
+        cd80.DisplayName.StartsWith("标准", StringComparison.Ordinal),
+        "standard CD preset announces its standard nature");
     Equal(359_849L, cd80.Sectors, "80-minute CD preset sectors");
     Equal(
         1_200.0,
@@ -234,6 +239,9 @@ static void TestDiscPresets()
     Equal(58.020875, verbatim.OuterRadiusMm, "Verbatim AZO 43438 outer radius");
     DvdDiscPresetDefinition dvd120 = builtIn.DvdPresets.Single(
         value => value.Id == "dvd-5-120mm");
+    True(
+        dvd120.DisplayName.StartsWith("标准", StringComparison.Ordinal),
+        "standard DVD preset announces its standard nature");
     Equal(2_295_104U, dvd120.TotalSectors, "120 mm DVD preset sectors");
     Equal(
         133.3,
@@ -248,6 +256,11 @@ static void TestDiscPresets()
         value => value.Id == "dvd-5-80mm");
     Equal(714_544U, dvd80.TotalSectors, "80 mm DVD preset sectors");
     Equal(38.0, dvd80.OuterRadiusMm, "80 mm DVD preset outer radius");
+    BluRayDiscPresetDefinition bdStandard = builtIn.BluRayPresets!.Single(
+        value => value.Id == "bd-r-sl-25gb");
+    True(
+        bdStandard.DisplayName.StartsWith("标准", StringComparison.Ordinal),
+        "standard Blu-ray preset announces its standard nature");
 }
 
 static void TestDiscPresetJson()

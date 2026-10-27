@@ -15,13 +15,13 @@ internal static class DiscTheme
 
     public static Brush Hub => Resolve("DiscHubBrush", 0x0D, 0x0D, 0x0F);
 
-    public static Brush Ring => Resolve("DiscRingBrush", 0x30, 0x52, 0x67, 0xF5);
+    public static Brush Ring => Resolve("DiscRingBrush", 0x30, 0x33, 0x85, 0xFF);
 
     public static Brush Guide => Resolve("DiscGuideBrush", 0x55, 0xA1, 0xA1, 0xAA);
 
     public static Brush Mask => Resolve("DiscMaskBrush", 0x88, 0x00, 0x00, 0x00);
 
-    public static Brush Selection => Resolve("DiscSelectionBrush", 0x52, 0x67, 0xF5);
+    public static Brush Selection => Resolve("DiscSelectionBrush", 0x33, 0x85, 0xFF);
 
     /// <summary>Footprint marker for a layer whose image file cannot be decoded.</summary>
     public static Brush MissingImage => Resolve("DangerBrush", 0xF3, 0x12, 0x60);
@@ -30,7 +30,7 @@ internal static class DiscTheme
 
     public static Brush Caption => Resolve("CalibrationCaptionBrush", 0xDC, 0x13, 0x15, 0x1A);
 
-    public static Brush Edge => Resolve("CalibrationEdgeBrush", 0x00, 0xBF, 0xFF);
+    public static Brush Edge => Resolve("CalibrationEdgeBrush", 0x74, 0xC0, 0xFF);
 
     public static Brush HubOutline => Resolve("CalibrationHubOutlineBrush", 0xFF, 0xA5, 0x00);
 

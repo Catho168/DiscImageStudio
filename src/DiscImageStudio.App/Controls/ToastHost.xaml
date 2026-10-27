@@ -11,10 +11,10 @@
         </ItemsControl.ItemsPanel>
         <ItemsControl.ItemTemplate>
             <DataTemplate>
-                <Border x:Name="ToastCard" Width="344" Margin="0,0,0,10" HorizontalAlignment="Right"
+                <Border x:Name="ToastCard" Width="320" Margin="0,0,0,10" HorizontalAlignment="Right"
                         Background="{StaticResource Surface1Brush}"
                         BorderBrush="{StaticResource DividerBrush}" BorderThickness="1"
-                        CornerRadius="{StaticResource RadiusFloating}" Padding="14,12,10,12" SnapsToDevicePixels="True"
+                        CornerRadius="{StaticResource RadiusFloating}" Padding="12,10,8,10" SnapsToDevicePixels="True"
                         Effect="{StaticResource FloatingShadow}"
                         IsHitTestVisible="True">
                     <Border.RenderTransform>

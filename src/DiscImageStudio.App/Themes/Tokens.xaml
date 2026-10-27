@@ -17,10 +17,12 @@
     <Color x:Key="TextPrimaryColor">#FAFAFA</Color>
     <Color x:Key="TextSecondaryColor">#A1A1AA</Color>
     <Color x:Key="TextMutedColor">#8C8C92</Color>
-    <Color x:Key="PrimaryColor">#5267F5</Color>
-    <Color x:Key="PrimaryHoverColor">#6E82FF</Color>
-    <Color x:Key="PrimaryPressedColor">#4053D8</Color>
-    <Color x:Key="PrimarySoftColor">#1F5267F5</Color>
+    <!-- Brand blue pair: 3385FF is the base fill on dark surfaces, 74C0FF the lighter
+         emphasis used for hover states and accent text/icons on dark backgrounds. -->
+    <Color x:Key="PrimaryColor">#3385FF</Color>
+    <Color x:Key="PrimaryHoverColor">#74C0FF</Color>
+    <Color x:Key="PrimaryPressedColor">#2569CC</Color>
+    <Color x:Key="PrimarySoftColor">#1F3385FF</Color>
     <Color x:Key="DangerColor">#F31260</Color>
     <!-- Danger buttons keep their own hover/pressed ramp: a red action must not borrow the
          brand blue the way the shared filled-button triggers would otherwise give it. -->
@@ -70,7 +72,7 @@
     <SolidColorBrush x:Key="PressedOverlayBrush" Color="#1FFFFFFF" />
     <SolidColorBrush x:Key="TitleBarHoverBrush" Color="#12FFFFFF" />
     <SolidColorBrush x:Key="BackdropBrush" Color="#80000000" />
-    <SolidColorBrush x:Key="PrimaryGlowBrush" Color="#805267F5" />
+    <SolidColorBrush x:Key="PrimaryGlowBrush" Color="#803385FF" />
     <SolidColorBrush x:Key="WarningSoftBrush" Color="#14F5A524" />
     <SolidColorBrush x:Key="WarningBorderBrush" Color="#4DF5A524" />
     <SolidColorBrush x:Key="WarningTextBrush" Color="#E5C783" />
@@ -91,31 +93,32 @@
     <SolidColorBrush x:Key="BadgeSurfaceBrush" Color="#CC121212" />
 
     <!-- Shape and metric tokens: radii, control heights and the shared page padding.
-         Keeping them here is what stops every view from inventing its own 24/26/32. -->
-    <CornerRadius x:Key="RadiusField">12</CornerRadius>
-    <CornerRadius x:Key="RadiusCard">16</CornerRadius>
+         Keeping them here is what stops every view from inventing its own 24/26/32.
+         The metrics follow a tool-density scale (controls 28–34 px, cards 12 px arcs):
+         a workspace application shows more working surface than chrome. -->
+    <CornerRadius x:Key="RadiusField">8</CornerRadius>
+    <CornerRadius x:Key="RadiusCard">12</CornerRadius>
     <!-- Inner card headers sit inside the card's 1px stroke, so their top arc is one less. -->
-    <CornerRadius x:Key="RadiusCardHeader">15,15,0,0</CornerRadius>
+    <CornerRadius x:Key="RadiusCardHeader">11,11,0,0</CornerRadius>
     <!-- Mirror arc for the last row inside a card (footer strips, status rows). -->
-    <CornerRadius x:Key="RadiusCardFooter">0,0,15,15</CornerRadius>
+    <CornerRadius x:Key="RadiusCardFooter">0,0,11,11</CornerRadius>
     <!-- Small chips, dots and inline thumbnails. -->
-    <CornerRadius x:Key="RadiusChip">6</CornerRadius>
+    <CornerRadius x:Key="RadiusChip">5</CornerRadius>
     <!-- Inner panels nested inside a card body. -->
-    <CornerRadius x:Key="RadiusPanel">10</CornerRadius>
-    <sys:Double x:Key="ButtonHeight">44</sys:Double>
-    <sys:Double x:Key="ControlHeight">40</sys:Double>
-    <sys:Double x:Key="CompactHeight">36</sys:Double>
+    <CornerRadius x:Key="RadiusPanel">8</CornerRadius>
+    <sys:Double x:Key="ButtonHeight">34</sys:Double>
+    <sys:Double x:Key="ControlHeight">32</sys:Double>
+    <sys:Double x:Key="CompactHeight">28</sys:Double>
     <!-- Sidebar chrome widths: expanded matches the page-column rhythm, collapsed is the
          icon rail. Doubles so both the Border width and the collapse animation read them. -->
-    <sys:Double x:Key="SidebarWidth">288</sys:Double>
-    <sys:Double x:Key="SidebarCollapsedWidth">72</sys:Double>
-    <!-- Standard width for the context/inspector columns flanking a workspace stage; matches
-         the sidebar's 288 rhythm at a slightly tighter 280. A GridLength so column
-         definitions can take it directly. -->
-    <GridLength x:Key="SidePanelWidth">280</GridLength>
-    <Thickness x:Key="PagePadding">40,24,40,40</Thickness>
+    <sys:Double x:Key="SidebarWidth">264</sys:Double>
+    <sys:Double x:Key="SidebarCollapsedWidth">60</sys:Double>
+    <!-- Standard width for the context/inspector columns flanking a workspace stage; a
+         GridLength so column definitions can take it directly. -->
+    <GridLength x:Key="SidePanelWidth">256</GridLength>
+    <Thickness x:Key="PagePadding">32,20,32,32</Thickness>
     <!-- Corner radius of floating surfaces (toasts, flyouts): between chip and card. -->
-    <CornerRadius x:Key="RadiusFloating">12</CornerRadius>
+    <CornerRadius x:Key="RadiusFloating">10</CornerRadius>
 
     <!-- Floating surfaces use one of exactly two elevations: FloatingShadow for popups,
          flyouts and toasts, ModalShadow for the confirmation card. -->
@@ -130,7 +133,7 @@
     <SolidColorBrush x:Key="DiscCanvasBackdropBrush" Color="#0D0D0F" />
     <SolidColorBrush x:Key="DiscBodyBrush" Color="#1C1C20" />
     <SolidColorBrush x:Key="DiscHubBrush" Color="#0D0D0F" />
-    <SolidColorBrush x:Key="DiscRingBrush" Color="#305267F5" />
+    <SolidColorBrush x:Key="DiscRingBrush" Color="#303385FF" />
     <SolidColorBrush x:Key="DiscGuideBrush" Color="#55A1A1AA" />
     <SolidColorBrush x:Key="DiscMaskBrush" Color="#88000000" />
     <SolidColorBrush x:Key="DiscSelectionBrush" Color="{StaticResource PrimaryColor}" />
@@ -141,7 +144,7 @@
          input, model prediction). Derived from the brand hue family and the warning ramp
          instead of raw web primaries, so overlays read as part of the same palette while
          keeping enough contrast on both light photos and the dark backdrop. -->
-    <SolidColorBrush x:Key="CalibrationEdgeBrush" Color="#4C9EFF" />
+    <SolidColorBrush x:Key="CalibrationEdgeBrush" Color="#74C0FF" />
     <SolidColorBrush x:Key="CalibrationHubOutlineBrush" Color="{StaticResource WarningColor}" />
     <SolidColorBrush x:Key="CalibrationTraceBrush" Color="#22D3EE" />
     <SolidColorBrush x:Key="CalibrationPredictionBrush" Color="#FFA94D" />

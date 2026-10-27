@@ -12,33 +12,33 @@
             BorderThickness="0,1,0,0">
         <Grid>
             <Grid.RowDefinitions>
-                <RowDefinition Height="40" />
+                <RowDefinition Height="36" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <Grid Grid.Row="0" Margin="20,0,12,0">
+            <Grid Grid.Row="0" Margin="14,0,10,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" MinWidth="80" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <iconPacks:PackIconLucide x:Name="StatusIcon" Grid.Column="0" Kind="CircleCheck"
                                           Width="16" Height="16" VerticalAlignment="Center"
                                           Foreground="{StaticResource TextMutedBrush}" />
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,16,0">
-                    <TextBlock Text="{Binding JobTitle}" Style="{StaticResource CompactText}"
-                               Foreground="{StaticResource TextPrimaryBrush}" />
-                    <TextBlock Text="{Binding JobStatusText}" Style="{StaticResource CompactHint}"
-                               Margin="10,0,0,0" TextTrimming="CharacterEllipsis" MaxWidth="420" />
-                </StackPanel>
-                <ProgressBar Grid.Column="2" Style="{StaticResource CompactProgressBar}"
-                             VerticalAlignment="Center" Margin="0,0,16,0"
+                <TextBlock Grid.Column="1" Text="{Binding JobTitle}" Style="{StaticResource CompactText}"
+                           VerticalAlignment="Center" Foreground="{StaticResource TextPrimaryBrush}"
+                           Margin="10,0,10,0" />
+                <TextBlock Grid.Column="2" Text="{Binding JobStatusText}" Style="{StaticResource CompactHint}"
+                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                <ProgressBar Grid.Column="3" Style="{StaticResource CompactProgressBar}"
+                             Width="180" VerticalAlignment="Center" Margin="0,0,16,0"
                              IsIndeterminate="{Binding IsJobProgressIndeterminate}"
                              Minimum="0" Maximum="100"
                              Value="{Binding JobProgressValue, Mode=OneWay}"
                              Visibility="{Binding JobProgressVisibility}" />
-                <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button Style="{StaticResource CompactButton}" Content="取消"
                             Command="{Binding CancelJobCommand}" Margin="0,0,8,0"
                             Visibility="{Binding CancelJobVisibility}"
@@ -60,20 +60,23 @@
                     <Button Style="{StaticResource IconButton}" Command="{Binding ToggleJobDockCommand}"
                             AutomationProperties.Name="任务详情" ToolTip="任务详情 / 运行日志"
                             Visibility="{Binding DockToggleVisibility}">
+                        <!-- Collapsed points up (tap to expand); expanded points down
+                             (tap to collapse), matching every bottom-dock convention. -->
                         <iconPacks:PackIconLucide Kind="ChevronUp" Width="16" Height="16"
+                                                  RenderTransformOrigin="0.5,0.5"
                                                   Foreground="{StaticResource TextSecondaryBrush}">
                             <iconPacks:PackIconLucide.Style>
                                 <Style TargetType="iconPacks:PackIconLucide">
                                     <Setter Property="RenderTransform">
                                         <Setter.Value>
-                                            <RotateTransform Angle="180" />
+                                            <RotateTransform Angle="0" />
                                         </Setter.Value>
                                     </Setter>
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding IsJobDockExpanded}" Value="True">
                                             <Setter Property="RenderTransform">
                                                 <Setter.Value>
-                                                    <RotateTransform Angle="0" />
+                                                    <RotateTransform Angle="180" />
                                                 </Setter.Value>
                                             </Setter>
                                         </DataTrigger>
@@ -85,16 +88,16 @@
                 </StackPanel>
             </Grid>
 
-            <Border Grid.Row="1" x:Name="LogHost" Height="220" Background="{StaticResource BackgroundBrush}"
+            <Border Grid.Row="1" x:Name="LogHost" Height="200" Background="{StaticResource BackgroundBrush}"
                     BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0"
                     Visibility="{Binding IsJobDockExpanded, Converter={StaticResource BoolToVisibility}}">
                 <TextBox x:Name="LogTextBox" Style="{StaticResource BareTextBox}" IsReadOnly="True"
                          AcceptsReturn="True" VerticalAlignment="Stretch"
                          FontFamily="{StaticResource MonoFontFamily}" FontSize="12"
-                         Foreground="{StaticResource TextSecondaryBrush}"
+                         Foreground="{StaticResource TextPrimaryBrush}"
                          Background="Transparent" BorderThickness="0"
-                         HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
-                         TextWrapping="NoWrap" Padding="20,10,20,10" />
+                         HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto"
+                         TextWrapping="Wrap" Padding="14,8,14,8" />
             </Border>
         </Grid>
     </Border>

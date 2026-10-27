@@ -16,6 +16,10 @@ public class DiscDesignCanvas : FrameworkElement
     private const double HandleSize = 8.0;
     private const double RotateHandleDistance = 26.0;
     private const double MinScale = 0.05;
+    private const double MinZoom = 0.25;
+    private const double MaxZoom = 12.0;
+    private const double ZoomStep = 1.25;
+    private const double WheelZoomStep = 1.15;
 
     private DesignViewModel? _design;
     private System.Collections.Specialized.NotifyCollectionChangedEventHandler? _collectionHandler;
@@ -29,6 +33,10 @@ public class DiscDesignCanvas : FrameworkElement
     private double _dragStartMouseAngleDeg;
     private int _scaleCornerIndex;
     private bool _isDragging;
+    private bool _isPanning;
+    private Vector _panOffset;
+    private Vector _panStartOffset;
+    private Point _panStartMouse;
 
     private enum DragMode
     {
@@ -38,6 +46,12 @@ public class DiscDesignCanvas : FrameworkElement
         Rotate,
     }
 
+    public static readonly DependencyProperty ZoomFactorProperty = DependencyProperty.Register(
+        nameof(ZoomFactor), typeof(double), typeof(DiscDesignCanvas),
+        new PropertyMetadata(1.0, OnZoomFactorChanged, CoerceZoomFactor));
+    private static readonly DependencyPropertyKey ZoomPercentPropertyKey = DependencyProperty.RegisterReadOnly(
+        nameof(ZoomPercent), typeof(string), typeof(DiscDesignCanvas), new PropertyMetadata("100%"));
+
     public DiscDesignCanvas()
     {
         ClipToBounds = true;
@@ -46,6 +60,38 @@ public class DiscDesignCanvas : FrameworkElement
         DataContextChanged += (_, _) => AttachDesign();
         Loaded += (_, _) => { AttachDesign(); InvalidateVisual(); };
         Unloaded += (_, _) => DetachDesign();
+    }
+
+    /// <summary>Zoom on top of the fit-to-view scale. 1 shows the whole disc; the +/- buttons
+    /// and Ctrl/Alt+wheel change it, middle-drag pans, the refresh button or double-clicking
+    /// empty backdrop resets it.</summary>
+    public double ZoomFactor
+    {
+        get => (double)GetValue(ZoomFactorProperty);
+        set => SetValue(ZoomFactorProperty, value);
+    }
+
+    public string ZoomPercent => (string)GetValue(ZoomPercentPropertyKey.DependencyProperty);
+
+    public void ResetView()
+    {
+        ZoomFactor = 1.0;
+        _panOffset = default;
+        InvalidateVisual();
+    }
+
+    public void ZoomIn() => ZoomAt(ZoomStep, ViewCenter);
+
+    public void ZoomOut() => ZoomAt(1.0 / ZoomStep, ViewCenter);
+
+    private static object CoerceZoomFactor(DependencyObject d, object baseValue)
+        => Math.Clamp((double)baseValue, MinZoom, MaxZoom);
+
+    private static void OnZoomFactorChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        DiscDesignCanvas canvas = (DiscDesignCanvas)d;
+        canvas.SetValue(ZoomPercentPropertyKey, $"{Math.Round(canvas.ZoomFactor * 100)}%");
+        canvas.InvalidateVisual();
     }
 
     private DesignViewModel? Design => _design;
@@ -115,7 +161,7 @@ public class DiscDesignCanvas : FrameworkElement
 
     // ---- Coordinate mapping ----
 
-    private double ViewScale
+    private double FitScale
     {
         get
         {
@@ -124,7 +170,13 @@ public class DiscDesignCanvas : FrameworkElement
         }
     }
 
-    private Point ViewCenter => new(ActualWidth / 2, ActualHeight / 2);
+    private double ViewScale => FitScale * ZoomFactor;
+
+    private Point ViewCenterBase => new(ActualWidth / 2, ActualHeight / 2);
+
+    private Point ViewCenter => new(
+        ViewCenterBase.X + _panOffset.X,
+        ViewCenterBase.Y + _panOffset.Y);
 
     private Point ScreenFromMm(double xMm, double yMm)
     {
@@ -446,6 +498,84 @@ public class DiscDesignCanvas : FrameworkElement
 
     // ---- Mouse interaction ----
 
+    protected override void OnMouseWheel(MouseWheelEventArgs args)
+    {
+        base.OnMouseWheel(args);
+        // Plain wheel keeps scrolling the page; Ctrl/Alt zoom with the cursor as the anchor
+        // so the point under the mouse stays put while the fit scale grows beneath it.
+        if (_design is null
+            || (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Alt)) == 0)
+        {
+            return;
+        }
+
+        ZoomAt(args.Delta > 0 ? WheelZoomStep : 1.0 / WheelZoomStep, args.GetPosition(this));
+        args.Handled = true;
+    }
+
+    /// <summary>Zooms by <paramref name="factor"/> while the mm point under
+    /// <paramref name="anchor"/> stays on the same screen pixel. Below fit zoom the disc is
+    /// centred again, because panning a shrunken disc away from the middle is never useful.</summary>
+    private void ZoomAt(double factor, Point anchor)
+    {
+        double fit = FitScale;
+        if (fit <= 0 || ActualWidth <= 0 || ActualHeight <= 0)
+        {
+            return;
+        }
+
+        Point anchorMm = MmFromScreen(anchor);
+        ZoomFactor *= factor;
+        _panOffset = ZoomFactor > 1.0001
+            ? ClampPan((Vector)anchor - (Vector)ViewCenterBase - (Vector)anchorMm * (fit * ZoomFactor))
+            : default;
+        InvalidateVisual();
+    }
+
+    protected override void OnMouseDown(MouseButtonEventArgs args)
+    {
+        base.OnMouseDown(args);
+        if (args.ChangedButton != MouseButton.Middle || _design is null || ZoomFactor <= 1.0001)
+        {
+            return;
+        }
+
+        _isPanning = true;
+        _panStartOffset = _panOffset;
+        _panStartMouse = args.GetPosition(this);
+        Cursor = Cursors.SizeAll;
+        CaptureMouse();
+        args.Handled = true;
+    }
+
+    protected override void OnMouseUp(MouseButtonEventArgs args)
+    {
+        base.OnMouseUp(args);
+        if (args.ChangedButton != MouseButton.Middle || !_isPanning)
+        {
+            return;
+        }
+
+        _isPanning = false;
+        Cursor = Cursors.Arrow;
+        ReleaseMouseCapture();
+        args.Handled = true;
+    }
+
+    /// <summary>The disc's centre must stay within the disc's on-screen radius, so a pan can
+    /// never lose the artwork entirely; at fit zoom the pan is always zero.</summary>
+    private Vector ClampPan(Vector pan)
+    {
+        double fit = FitScale;
+        if (fit <= 0 || ZoomFactor <= 1.0001)
+        {
+            return default;
+        }
+
+        double maxLength = fit * ZoomFactor * DesignViewModel.DiscRadiusMm;
+        return pan.Length > maxLength ? pan * (maxLength / pan.Length) : pan;
+    }
+
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs args)
     {
         base.OnMouseLeftButtonDown(args);
@@ -457,6 +587,16 @@ public class DiscDesignCanvas : FrameworkElement
         Focus();
         Point mouse = args.GetPosition(this);
         Point mouseMm = MmFromScreen(mouse);
+
+        // Double-clicking empty backdrop is a shortcut for the fit button.
+        if (args.ClickCount == 2
+            && _design.SelectedLayer is null
+            && !HitScaleHandle(mouse).HasValue
+            && HitTestLayer(mouseMm) is null)
+        {
+            ResetView();
+            return;
+        }
 
         // Handles first: they only exist while something is selected.
         if (HitScaleHandle(mouse) is { } scaleHit)
@@ -510,6 +650,14 @@ public class DiscDesignCanvas : FrameworkElement
     protected override void OnMouseMove(MouseEventArgs args)
     {
         base.OnMouseMove(args);
+        if (_isPanning)
+        {
+            _panOffset = ClampPan(
+                _panStartOffset + (Vector)(args.GetPosition(this) - _panStartMouse));
+            InvalidateVisual();
+            return;
+        }
+
         if (!_isDragging || _design?.SelectedLayer is not { } layer)
         {
             UpdateHoverCursor(args);
