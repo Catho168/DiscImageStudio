@@ -28,12 +28,10 @@
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <Border Grid.Row="0" Style="{StaticResource CardStyle}" Padding="20">
+            <Border Grid.Row="0" Style="{StaticResource CardStyle}" Padding="16">
                 <StackPanel>
                     <TextBlock Style="{StaticResource FieldLabel}" Text="预设名称" />
                     <TextBox x:Name="NameBox" MaxLength="80" />
-                    <TextBlock Style="{StaticResource FieldLabel}" Margin="0,14,0,6" Text="注释（可选）" />
-                    <TextBox x:Name="CommentBox" MaxLength="200" />
                 </StackPanel>
             </Border>
 

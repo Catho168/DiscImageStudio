@@ -19,7 +19,19 @@ public partial class DiscParametersState : ObservableObject
     private const string DefaultDvdVolumeLabel = "DISC_IMAGE";
     private const string DefaultBluRayVolumeLabel = "BD_IMAGE";
 
-    private readonly string _discPresetJsonPath = DiscPresetJsonStore.GetDefaultPath();
+    private readonly string _discPresetJsonPath;
+
+    // The path overload is what keeps preset-editing tests off the real user catalog.
+    public DiscParametersState()
+        : this(DiscPresetJsonStore.GetDefaultPath())
+    {
+    }
+
+    internal DiscParametersState(string discPresetJsonPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(discPresetJsonPath);
+        _discPresetJsonPath = discPresetJsonPath;
+    }
 
     private IReadOnlyList<CdDiscPreset> _cdPresets = [CdDiscPreset.Manual];
     private IReadOnlyList<DvdDiscPreset> _dvdPresets = [DvdDiscPreset.Manual];
@@ -44,7 +56,8 @@ public partial class DiscParametersState : ObservableObject
     [ObservableProperty] private string _cdSamplesPerSector = "16";
     [ObservableProperty] private bool _cdInterleave = true;
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasCdFiles), nameof(IsCdAudioMode), nameof(IsCdWaveOutput))]
+    [NotifyPropertyChangedFor(nameof(HasCdFiles), nameof(IsCdAudioMode), nameof(IsCdWaveOutput),
+        nameof(CdOutputLabel), nameof(CdOutputHint))]
     private string _cdDataDirectory = string.Empty;
     [ObservableProperty] private bool _cdFilesAtOuterRing;
     [ObservableProperty] private string _cdVolumeLabel = "CD_IMAGE";
@@ -168,6 +181,14 @@ public partial class DiscParametersState : ObservableObject
 
     public bool IsCdAudioMode => !HasCdFiles;
 
+    /// <summary>Label of the CD output the design page's pipeline card offers; the artifact
+    /// switches between a data ISO and an audio track as the on-disc folder appears.</summary>
+    public string CdOutputLabel => HasCdFiles ? "输出数据盘 (.iso)" : "输出音轨 (.wav / .raw)";
+
+    public string CdOutputHint => HasCdFiles
+        ? "包含随盘文件，导出为 CD 数据盘 ISO。"
+        : "无随盘文件时生成音轨，推荐 WAV 格式。";
+
     partial void OnCdDataDirectoryChanged(string value) => NormalizeCdOutputFormat();
 
     internal void NormalizeCdOutputFormat()
@@ -267,18 +288,18 @@ public partial class DiscParametersState : ObservableObject
     }
 
     /// <summary>
-    /// Appends one parameter set to the user preset JSON and refreshes the catalog. The
-    /// display name and note come from the save dialog the user confirmed; the id carries a
-    /// timestamp plus a random suffix so two saves within the same second stay distinct.
-    /// Refreshing uses <see cref="LoadPresets"/> on purpose: it swaps the lists without
-    /// re-applying the selected preset, so the open project's live values are never
-    /// overwritten. Throws when the name is blank or the JSON cannot be read or written;
-    /// the caller surfaces the message.
+    /// Appends one parameter set to the user preset JSON and refreshes the catalog. Only the
+    /// display name comes from the save dialog; the description is derived from the geometry
+    /// so hand-edited catalogs still explain each entry. The id carries a timestamp plus a
+    /// random suffix so two saves within the same second stay distinct. Refreshing uses
+    /// <see cref="LoadPresets"/> on purpose: it swaps the lists without re-applying the
+    /// selected preset, so the open project's live values are never overwritten. Throws when
+    /// the name is blank or the JSON cannot be read or written; the caller surfaces the
+    /// message.
     /// </summary>
     public string AddUserPreset(
         OpticalDiscFamily family,
         string displayName,
-        string description,
         double innerRadiusMm,
         double outerRadiusMm,
         long sectors,
@@ -303,7 +324,9 @@ public partial class DiscParametersState : ObservableObject
             _ => "cd",
         };
         string id = $"user-{familyToken}-{now:yyyyMMdd-HHmmss}-{Guid.NewGuid().ToString("N")[..4]}";
-        string note = description.Trim();
+        string note = string.Create(
+            System.Globalization.CultureInfo.InvariantCulture,
+            $"用户预设：内半径 {innerRadiusMm:0.###} mm、外半径 {outerRadiusMm:0.###} mm、{sectors:N0} 扇区。");
         DiscPresetJsonDocument updated = family switch
         {
             OpticalDiscFamily.Dvd => user with
@@ -360,6 +383,39 @@ public partial class DiscParametersState : ObservableObject
         DiscPresetJsonStore.Save(_discPresetJsonPath, updated);
         LoadPresets();
         return displayName;
+    }
+
+    /// <summary>
+    /// Removes a user preset from the editable catalog and refreshes the lists. Only ids
+    /// this store created (<c>user-*</c>) are removable: built-in presets live in the
+    /// embedded resource, never in the user file. Returns the removed display name so the
+    /// caller can confirm the action; throws when the file cannot be read or written.
+    /// </summary>
+    public string RemoveUserPreset(string presetId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(presetId);
+        if (!presetId.StartsWith("user-", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("内置预设不能删除。");
+        }
+
+        EnsurePresetsJsonExists();
+        DiscPresetJsonDocument user = DiscPresetJsonStore.Load(_discPresetJsonPath);
+        IReadOnlyList<BluRayDiscPresetDefinition> bluRayPresets = user.BluRayPresets ?? [];
+        string? displayName = user.CdPresets.FirstOrDefault(p => p.Id == presetId)?.DisplayName
+            ?? user.DvdPresets.FirstOrDefault(p => p.Id == presetId)?.DisplayName
+            ?? bluRayPresets.FirstOrDefault(p => p.Id == presetId)?.DisplayName;
+        DiscPresetJsonDocument updated = user with
+        {
+            SchemaVersion = DiscPresetJsonStore.CurrentSchemaVersion,
+            CdPresets = user.CdPresets.Where(p => p.Id != presetId).ToList(),
+            DvdPresets = user.DvdPresets.Where(p => p.Id != presetId).ToList(),
+            BluRayPresets = bluRayPresets.Where(p => p.Id != presetId).ToList(),
+        };
+
+        DiscPresetJsonStore.Save(_discPresetJsonPath, updated);
+        LoadPresets();
+        return displayName ?? presetId;
     }
 
     private (IReadOnlyList<CdDiscPreset> Cd, IReadOnlyList<DvdDiscPreset> Dvd, IReadOnlyList<BluRayDiscPreset> BluRay) MergePresets(
@@ -564,7 +620,7 @@ public partial class DiscParametersState : ObservableObject
         try
         {
             SelectedBluRayPreset = preset;
-            BluRayPresetHint = preset.IsCustom ? string.Empty : $"{preset.DisplayName} · 单层";
+            BluRayPresetHint = preset.IsCustom ? string.Empty : preset.DisplayName;
             if (!preset.IsCustom)
             {
                 BluRayDiscParameters geometry = preset.CreateParameters();

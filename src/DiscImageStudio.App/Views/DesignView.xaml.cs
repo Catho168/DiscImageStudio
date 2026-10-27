@@ -68,6 +68,12 @@ public partial class DesignView : UserControl
 
     private void OnPageSizeChanged(object sender, SizeChangedEventArgs e) => UpdateResponsiveLayout();
 
+    private void ZoomInClick(object sender, RoutedEventArgs e) => DesignCanvas.ZoomIn();
+
+    private void ZoomOutClick(object sender, RoutedEventArgs e) => DesignCanvas.ZoomOut();
+
+    private void ResetCanvasZoomClick(object sender, RoutedEventArgs e) => DesignCanvas.ResetView();
+
     private void OnFilesCardVisibilityChanged(object sender, DependencyPropertyChangedEventArgs e)
         => UpdateResponsiveLayout();
 

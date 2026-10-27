@@ -123,41 +123,52 @@ public partial class HomeViewModel : ObservableObject
         }
     }
 
-    /// <summary>Preset cards follow the start-screen idiom: the caption is the disc family
-    /// and the preset's parenthetical becomes the detail line.</summary>
+    /// <summary>Preset cards state the project each one starts — CD, DVD or Blu-ray — instead
+    /// of repeating the preset's numbers. The catalog is the only source, so user presets read
+    /// the same way without a hand-written note.</summary>
     private void BuildTemplates()
     {
         Templates.Clear();
         Templates.Add(HomeTemplateTile.Blank);
         foreach (DvdDiscPreset preset in _state.DvdPresets.Where(value => !value.IsCustom).Take(PresetsPerFamily))
         {
-            (string title, string detail) = SplitPresetName(
-                preset.DisplayName,
-                $"{preset.TotalSectors:N0} 扇区 · {preset.InnerRadiusMm:0.#}–{preset.OuterRadiusMm:0.#} mm");
-            Templates.Add(new HomeTemplateTile(
-                preset.Id, title, detail, PackIconLucideKind.Disc, OpticalDiscFamily.Dvd, IsBlank: false));
+            Templates.Add(CreateTemplate(
+                preset.Id, preset.DisplayName, OpticalDiscFamily.Dvd, PackIconLucideKind.Disc));
         }
 
         foreach (CdDiscPreset preset in _state.CdPresets.Where(value => !value.IsCustom).Take(PresetsPerFamily))
         {
-            (string title, string detail) = SplitPresetName(
-                preset.DisplayName,
-                $"{preset.Sectors:N0} 扇区 · {preset.InnerRadiusMm:0.#}–{preset.OuterRadiusMm:0.#} mm");
-            Templates.Add(new HomeTemplateTile(
-                preset.Id, title, detail, PackIconLucideKind.Disc3,
-                OpticalDiscFamily.CompactDisc, IsBlank: false));
+            Templates.Add(CreateTemplate(
+                preset.Id, preset.DisplayName, OpticalDiscFamily.CompactDisc, PackIconLucideKind.Disc3));
         }
 
         foreach (BluRayDiscPreset preset in _state.BluRayPresets.Where(value => !value.IsCustom).Take(PresetsPerFamily))
         {
-            BluRayDiscParameters geometry = preset.CreateParameters();
-            (string title, string detail) = SplitPresetName(
-                preset.DisplayName,
-                $"{geometry.TotalSectors:N0} 扇区 · {geometry.InnerRadiusMm:0.#}–{geometry.OuterRadiusMm:0.#} mm");
-            Templates.Add(new HomeTemplateTile(
-                preset.Id, title, detail, PackIconLucideKind.DiscAlbum,
-                OpticalDiscFamily.BluRay, IsBlank: false));
+            Templates.Add(CreateTemplate(
+                preset.Id, preset.DisplayName, OpticalDiscFamily.BluRay, PackIconLucideKind.DiscAlbum));
         }
+    }
+
+    private static HomeTemplateTile CreateTemplate(
+        string presetId,
+        string displayName,
+        OpticalDiscFamily family,
+        PackIconLucideKind icon)
+    {
+        string nature = family switch
+        {
+            OpticalDiscFamily.Dvd => "DVD",
+            OpticalDiscFamily.BluRay => "蓝光",
+            _ => "CD",
+        };
+
+        return new HomeTemplateTile(
+            presetId,
+            StripQualifier(displayName),
+            nature,
+            icon,
+            family,
+            IsBlank: false);
     }
 
     private void State_PropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -224,18 +235,21 @@ public partial class HomeViewModel : ObservableObject
         RefreshRecentProjects();
     }
 
-    private static (string Title, string Spec) SplitPresetName(string displayName, string fallbackSpec)
+    /// <summary>Presets name themselves after what the disc is; a trailing 「（…）」 marks how
+    /// the parameters were obtained (实测) and is dropped from the card title, where long names
+    /// would be clipped.</summary>
+    private static string StripQualifier(string displayName)
     {
         int open = displayName.LastIndexOf('（');
         if (open > 0 && displayName.EndsWith('）'))
         {
-            string detail = displayName[(open + 1)..^1].Trim();
-            if (detail.Length > 0)
+            string title = displayName[..open].Trim();
+            if (title.Length > 0)
             {
-                return (displayName[..open].Trim(), detail);
+                return title;
             }
         }
 
-        return (displayName, fallbackSpec);
+        return displayName;
     }
 }

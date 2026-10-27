@@ -8,7 +8,7 @@
         <Border x:Name="DialogCard" Width="480" HorizontalAlignment="Center" VerticalAlignment="Center"
                 Background="{StaticResource Surface1Brush}"
                 BorderBrush="{StaticResource DividerBrush}" BorderThickness="1"
-                CornerRadius="{StaticResource RadiusCard}" Padding="24" SnapsToDevicePixels="True"
+                CornerRadius="{StaticResource RadiusCard}" Padding="18" SnapsToDevicePixels="True"
                 Effect="{StaticResource ModalShadow}">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">

@@ -17,10 +17,22 @@ public partial class ProjectDialogWindow : Window
         viewModel.ShowPresetSaveDialog = () => PresetSaveWindow.Show(this);
         viewModel.PickSaveDirectory = PickDirectory;
         viewModel.CloseWithConfirm = () => DialogResult = true;
+        viewModel.ConfirmPresetSwitch = tile => PresetSwitchConfirm.ShowAsync(
+            "切换预设",
+            $"切换为“{tile.Title}”会用该预设的几何参数覆盖当前参数，确认后无法撤销。是否继续？",
+            "覆盖参数");
         DataContext = viewModel;
+
         SourceInitialized += (_, _) => WindowCorners.Apply(this);
         PreviewKeyDown += (_, args) =>
         {
+            // Escape answers the overwrite guard first; only an unguarded Escape closes.
+            if (PresetSwitchConfirm.HandleKeyDown(args.Key))
+            {
+                args.Handled = true;
+                return;
+            }
+
             if (args.Key == Key.Escape)
             {
                 Close();

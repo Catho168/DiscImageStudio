@@ -49,8 +49,6 @@ public partial class ExportViewModel : ObservableObject
             if (args.PropertyName == nameof(DiscParametersState.CdDataDirectory))
             {
                 OnPropertyChanged(nameof(GenerateButtonText));
-                OnPropertyChanged(nameof(CdOutputLabel));
-                OnPropertyChanged(nameof(CdOutputHint));
             }
         };
     }
@@ -70,12 +68,6 @@ public partial class ExportViewModel : ObservableObject
 
     /// <summary>Primary action label: the artifact differs per family (WAV track vs ISO).</summary>
     public string GenerateButtonText => !IsCd || _state.HasCdFiles ? "生成镜像" : "生成音轨";
-
-    public string CdOutputLabel => _state.HasCdFiles ? "输出数据盘 (.iso)" : "输出音轨 (.wav / .raw)";
-
-    public string CdOutputHint => _state.HasCdFiles
-        ? "包含随盘文件，导出为 CD 数据盘 ISO。"
-        : "无随盘文件时生成音轨，推荐 WAV 格式。";
 
     /// <summary>The source card's jump into the project dialog, where the generation geometry
     /// is edited; every other workspace shows the same affordance for the same reason.</summary>

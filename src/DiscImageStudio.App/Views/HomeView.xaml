@@ -16,7 +16,7 @@
             <!-- One card for the three ways forward: the open project on the left, starting
                  something else on the right. The project name appears once, on the control that
                  actually goes there. -->
-            <Border Style="{StaticResource CardStyle}" Padding="18,16" Margin="0,20,0,0">
+            <Border Style="{StaticResource CardStyle}" Padding="14,12" Margin="0,20,0,0">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
